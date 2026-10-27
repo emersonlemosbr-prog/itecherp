@@ -1,0 +1,50 @@
+# ==============================================================================
+# .gitignore — iTech ERP
+# Regras de exclusão para segurança e limpeza do repositório Git
+# ==============================================================================
+
+# 1. Ambientes e Segredos (NUNCA versionar credenciais reais)
+.env
+.env.*
+!.env.example
+*.local
+
+# 2. Dependências
+node_modules/
+
+# 3. Ambientes Virtuais e Ferramentas
+.venv/
+__pycache__/
+
+# 4. Logs e Diagnósticos
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 5. Bancos de Dados Locais e Backups Dinâmicos de Testes
+backend/db/itech.db
+backend/db/itech.db-journal
+backend/db/itech.db-wal
+backend/db/itech.db-shm
+backend/db/backups/*.db
+backend/db/backups/*.db-wal
+backend/db/backups/*.db-shm
+
+# 6. Pastas Temporárias, Perfis de Teste e Clones Locais
+tmp/
+erp-teste1/
+itecherp/
+
+# 7. IDEs e Sistema Operacional
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
