@@ -1,12 +1,22 @@
 import axios from 'axios'
 
-const api = axios.create({ baseURL: '/api' })
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' })
+
+export function getApiBaseUrl() {
+  const base = api.defaults.baseURL || '/api'
+  if (base.startsWith('http://') || base.startsWith('https://')) {
+    return base.replace(/\/api\/?$/, '')
+  }
+  return typeof window !== 'undefined' ? window.location.origin : ''
+}
 
 export function authenticatedFileUrl(url) {
   const token = localStorage.getItem('itech_token')
   if (!token || !url) return url
-  const separator = url.includes('?') ? '&' : '?'
-  return `${url}${separator}token=${encodeURIComponent(token)}`
+  const base = getApiBaseUrl()
+  const fullUrl = url.startsWith('http') ? url : `${base}${url}`
+  const separator = fullUrl.includes('?') ? '&' : '?'
+  return `${fullUrl}${separator}token=${encodeURIComponent(token)}`
 }
 
 api.interceptors.request.use((config) => {

@@ -1,7 +1,7 @@
 import { useSettings } from '../context/SettingsContext'
 import React, { useEffect, useMemo, useState } from 'react';
 import { Search, CalendarRange, Receipt, TrendingUp, Wallet, PiggyBank, ChevronDown, ChevronUp } from 'lucide-react';
-import api from '../api/client';
+import api, { getApiBaseUrl } from '../api/client';
 import { formatCurrency, formatDate } from '../utils/format';
 
 const MONTHS = [
@@ -100,7 +100,7 @@ export default function FinancialHistory() {
     const token = localStorage.getItem('itech_token');
     if (!token) return undefined;
 
-    const base = window.location.origin;
+    const base = getApiBaseUrl();
     const eventSource = new EventSource(`${base}/api/events/dashboard?token=${encodeURIComponent(token)}`);
 
     const refreshHandler = () => {

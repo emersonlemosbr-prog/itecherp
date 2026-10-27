@@ -8,7 +8,7 @@ import {
   Boxes, AlertTriangle, CircleOff, DollarSign, Search,
   Plus, Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, History, Settings, Camera, ImagePlus, X
 } from 'lucide-react';
-import api from '../api/client';
+import api, { getApiBaseUrl } from '../api/client';
 import { formatCurrency } from '../utils/format';
 
 const MOVEMENT_LABELS = {
@@ -113,7 +113,8 @@ export default function InventoryControl() {
     const token = localStorage.getItem('itech_token');
     if (!token) return undefined;
 
-    const eventSource = new EventSource(`/api/events/dashboard?token=${encodeURIComponent(token)}`);
+    const base = getApiBaseUrl();
+    const eventSource = new EventSource(`${base}/api/events/dashboard?token=${encodeURIComponent(token)}`);
     const refreshHandler = () => {
       refreshCore().catch(() => {
         // Falha transitória de rede: mantém tela estável.

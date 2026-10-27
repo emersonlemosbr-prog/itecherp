@@ -11,7 +11,7 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement,
   BarElement, ArcElement, Tooltip, Legend, Filler
 } from 'chart.js'
-import api from '../api/client'
+import api, { getApiBaseUrl } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import {
   STATUS_LABELS, STATUS_BADGE, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_BADGE,
@@ -78,7 +78,7 @@ export default function Dashboard() {
     const token = localStorage.getItem('itech_token')
     if (!token) return undefined
 
-    const base = window.location.origin
+    const base = getApiBaseUrl()
     const eventSource = new EventSource(`${base}/api/events/dashboard?token=${encodeURIComponent(token)}`)
 
     const refreshHandler = () => {
