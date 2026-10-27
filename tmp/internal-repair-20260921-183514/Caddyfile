@@ -1,0 +1,12 @@
+{
+    auto_https disable_redirects
+    admin off
+}
+
+https://itech.internal, https://192.168.1.199 {
+    bind 192.168.1.199
+    tls internal
+    reverse_proxy 127.0.0.1:3001 {
+        flush_interval -1
+    }
+}

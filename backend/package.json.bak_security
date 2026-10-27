@@ -1,0 +1,41 @@
+{
+  "name": "itech-erp-backend",
+  "version": "1.0.0",
+  "description": "Backend API for iTech Celular e Informática repair shop management system",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "start:tracking": "node publicTrackingServer.js",
+    "dev": "nodemon server.js",
+    "seed": "node db/seed.js",
+    "backfill:service-order-parts": "node scripts/backfillServiceOrderPartWithdrawals.js",
+    "backfill:service-order-parts:apply": "node scripts/backfillServiceOrderPartWithdrawals.js --apply",
+    "cleanup:test-data": "node scripts/cleanupKnownTestData.js",
+    "cleanup:test-data:apply": "node scripts/cleanupKnownTestData.js --apply",
+    "platform:create-admin": "node scripts/createPlatformAdmin.js",
+    "db:migrate-postgres": "node scripts/migrateToPostgres.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.840.0",
+    "@aws-sdk/s3-request-presigner": "^3.840.0",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cloudinary": "^2.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-validator": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "nodemailer": "^9.0.3",
+    "sharp": "^0.33.5",
+    "uuid": "^9.0.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

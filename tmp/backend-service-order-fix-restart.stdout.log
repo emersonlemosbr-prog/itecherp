@@ -1,0 +1,45 @@
+==============================================
+  iTech Celular e Informática — Painel
+  Acesse em: http://localhost:3001
+  Rede local: http://<IPv4 deste computador>:3001 (0.0.0.0)
+==============================================
+[FINANCIAL_HISTORY] 3 fechamento(s) mensal(is) criado(s).
+[0mGET /api/cash-withdrawals [32m200[0m 4.665 ms - 1359[0m
+[0mGET /api/health [32m200[0m 0.973 ms - 15[0m
+[0mGET /api/events/dashboard?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Miwicm9sZSI6ImFkbWluIiwic2Vzc2lvbl92ZXJzaW9uIjowLCJpYXQiOjE3ODk5MDM2ODksImV4cCI6MTc4OTkzMjQ4OX0.yprRVqn8Ut-aHXT7IPXwTvl6sh4Gft4zlAQnwQInq2Q [32m200[0m 8.704 ms - -[0m
+[0mGET /api/inventory/suppliers [32m200[0m 3.360 ms - 395[0m
+[0mGET /api/inventory/products?low_stock=true [32m200[0m 2.092 ms - 2[0m
+[0mGET /api/inventory/movements [36m304[0m 2.788 ms - -[0m
+[0mGET /api/inventory/categories [36m304[0m 1.298 ms - -[0m
+[0mGET /api/inventory/dashboard [36m304[0m 1.115 ms - -[0m
+[0mGET /api/inventory/products?low_stock=true [36m304[0m 1.186 ms - -[0m
+[0mGET /api/inventory/movements [36m304[0m 1.972 ms - -[0m
+[0mGET /api/events/dashboard?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Miwicm9sZSI6ImFkbWluIiwic2Vzc2lvbl92ZXJzaW9uIjowLCJpYXQiOjE3ODk5MDM2ODksImV4cCI6MTc4OTkzMjQ4OX0.yprRVqn8Ut-aHXT7IPXwTvl6sh4Gft4zlAQnwQInq2Q [32m200[0m 0.675 ms - -[0m
+[0mGET /api/inventory/dashboard [36m304[0m 1.103 ms - -[0m
+[0mGET /api/inventory/movements [36m304[0m 1.387 ms - -[0m
+[0mGET /api/inventory/categories [36m304[0m 0.718 ms - -[0m
+[0mGET /api/inventory/products [36m304[0m 1.035 ms - -[0m
+[0mGET /api/inventory/suppliers [36m304[0m 0.828 ms - -[0m
+[0mGET /api/inventory/products [36m304[0m 1.046 ms - -[0m
+[0mGET /api/inventory/movements [36m304[0m 1.248 ms - -[0m
+[0mGET /api/settings [32m200[0m 43.179 ms - 374932[0m
+[0mPOST /api/calculators/pagbank [31m500[0m 1.542 ms - 87[0m
+[0mGET /api/inventory/dashboard [36m304[0m 0.846 ms - -[0m
+[0mGET /api/inventory/products [36m304[0m 0.855 ms - -[0m
+[0mGET /api/inventory/movements [36m304[0m 1.255 ms - -[0m
+[0mGET /api/inventory/suppliers [32m200[0m 0.591 ms - 395[0m
+[0mGET /api/inventory/categories [36m304[0m 0.559 ms - -[0m
+[0mGET /favicon.ico [36m304[0m 4.685 ms - -[0m
+[0mGET /api/inventory/products [36m304[0m 1.031 ms - -[0m
+[0mGET /api/inventory/movements [36m304[0m 1.148 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.017 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.782 ms - -[0m
+[0mGET /api/settings [36m304[0m 41.934 ms - -[0m
+[0mGET /api/settings [36m304[0m 43.027 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.165 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.623 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.938 ms - -[0m
+[0mGET /api/settings [36m304[0m 43.054 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.649 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.300 ms - -[0m
+[0mGET /api/settings [36m304[0m 42.622 ms - -[0m

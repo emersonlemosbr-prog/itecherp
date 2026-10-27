@@ -1,0 +1,15 @@
+==============================================
+  iTech Celular e Informática — Painel
+  Acesse em: http://localhost:3001
+  Rede local: http://<IPv4 deste computador>:3001 (0.0.0.0)
+==============================================
+[FINANCIAL_HISTORY] 3 fechamento(s) mensal(is) criado(s).
+[0mGET /api/health [32m200[0m 3.737 ms - 15[0m
+[0mPOST /api/inventory/suppliers [32m201[0m 5.438 ms - 136[0m
+[0mPOST /api/customers [32m201[0m 6.137 ms - 10[0m
+[0mPOST /api/service-orders [32m201[0m 51.698 ms - 549[0m
+[0mGET /api/cash-withdrawals [32m200[0m 1.817 ms - 1071[0m
+[0mPUT /api/service-orders/169 [32m200[0m 17.418 ms - 594[0m
+[0mGET /api/cash-withdrawals [32m200[0m 1.197 ms - 1359[0m
+[0mPUT /api/service-orders/169 [32m200[0m 10.230 ms - 634[0m
+[0mGET /api/cash-withdrawals [32m200[0m 1.083 ms - 1359[0m

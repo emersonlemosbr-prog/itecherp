@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "partsPreserved": 64,
+  "models": 38,
+  "checks": [
+    "create",
+    "rename",
+    "duplicate case",
+    "brand relation",
+    "brand mismatch",
+    "delete used blocked",
+    "edit part",
+    "rename propagation",
+    "delete unused",
+    "integrity"
+  ]
+}

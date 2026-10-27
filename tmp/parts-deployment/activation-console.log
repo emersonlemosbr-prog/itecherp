@@ -1,0 +1,60 @@
+﻿**********************
+Início da transcrição do Windows PowerShell
+Hora de início: 20260925110408
+Nome de Usuário: DESKTOP-NOAOSCH\servidor itech
+Executar como Usuário: DESKTOP-NOAOSCH\servidor itech
+Nome da Configuração: 
+Computador: DESKTOP-NOAOSCH (Microsoft Windows NT 10.0.19045.0)
+Aplicativo Host: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -File G:\Outros computadores\Meu computador\itech-erp FINAL\infra\runtime\activate-parts-admin.ps1
+ID do Processo: 7012
+PSVersion: 5.1.19041.6456
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6456
+BuildVersion: 10.0.19041.6456
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Iniciando ativacao oficial de Valor de Pecas...
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-WebRequest): "{"error":"Token não fornecido."}"
+Valor de Pecas ativado. Apenas o administrativo foi reiniciado. A validacao no navegador deve ser realizada agora.
+**********************
+Fim da transcrição do Windows PowerShell
+Hora de término: 20260925110426
+**********************
+**********************
+Início da transcrição do Windows PowerShell
+Hora de início: 20260925191242
+Nome de Usuário: DESKTOP-NOAOSCH\servidor itech
+Executar como Usuário: DESKTOP-NOAOSCH\servidor itech
+Nome da Configuração: 
+Computador: DESKTOP-NOAOSCH (Microsoft Windows NT 10.0.19045.0)
+Aplicativo Host: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File G:\Outros computadores\Meu computador\itech-erp FINAL\infra\runtime\activate-parts-admin.ps1
+ID do Processo: 7556
+PSVersion: 5.1.19041.6456
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.6456
+BuildVersion: 10.0.19041.6456
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+Iniciando ativacao oficial de Valor de Pecas...
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-RestMethod): "O tempo limite da operação foi atingido."
+PS>TerminatingError(Invoke-WebRequest): "{"error":"Token não fornecido."}"
+Valor de Pecas ativado. Apenas o administrativo foi reiniciado. A validacao no navegador deve ser realizada agora.
+**********************
+Fim da transcrição do Windows PowerShell
+Hora de término: 20260925191302
+**********************

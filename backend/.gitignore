@@ -1,0 +1,6 @@
+node_modules/
+.env
+db/itech.db
+db/itech.db-journal
+db/itech.db-wal
+db/itech.db-shm

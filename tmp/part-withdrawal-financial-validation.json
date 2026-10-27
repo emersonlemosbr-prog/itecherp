@@ -1,0 +1,67 @@
+{
+  "existing_preserved": true,
+  "integrity": [
+    {
+      "integrity_check": "ok"
+    }
+  ],
+  "months": [
+    {
+      "month": 7,
+      "year": 2026,
+      "revenue": 5695,
+      "received": 5570,
+      "pending": 125,
+      "profit": 3716.5,
+      "net_profit": 3716.5,
+      "total_services": 32,
+      "total_sales": 0,
+      "average_ticket": 177.96875,
+      "cash_total": 1900,
+      "pix_total": 2030,
+      "card_total": 1430,
+      "other_total": 210,
+      "expenses": 1978.5,
+      "opened_at": "2026-07-01 00:00:00",
+      "closed_at": "2026-07-31 23:59:59"
+    },
+    {
+      "month": 8,
+      "year": 2026,
+      "revenue": 7565,
+      "received": 7250,
+      "pending": 315,
+      "profit": 4856.09,
+      "net_profit": 4856.09,
+      "total_services": 40,
+      "total_sales": 8,
+      "average_ticket": 157.60416666666666,
+      "cash_total": 2550,
+      "pix_total": 2950,
+      "card_total": 1570,
+      "other_total": 180,
+      "expenses": 2705.41,
+      "opened_at": "2026-08-01 00:00:00",
+      "closed_at": "2026-08-31 23:59:59"
+    },
+    {
+      "month": 9,
+      "year": 2026,
+      "revenue": 9925,
+      "received": 9925,
+      "pending": 1180,
+      "profit": 7186.51,
+      "net_profit": 7186.51,
+      "total_services": 70,
+      "total_sales": 7,
+      "average_ticket": 128.8961038961039,
+      "cash_total": 3595,
+      "pix_total": 4520,
+      "card_total": 1780,
+      "other_total": 30,
+      "expenses": 2604.99,
+      "opened_at": "2026-09-01 00:00:00",
+      "closed_at": "2026-09-30 23:59:59"
+    }
+  ]
+}

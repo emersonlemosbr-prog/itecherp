@@ -1,0 +1,93 @@
+[
+  {
+    "route": "/",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "A dashboard exibe somente os indicadores do mês atual."
+  },
+  {
+    "route": "/ordens",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Ordens de Serviços"
+  },
+  {
+    "route": "/clientes",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Anterior"
+  },
+  {
+    "route": "/garantias",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Anterior"
+  },
+  {
+    "route": "/fiados",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Fiados"
+  },
+  {
+    "route": "/historico-financeiro",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Historico Financeiro"
+  },
+  {
+    "route": "/caixa",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Retiradas de Caixa"
+  },
+  {
+    "route": "/estoque",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Anterior"
+  },
+  {
+    "route": "/vendas",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Venda"
+  },
+  {
+    "route": "/venda-aparelho",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Venda de Aparelho"
+  },
+  {
+    "route": "/configuracoes",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Configurações do Sistema"
+  },
+  {
+    "route": "/peliculas-compativeis",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Películas Compatíveis"
+  },
+  {
+    "route": "/anotacoes",
+    "status": 200,
+    "consoleErrors": 0,
+    "apiErrors": 0,
+    "title": "Anotações"
+  }
+]

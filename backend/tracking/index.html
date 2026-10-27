@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acompanhamento da OS — iTech</title><link rel="stylesheet" href="/assets/tracking.css"><script src="/assets/tracking.js" defer></script><script src="/assets/push.js" defer></script></head>
+<body><main>
+  <header class="page-header">
+    <img class="logo" src="/assets/logo.png" alt="iTech Celular e Informática" width="220" height="98">
+    <h1>Acompanhe seu reparo</h1>
+    <p id="connection" class="connection" role="status" data-state="connecting">Conectando…</p>
+  </header>
+  <section id="order" hidden aria-label="Acompanhamento da ordem de serviço">
+    <section class="order-card" aria-label="Notificações da OS"><button id="enable-push" type="button" disabled>Ativar notificações desta OS</button><p id="push-message" role="status">Preparando notificações…</p></section>
+    <article class="order-card">
+      <div class="order-heading"><p class="eyebrow">Ordem de serviço</p><h2 id="number"></h2><p id="device" class="device"></p></div>
+      <div class="customer"><p class="eyebrow">Cliente</p><p id="customer"></p></div>
+      <div id="status-card" class="status-card"><p class="eyebrow">Status atual</p><p id="status" aria-live="polite"></p><p class="update">Última atualização <span id="updated"></span></p></div>
+      <dl id="details" class="details"></dl>
+    </article>
+    <section class="history-card" aria-labelledby="history-title"><div class="section-heading"><h2 id="history-title">Histórico do reparo</h2><p>Acompanhe cada atualização do seu aparelho.</p></div><ol id="history" class="timeline"></ol></section>
+  </section>
+  <footer>© 2026 itech celular e informática</footer>
+  <footer>CNPJ: 58.710.025/0001-69</footer>
+</main></body></html>

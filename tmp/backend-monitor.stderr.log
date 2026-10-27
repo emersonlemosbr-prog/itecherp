@@ -1,0 +1,37 @@
+[SERVER_ERROR] {
+  method: 'DELETE',
+  path: '/api/users/3',
+  params: {},
+  query: {},
+  body: {},
+  stack: 'SqliteError: FOREIGN KEY constraint failed\n' +
+    '    at C:\\Users\\itech celular\\itech-erp FINAL\\backend\\routes\\users.js:62:48\n' +
+    '    at Layer.handle [as handle_request] (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at next (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\route.js:149:13)\n' +
+    '    at Route.dispatch (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\route.js:119:3)\n' +
+    '    at Layer.handle [as handle_request] (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:284:15\n' +
+    '    at param (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:365:14)\n' +
+    '    at param (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:376:14)\n' +
+    '    at router.process_params (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:421:3)\n' +
+    '    at next (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:280:10)'
+}
+[SERVER_ERROR] {
+  method: 'DELETE',
+  path: '/api/users/3',
+  params: {},
+  query: {},
+  body: {},
+  stack: 'SqliteError: FOREIGN KEY constraint failed\n' +
+    '    at C:\\Users\\itech celular\\itech-erp FINAL\\backend\\routes\\users.js:62:48\n' +
+    '    at Layer.handle [as handle_request] (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at next (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\route.js:149:13)\n' +
+    '    at Route.dispatch (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\route.js:119:3)\n' +
+    '    at Layer.handle [as handle_request] (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:284:15\n' +
+    '    at param (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:365:14)\n' +
+    '    at param (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:376:14)\n' +
+    '    at router.process_params (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:421:3)\n' +
+    '    at next (C:\\Users\\itech celular\\itech-erp FINAL\\backend\\node_modules\\express\\lib\\router\\index.js:280:10)'
+}
+[SERVICE_ORDER_PHOTO_UPLOAD_FAILED]
