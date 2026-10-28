@@ -8,35 +8,113 @@ const { Pool } = require('pg');
 
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
+/**
+ * Analisa e extrai com segurança os parâmetros de conexão a partir de uma DATABASE_URL,
+ * suportando senhas com caracteres especiais (como #, ?, @, +, $) e prevenindo erros de
+ * parser causados por delimitadores não escapados.
+ * NUNCA exibe ou registra a senha nos logs.
+ */
+function parseDatabaseUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  // Alerta preventivo caso a URL tenha sido cortada no .env por um # sem aspas
+  if (trimmed.startsWith('postgres') && !trimmed.includes('@') && trimmed.includes(':')) {
+    console.warn('\n⚠️ [DATABASE] ATENÇÃO: A variável DATABASE_URL parece incompleta (falta o "@" separador de host).');
+    console.warn('Se a sua senha contiver "#", certifique-se de envolver toda a URL entre aspas duplas no arquivo .env:');
+    console.warn('Exemplo: DATABASE_URL="postgresql://postgres.xxx:senha#123@aws-0-us-east-1.pooler.supabase.com:6543/postgres"\n');
+  }
+
+  // Regex para separar protocolo, credenciais (até o último @), host:porta, database e query params
+  const urlMatch = trimmed.match(/^(postgres(?:ql)?:\/\/)(?:([^:]+)(?::(.*))?@)?([^/?#]+)(?:\/([^?#]*))?(?:\?(.*))?$/);
+  if (!urlMatch) {
+    return { connectionString: trimmed };
+  }
+
+  const [, , rawUser, rawPassword, hostPort, rawDatabase, rawQuery] = urlMatch;
+  let host = hostPort;
+  let port = 5432;
+
+  if (hostPort.includes(':')) {
+    const parts = hostPort.split(':');
+    host = parts[0];
+    port = Number(parts[1]) || 5432;
+  }
+
+  let user = rawUser !== undefined ? rawUser : 'postgres';
+  try {
+    user = decodeURIComponent(user);
+  } catch {
+    // Mantém raw se falhar o decode
+  }
+
+  let password = rawPassword !== undefined ? rawPassword : '';
+  try {
+    password = decodeURIComponent(password);
+  } catch {
+    // Mantém raw se falhar o decode
+  }
+
+  const database = (rawDatabase ? rawDatabase.trim() : '') || 'postgres';
+
+  // Diagnóstico seguro para o Supabase (sem expor credenciais)
+  if (host.includes('pooler.supabase.com') && !user.includes('.')) {
+    console.warn('⚠️ [DATABASE] Dica Supabase: Ao conectar via Pooler (pooler.supabase.com), o usuário normalmente requer o prefixo do projeto (ex: postgres.seu-ref).');
+  } else if (host.startsWith('db.') && host.includes('.supabase.co') && user.includes('.')) {
+    console.warn('⚠️ [DATABASE] Dica Supabase: Na conexão direta (db.<ref>.supabase.co:5432), o usuário deve ser apenas "postgres" (sem sufixo de tenant).');
+  }
+
+  return {
+    host,
+    port,
+    user,
+    password,
+    database,
+    rawQuery: rawQuery || '',
+  };
+}
+
 function createPool() {
   if (!connectionString) {
     console.warn('\n⚠️ [DATABASE] ATENÇÃO: Nenhuma variável DATABASE_URL ou POSTGRES_URL encontrada.');
     console.warn('Configure a DATABASE_URL no seu arquivo .env ou no painel do Render/Supabase.');
-    console.warn('Exemplo: DATABASE_URL=postgresql://postgres.xxx:senha@aws-0-sa-east-1.pooler.supabase.com:6543/postgres\n');
+    console.warn('Exemplo: DATABASE_URL="postgresql://postgres.xxx:senha@aws-0-us-east-1.pooler.supabase.com:6543/postgres"\n');
   }
 
-  const isLocal = connectionString && (
-    connectionString.includes('localhost') ||
-    connectionString.includes('127.0.0.1') ||
-    process.env.PGSSLMODE === 'disable'
-  );
+  const parsed = parseDatabaseUrl(connectionString);
+  const isLocal = parsed?.host
+    ? (parsed.host.includes('localhost') || parsed.host.includes('127.0.0.1') || process.env.PGSSLMODE === 'disable')
+    : (connectionString && (connectionString.includes('localhost') || connectionString.includes('127.0.0.1') || process.env.PGSSLMODE === 'disable'));
 
-  const poolConfig = connectionString
+  const poolConfig = parsed && parsed.host
     ? {
-        connectionString,
+        host: parsed.host,
+        port: parsed.port,
+        user: parsed.user,
+        password: parsed.password,
+        database: parsed.database,
         ssl: isLocal ? false : { rejectUnauthorized: false },
         max: Number(process.env.DB_POOL_MAX || 15),
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 10000,
       }
-    : {
-        host: process.env.PGHOST || 'localhost',
-        port: Number(process.env.PGPORT) || 5432,
-        user: process.env.PGUSER || 'postgres',
-        password: process.env.PGPASSWORD || '',
-        database: process.env.PGDATABASE || 'postgres',
-        ssl: false,
-      };
+    : (connectionString
+        ? {
+            connectionString,
+            ssl: isLocal ? false : { rejectUnauthorized: false },
+            max: Number(process.env.DB_POOL_MAX || 15),
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+          }
+        : {
+            host: process.env.PGHOST || 'localhost',
+            port: Number(process.env.PGPORT) || 5432,
+            user: process.env.PGUSER || 'postgres',
+            password: process.env.PGPASSWORD || '',
+            database: process.env.PGDATABASE || 'postgres',
+            ssl: false,
+          });
 
   const p = new Pool(poolConfig);
 
@@ -213,6 +291,7 @@ const db = {
   initSchema,
   normalizeSql,
   translatePlaceholders: normalizeSql,
+  parseDatabaseUrl,
 
   // Wrapper compatível com prepared statements assíncronos
   prepare: (sql) => ({

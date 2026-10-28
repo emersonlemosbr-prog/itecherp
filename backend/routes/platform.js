@@ -1,5 +1,6 @@
 // routes/platform.js
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
@@ -7,6 +8,20 @@ const { authenticatePlatformAdmin } = require('../middleware/platformAuth');
 const { checkStoreSubscription } = require('../services/multiTenantService');
 
 const router = express.Router();
+
+function validatePasswordRules(password) {
+  if (!password || password.length < 8) {
+    return 'A senha deve conter no mínimo 8 caracteres.';
+  }
+  if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+    return 'A senha deve conter pelo menos uma letra e um número.';
+  }
+  const weak = ['12345678', 'password', 'admin123', 'admin@123', 'senha123'];
+  if (weak.includes(password.toLowerCase())) {
+    return 'Esta senha é muito simples. Escolha uma senha mais forte.';
+  }
+  return null;
+}
 
 // Rate limiting para o login da plataforma
 const platformLoginAttempts = new Map();
@@ -35,6 +50,149 @@ function platformLoginRateLimit(req, res, next) {
 
   next();
 }
+
+// Rate limiting restrito para recuperação emergencial da senha mestra
+const platformRecoveryAttempts = new Map();
+function platformRecoveryRateLimit(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000; // 15 minutos
+  const maxAttempts = 3;
+
+  for (const [key, val] of platformRecoveryAttempts) {
+    if (val.reset <= now) platformRecoveryAttempts.delete(key);
+  }
+
+  let record = platformRecoveryAttempts.get(ip);
+  if (!record) {
+    record = { count: 0, reset: now + windowMs };
+    platformRecoveryAttempts.set(ip, record);
+  }
+
+  record.count += 1;
+  if (record.count > maxAttempts) {
+    const retrySec = Math.ceil((record.reset - now) / 1000);
+    res.set('Retry-After', String(retrySec));
+    return res.status(429).json({ error: `Muitas tentativas de recuperação. Tente novamente em ${retrySec} segundos.` });
+  }
+
+  next();
+}
+
+/**
+ * Procedimento Seguro de Configuração / Redefinição Emergencial da Senha Mestra
+ * Requer o segredo temporário PLATFORM_RECOVERY_SECRET configurado no ambiente.
+ * Uso único por segredo, expiração/invalidação automática e registro de auditoria.
+ */
+router.post('/emergency-setup', platformRecoveryRateLimit, async (req, res) => {
+  try {
+    const expectedSecret = process.env.PLATFORM_RECOVERY_SECRET;
+    if (!expectedSecret || expectedSecret.trim().length < 16) {
+      return res.status(403).json({
+        error: 'Procedimento de recuperação emergencial não habilitado no servidor. Configure PLATFORM_RECOVERY_SECRET com no mínimo 16 caracteres nas variáveis de ambiente.',
+      });
+    }
+
+    const { recoverySecret, email, newPassword, name } = req.body;
+
+    if (!recoverySecret || typeof recoverySecret !== 'string') {
+      return res.status(400).json({ error: 'Informe o segredo de recuperação emergencial (recoverySecret).' });
+    }
+
+    // Comparação de tempo constante (timing-safe) via SHA-256
+    const hashReceived = crypto.createHash('sha256').update(recoverySecret.trim()).digest();
+    const hashExpected = crypto.createHash('sha256').update(expectedSecret.trim()).digest();
+    if (!crypto.timingSafeEqual(hashReceived, hashExpected)) {
+      return res.status(401).json({ error: 'Segredo de recuperação emergencial inválido.' });
+    }
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ error: 'Informe um e-mail válido para o Superadmin.' });
+    }
+
+    const pwdError = validatePasswordRules(newPassword);
+    if (pwdError) {
+      return res.status(400).json({ error: pwdError });
+    }
+
+    const secretHash = hashReceived.toString('hex');
+
+    // Verificar se este segredo já foi utilizado (garantia de uso único)
+    const alreadyUsed = await db.queryOne(`
+      SELECT id FROM password_reset_tokens
+      WHERE token_hash = $1 AND target_type = 'platform' AND used_at IS NOT NULL
+      LIMIT 1
+    `, [secretHash]);
+
+    if (alreadyUsed) {
+      return res.status(400).json({
+        error: 'Este segredo de recuperação já foi utilizado. Atualize a variável PLATFORM_RECOVERY_SECRET no painel do servidor para autorizar uma nova redefinição.',
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = (name || 'Superadmin iTech').trim();
+    const hash = await bcrypt.hash(newPassword, 12);
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+
+    let adminId = null;
+    let actionType = '';
+
+    await db.transaction(async (tx) => {
+      const existing = await tx.queryOne('SELECT id, name, session_version FROM platform_users WHERE LOWER(email) = $1', [cleanEmail]);
+
+      if (existing) {
+        adminId = existing.id;
+        actionType = 'superadmin_emergency_password_reset';
+        const newSessionVersion = (existing.session_version || 0) + 1;
+        await tx.execute(`
+          UPDATE platform_users
+          SET password_hash = $1,
+              active = 1,
+              session_version = $2,
+              last_access = CURRENT_TIMESTAMP
+          WHERE id = $3
+        `, [hash, newSessionVersion, existing.id]);
+      } else {
+        // Verificar se há algum superadmin cadastrado
+        const countRes = await tx.queryOne('SELECT COUNT(*) as count FROM platform_users WHERE role = $1', ['superadmin']);
+        const count = parseInt(countRes?.count || '0', 10);
+        if (count > 0) {
+          throw new Error('Já existem administradores da plataforma cadastrados. Informe o e-mail exato do Superadmin que deseja redefinir.');
+        }
+
+        // Se nenhum superadmin existe, cria o primeiro
+        actionType = 'superadmin_emergency_initial_setup';
+        const insertRes = await tx.execute(`
+          INSERT INTO platform_users (name, email, password_hash, role, active, session_version)
+          VALUES ($1, $2, $3, 'superadmin', 1, 1)
+          RETURNING id
+        `, [cleanName, cleanEmail, hash]);
+        adminId = insertRes.id;
+      }
+
+      // Marcar segredo como utilizado de forma atômica
+      await tx.execute(`
+        INSERT INTO password_reset_tokens (email, token_hash, target_type, target_id, expires_at, used_at)
+        VALUES ($1, $2, 'platform', $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [cleanEmail, secretHash, adminId || 0]);
+
+      // Registrar auditoria sem registrar senhas ou segredos
+      await tx.query(`
+        INSERT INTO platform_audit_logs (platform_user_id, platform_user_name, action, target_type, target_id, target_name, details, ip_address)
+        VALUES ($1, $2, $3, 'platform_user', $4, $5, 'Senha mestra redefinida com sucesso via procedimento emergencial autorizado', $6)
+      `, [adminId, cleanName, actionType, adminId, cleanEmail, ip]);
+    });
+
+    res.json({
+      success: true,
+      message: 'Senha mestra configurada com sucesso! Todas as sessões anteriores foram invalidadas.',
+    });
+  } catch (err) {
+    console.error('[PLATFORM_EMERGENCY_SETUP_ERROR]', err.message);
+    res.status(400).json({ error: err.message || 'Erro ao processar configuração emergencial.' });
+  }
+});
 
 /**
  * Login exclusivo para Administrador da Plataforma
@@ -91,6 +249,58 @@ router.post('/login', platformLoginRateLimit, async (req, res) => {
 
 // Todas as rotas abaixo requerem autenticação de Administrador da Plataforma
 router.use(authenticatePlatformAdmin);
+
+/**
+ * Redefinição de senha do próprio Superadmin autenticado
+ */
+router.post('/change-password', async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Informe a senha atual e a nova senha.' });
+    }
+
+    const admin = await db.queryOne('SELECT * FROM platform_users WHERE id = $1', [req.platformAdmin.id]);
+    if (!admin) {
+      return res.status(404).json({ error: 'Administrador não encontrado.' });
+    }
+
+    const match = await bcrypt.compare(currentPassword, admin.password_hash);
+    if (!match) {
+      return res.status(401).json({ error: 'Senha atual incorreta.' });
+    }
+
+    const pwdError = validatePasswordRules(newPassword);
+    if (pwdError) {
+      return res.status(400).json({ error: pwdError });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 12);
+    const newSessionVersion = (admin.session_version || 0) + 1;
+    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+
+    await db.execute(`
+      UPDATE platform_users
+      SET password_hash = $1,
+          session_version = $2,
+          last_access = CURRENT_TIMESTAMP
+      WHERE id = $3
+    `, [hash, newSessionVersion, admin.id]);
+
+    await db.query(`
+      INSERT INTO platform_audit_logs (platform_user_id, platform_user_name, action, target_type, target_id, target_name, details, ip_address)
+      VALUES ($1, $2, 'superadmin_password_change', 'platform_user', $3, $4, 'Senha mestra alterada pelo próprio Superadmin autenticado', $5)
+    `, [admin.id, admin.name, admin.id, admin.email, ip]);
+
+    res.json({
+      success: true,
+      message: 'Senha alterada com sucesso! Faça login novamente com sua nova credencial.',
+    });
+  } catch (err) {
+    console.error('[PLATFORM_CHANGE_PASSWORD_ERROR]', err.message);
+    res.status(500).json({ error: 'Erro ao alterar senha do administrador.' });
+  }
+});
 
 /**
  * Dados do Administrador da Plataforma autenticado

@@ -196,7 +196,32 @@ async function runBootstrap() {
 
     process.exit(0);
   } catch (err) {
-    console.error('\n❌ Erro durante o bootstrap do PostgreSQL:', err);
+    const errorMsg = err.message || String(err);
+    console.error('\n❌ Erro durante o bootstrap do PostgreSQL:', errorMsg);
+
+    if (errorMsg.includes('tenant/user') && errorMsg.includes('not found')) {
+      console.error('\n💡 [DIAGNÓSTICO SUPABASE - POOLER]:');
+      console.error('   O pooler do Supabase retornou "tenant/user not found".');
+      console.error('   Causa provável: A região no endereço do pooler (ex: aws-0-sa-east-1) não corresponde à região');
+      console.error('   onde o projeto foi criado no Supabase (ex: aws-0-us-east-1).');
+      console.error('   Como resolver:');
+      console.error('   1. Acesse o painel do Supabase: Project Settings > Database > Connection string > URI.');
+      console.error('   2. Verifique o host exato do pooler para o seu projeto (ex: aws-0-us-east-1.pooler.supabase.com).');
+      console.error('   3. Como alternativa, você pode usar a Conexão Direta (Porta 5432):');
+      console.error('      postgresql://postgres:[SUA-SENHA]@db.[PROJECT-REF].supabase.co:5432/postgres\n');
+    } else if (err.code === 'ENOTFOUND') {
+      console.error('\n💡 [DIAGNÓSTICO SUPABASE - DNS]:');
+      console.error('   Não foi possível resolver o hostname (getaddrinfo ENOTFOUND).');
+      console.error('   Certifique-se de que a DATABASE_URL no arquivo .env esteja entre aspas duplas,');
+      console.error('   especialmente se a senha contiver caracteres especiais como "#" ou "?":');
+      console.error('   DATABASE_URL="postgresql://postgres.xxx:senha@host:port/postgres"\n');
+    } else if (err.code === '28P01') {
+      console.error('\n💡 [DIAGNÓSTICO SUPABASE - AUTENTICAÇÃO]:');
+      console.error('   Falha na autenticação de senha ("password authentication failed").');
+      console.error('   Redefina sua senha no Supabase em Project Settings > Database > Reset database password');
+      console.error('   e atualize a DATABASE_URL no arquivo .env.\n');
+    }
+
     process.exit(1);
   }
 }

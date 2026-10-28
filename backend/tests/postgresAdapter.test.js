@@ -76,3 +76,29 @@ test('PostgreSQL Adapter: prepare compatibility wrapper provides async all, get,
   assert.equal(typeof stmt.get, 'function', 'stmt.get must be a function');
   assert.equal(typeof stmt.run, 'function', 'stmt.run must be a function');
 });
+
+test('PostgreSQL Adapter: parseDatabaseUrl parses standard connection string', () => {
+  const url = 'postgresql://postgres:mysecretpass@localhost:5432/mydb';
+  const parsed = db.parseDatabaseUrl(url);
+  assert.equal(parsed.host, 'localhost');
+  assert.equal(parsed.port, 5432);
+  assert.equal(parsed.user, 'postgres');
+  assert.equal(parsed.password, 'mysecretpass');
+  assert.equal(parsed.database, 'mydb');
+});
+
+test('PostgreSQL Adapter: parseDatabaseUrl preserves passwords with special characters (#, ?, @, +)', () => {
+  const url = 'postgresql://postgres.myproject:P@ss#123?+extra@aws-0-sa-east-1.pooler.supabase.com:6543/postgres';
+  const parsed = db.parseDatabaseUrl(url);
+  assert.equal(parsed.host, 'aws-0-sa-east-1.pooler.supabase.com');
+  assert.equal(parsed.port, 6543);
+  assert.equal(parsed.user, 'postgres.myproject');
+  assert.equal(parsed.password, 'P@ss#123?+extra');
+  assert.equal(parsed.database, 'postgres');
+});
+
+test('PostgreSQL Adapter: parseDatabaseUrl safely handles null and empty inputs', () => {
+  assert.equal(db.parseDatabaseUrl(null), null);
+  assert.equal(db.parseDatabaseUrl(''), null);
+  assert.equal(db.parseDatabaseUrl('   '), null);
+});

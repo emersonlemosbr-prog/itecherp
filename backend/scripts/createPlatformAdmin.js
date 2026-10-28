@@ -24,7 +24,8 @@ async function run() {
   console.log('========================================================');
 
   // Verificar se já existe algum superadmin
-  const existingCount = db.prepare('SELECT COUNT(*) as count FROM platform_users').get().count;
+  const countRow = await db.prepare('SELECT COUNT(*) as count FROM platform_users').get();
+  const existingCount = parseInt(countRow?.count || '0', 10);
   if (existingCount > 0) {
     console.log(`\n[AVISO] Já existem ${existingCount} administrador(es) da plataforma cadastrado(s).`);
     const proceed = await askQuestion('Deseja criar um administrador adicional da plataforma via CLI? (s/N): ');
@@ -72,7 +73,7 @@ async function run() {
     process.exit(1);
   }
 
-  const existingEmail = db.prepare('SELECT id FROM platform_users WHERE email = ?').get(cleanEmail);
+  const existingEmail = await db.prepare('SELECT id FROM platform_users WHERE email = ?').get(cleanEmail);
   if (existingEmail) {
     console.error(`\n[ERRO] Já existe um administrador com o e-mail: ${cleanEmail}`);
     process.exit(1);
@@ -80,7 +81,7 @@ async function run() {
 
   const passwordHash = bcrypt.hashSync(password, 12);
 
-  const insert = db.prepare(`
+  const insert = await db.prepare(`
     INSERT INTO platform_users (name, email, password_hash, role, active)
     VALUES (?, ?, ?, 'superadmin', 1)
   `).run(name.trim(), cleanEmail, passwordHash);
