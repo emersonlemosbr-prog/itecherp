@@ -3,34 +3,32 @@ const { authenticate } = require('../middleware/auth');
 const db = require('../db/database');
 
 const router = express.Router();
-router.use('/parts', require('./partsCatalog')); 
+router.use('/parts', require('./partsCatalog'));
 
 // PagBank Calculator
-router.get('/pagbank', authenticate, (req, res) => {
+router.get('/pagbank', authenticate, async (req, res) => {
   try {
     const user_id = req.user.id;
-    const result = db.prepare('SELECT * FROM pagbank_calculator WHERE user_id = ?').get(user_id);
+    const result = await db.queryOne('SELECT * FROM pagbank_calculator WHERE user_id = $1', [user_id]);
     res.json(result || { value: 100 });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/pagbank', authenticate, (req, res) => {
+router.post('/pagbank', authenticate, async (req, res) => {
   try {
     const { value } = req.body;
     const user_id = req.user.id;
 
-    const existing = db.prepare('SELECT id FROM pagbank_calculator WHERE user_id = ?').get(user_id);
-    
+    const existing = await db.queryOne('SELECT id FROM pagbank_calculator WHERE user_id = $1', [user_id]);
+
     if (existing) {
-      db.prepare('UPDATE pagbank_calculator SET value = ?, updated_at = datetime("now") WHERE user_id = ?')
-        .run(value, user_id);
+      await db.execute('UPDATE pagbank_calculator SET value = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2', [value, user_id]);
     } else {
-      db.prepare('INSERT INTO pagbank_calculator (user_id, value) VALUES (?, ?)')
-        .run(user_id, value);
+      await db.execute('INSERT INTO pagbank_calculator (user_id, value) VALUES ($1, $2)', [user_id, value]);
     }
-    
+
     res.json({ success: true, value });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -38,37 +36,35 @@ router.post('/pagbank', authenticate, (req, res) => {
 });
 
 // Piece Calculator
-router.get('/piece', authenticate, (req, res) => {
+router.get('/piece', authenticate, async (req, res) => {
   try {
     const user_id = req.user.id;
-    const result = db.prepare('SELECT * FROM piece_calculator WHERE user_id = ?').get(user_id);
-    
+    const result = await db.queryOne('SELECT * FROM piece_calculator WHERE user_id = $1', [user_id]);
+
     if (result) {
-      result.entries = JSON.parse(result.entries || '[]');
+      result.entries = typeof result.entries === 'string' ? JSON.parse(result.entries || '[]') : (result.entries || []);
     }
-    
+
     res.json(result || { base_value: 0, entries: [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/piece', authenticate, (req, res) => {
+router.post('/piece', authenticate, async (req, res) => {
   try {
     const { base_value, entries } = req.body;
     const user_id = req.user.id;
     const entriesJson = JSON.stringify(entries || []);
 
-    const existing = db.prepare('SELECT id FROM piece_calculator WHERE user_id = ?').get(user_id);
-    
+    const existing = await db.queryOne('SELECT id FROM piece_calculator WHERE user_id = $1', [user_id]);
+
     if (existing) {
-      db.prepare('UPDATE piece_calculator SET base_value = ?, entries = ?, updated_at = datetime("now") WHERE user_id = ?')
-        .run(base_value, entriesJson, user_id);
+      await db.execute('UPDATE piece_calculator SET base_value = $1, entries = $2, updated_at = CURRENT_TIMESTAMP WHERE user_id = $3', [base_value, entriesJson, user_id]);
     } else {
-      db.prepare('INSERT INTO piece_calculator (user_id, base_value, entries) VALUES (?, ?, ?)')
-        .run(user_id, base_value, entriesJson);
+      await db.execute('INSERT INTO piece_calculator (user_id, base_value, entries) VALUES ($1, $2, $3)', [user_id, base_value, entriesJson]);
     }
-    
+
     res.json({ success: true, base_value, entries });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -76,59 +72,63 @@ router.post('/piece', authenticate, (req, res) => {
 });
 
 // Frontals Calculator
-router.get('/frontals', authenticate, (req, res) => {
+router.get('/frontals', authenticate, async (req, res) => {
   try {
     const user_id = req.user.id;
-    const result = db.prepare('SELECT * FROM frontals_calculator WHERE user_id = ?').get(user_id);
-    
+    const result = await db.queryOne('SELECT * FROM frontals_calculator WHERE user_id = $1', [user_id]);
+
     if (result) {
-      result.entries = JSON.parse(result.entries || '[]');
+      result.entries = typeof result.entries === 'string' ? JSON.parse(result.entries || '[]') : (result.entries || []);
     }
-    
+
     res.json(result || { base_value: 0, brand: 'Apple', model: '', version: 'primeira linha', entries: [] });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/frontals', authenticate, (req, res) => {
+router.post('/frontals', authenticate, async (req, res) => {
   try {
     const { base_value, brand, model, version, entries } = req.body;
     const user_id = req.user.id;
     const entriesJson = JSON.stringify(entries || []);
 
-    const existing = db.prepare('SELECT id FROM frontals_calculator WHERE user_id = ?').get(user_id);
-    
+    const existing = await db.queryOne('SELECT id FROM frontals_calculator WHERE user_id = $1', [user_id]);
+
     if (existing) {
-      db.prepare('UPDATE frontals_calculator SET base_value = ?, brand = ?, model = ?, version = ?, entries = ?, updated_at = datetime("now") WHERE user_id = ?')
-        .run(base_value, brand, model, version, entriesJson, user_id);
+      await db.execute(
+        'UPDATE frontals_calculator SET base_value = $1, brand = $2, model = $3, version = $4, entries = $5, updated_at = CURRENT_TIMESTAMP WHERE user_id = $6',
+        [base_value, brand, model, version, entriesJson, user_id]
+      );
     } else {
-      db.prepare('INSERT INTO frontals_calculator (user_id, base_value, brand, model, version, entries) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(user_id, base_value, brand, model, version, entriesJson);
+      await db.execute(
+        'INSERT INTO frontals_calculator (user_id, base_value, brand, model, version, entries) VALUES ($1, $2, $3, $4, $5, $6)',
+        [user_id, base_value, brand, model, version, entriesJson]
+      );
     }
-    
+
     res.json({ success: true, base_value, brand, model, version, entries });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.get('/frontals/entries', authenticate, (req, res) => {
+router.get('/frontals/entries', authenticate, async (req, res) => {
   try {
     const user_id = req.user.id;
-    const entries = db.prepare(`
+    const entries = await db.query(`
       SELECT id, brand, model, version, cost_price, sale_price AS price, created_at
       FROM frontals_price_list
-      WHERE user_id = ?
+      WHERE user_id = $1
       ORDER BY created_at DESC, id DESC
-    `).all(user_id);
+    `, [user_id]);
     res.json(entries);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/frontals/entries', authenticate, (req, res) => {
+router.post('/frontals/entries', authenticate, async (req, res) => {
   try {
     const { brand, model, version, cost_price, sale_price } = req.body;
     const user_id = req.user.id;
@@ -140,21 +140,22 @@ router.post('/frontals/entries', authenticate, (req, res) => {
       return res.status(400).json({ error: 'Informe marca, modelo, versão e valores válidos. O custo da peça deve ser maior que zero.' });
     }
 
-    const result = db.prepare(`
+    const result = await db.execute(`
       INSERT INTO frontals_price_list (user_id, brand, model, version, cost_price, sale_price)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(user_id, brand, model, version, cost_price, sale_price);
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+    `, [user_id, brand, model, version, cost_price, sale_price]);
 
-    const insertedId = result.lastInsertRowid;
+    const insertedId = result.id;
     if (!insertedId) {
       return res.status(500).json({ error: 'Não foi possível recuperar o ID do registro inserido.' });
     }
 
-    const entry = db.prepare(`
+    const entry = await db.queryOne(`
       SELECT id, brand, model, version, cost_price, sale_price AS price, created_at
       FROM frontals_price_list
-      WHERE id = ?
-    `).get(insertedId);
+      WHERE id = $1
+    `, [insertedId]);
 
     res.status(201).json(entry);
   } catch (error) {
@@ -163,21 +164,21 @@ router.post('/frontals/entries', authenticate, (req, res) => {
 });
 
 // Clear calculator data
-router.delete('/:type', authenticate, (req, res) => {
+router.delete('/:type', authenticate, async (req, res) => {
   try {
     const { type } = req.params;
     const user_id = req.user.id;
-    
+
     const tableMap = {
       pagbank: 'pagbank_calculator',
       piece: 'piece_calculator',
       frontals: 'frontals_calculator'
     };
-    
+
     const table = tableMap[type];
     if (!table) return res.status(400).json({ error: 'Invalid calculator type' });
-    
-    db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(user_id);
+
+    await db.execute(`DELETE FROM ${table} WHERE user_id = $1`, [user_id]);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });

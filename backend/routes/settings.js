@@ -6,26 +6,36 @@ const router = express.Router();
 
 router.use(authenticate);
 
-router.get('/', (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const current = settings.row(storeId);
-  res.json({
-    settings: settings.readSettings(storeId),
-    sequences: settings.sequences(storeId),
-    version: current.version,
-    last_backup: current.last_backup
-  });
-});
-
-router.get('/defaults', requireRole('admin'), (req, res) => {
-  const storeId = req.user.store_id || 1;
-  res.json(settings.readSettings(storeId));
-});
-
-router.put('/', requireRole('admin'), (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const storeId = req.user.store_id || 1;
-    const current = settings.row(storeId);
+    const current = await settings.row(storeId);
+    const settingsData = await settings.readSettings(storeId);
+    const sequencesData = await settings.sequences(storeId);
+    res.json({
+      settings: settingsData,
+      sequences: sequencesData,
+      version: current.version,
+      last_backup: current.last_backup
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar configurações: ' + err.message });
+  }
+});
+
+router.get('/defaults', requireRole('admin'), async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    res.json(await settings.readSettings(storeId));
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar configurações padrão: ' + err.message });
+  }
+});
+
+router.put('/', requireRole('admin'), async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const current = await settings.row(storeId);
     if (Number(req.body.version) !== current.version) {
       return res.status(409).json({ error: 'As configurações foram alteradas. Recarregue a página.' });
     }
@@ -34,21 +44,23 @@ router.put('/', requireRole('admin'), (req, res) => {
       return res.status(400).json({ error: 'Configurações inválidas.' });
     }
 
-    db.transaction(() => {
+    const currentSequences = await settings.sequences(storeId);
+
+    await db.transaction(async (tx) => {
       for (const [kind, number] of Object.entries(req.body.sequences || {})) {
-        const previous = settings.sequences(storeId)[kind];
+        const previous = currentSequences[kind];
         if (previous === undefined || !Number.isSafeInteger(number) || number < previous) {
           throw new Error('Numeração inválida.');
         }
-        db.prepare('UPDATE document_sequences SET next_value=? WHERE store_id=? AND kind=?').run(number, storeId, kind);
+        await tx.execute('UPDATE document_sequences SET next_value = $1 WHERE store_id = $2 AND kind = $3', [number, storeId, kind]);
       }
-      db.prepare('UPDATE system_settings SET value=?,version=version+1 WHERE store_id=?').run(JSON.stringify(value), storeId);
-    })();
+      await tx.execute('UPDATE system_settings SET value = $1, version = version + 1 WHERE store_id = $2', [JSON.stringify(value), storeId]);
+    });
 
-    const updated = settings.row(storeId);
+    const updated = await settings.row(storeId);
     res.json({
-      settings: settings.readSettings(storeId),
-      sequences: settings.sequences(storeId),
+      settings: await settings.readSettings(storeId),
+      sequences: await settings.sequences(storeId),
       version: updated.version,
       last_backup: updated.last_backup
     });

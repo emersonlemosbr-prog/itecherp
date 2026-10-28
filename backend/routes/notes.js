@@ -43,32 +43,36 @@ const upload = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 10 }
 });
 
-function purgeExpiredTrash(userId) {
-  const expired = db.prepare(`
-    SELECT n.id, a.stored_name
-    FROM notes n
-    LEFT JOIN note_attachments a ON a.note_id = n.id
-    WHERE n.user_id = ?
-      AND n.trashed = 1
-      AND n.deleted_at IS NOT NULL
-      AND datetime(n.deleted_at, '+30 days') <= datetime('now')
-  `).all(userId);
+async function purgeExpiredTrash(userId) {
+  try {
+    const expired = await db.query(`
+      SELECT n.id, a.stored_name
+      FROM notes n
+      LEFT JOIN note_attachments a ON a.note_id = n.id
+      WHERE n.user_id = $1
+        AND n.trashed = 1
+        AND n.deleted_at IS NOT NULL
+        AND n.deleted_at + INTERVAL '30 days' <= CURRENT_TIMESTAMP
+    `, [userId]);
 
-  const noteIds = [...new Set(expired.map((row) => row.id))];
-  expired.forEach((row) => {
-    if (!row.stored_name) return;
-    const fullPath = path.join(UPLOAD_ROOT, row.stored_name);
-    if (fs.existsSync(fullPath)) {
-      try { fs.unlinkSync(fullPath); } catch (_err) {}
-    }
-  });
-
-  if (noteIds.length > 0) {
-    const stmt = db.prepare('DELETE FROM notes WHERE id = ? AND user_id = ?');
-    const tx = db.transaction((ids) => {
-      ids.forEach((id) => stmt.run(id, userId));
+    const noteIds = [...new Set(expired.map((row) => row.id))];
+    expired.forEach((row) => {
+      if (!row.stored_name) return;
+      const fullPath = path.join(UPLOAD_ROOT, row.stored_name);
+      if (fs.existsSync(fullPath)) {
+        try { fs.unlinkSync(fullPath); } catch (_err) {}
+      }
     });
-    tx(noteIds);
+
+    if (noteIds.length > 0) {
+      await db.transaction(async (tx) => {
+        for (const id of noteIds) {
+          await tx.execute('DELETE FROM notes WHERE id = $1 AND user_id = $2', [id, userId]);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('⚠️ [NOTES_PURGE_ERROR]', err.message);
   }
 }
 
@@ -76,8 +80,8 @@ function normalizeBoolean(value) {
   return value ? 1 : 0;
 }
 
-function getNoteById(noteId, userId) {
-  return db.prepare(`
+async function getNoteById(noteId, userId, client = db) {
+  return client.queryOne(`
     SELECT n.*, c.name as color_name, c.bg_color, c.border_color, c.text_color,
       CASE WHEN fn.id IS NULL THEN 0 ELSE 1 END AS is_favorite,
       CASE WHEN pn.id IS NULL THEN 0 ELSE 1 END AS is_pinned,
@@ -86,40 +90,40 @@ function getNoteById(noteId, userId) {
     LEFT JOIN note_colors c ON c.id = n.color_id
     LEFT JOIN favorite_notes fn ON fn.note_id = n.id AND fn.user_id = n.user_id
     LEFT JOIN pinned_notes pn ON pn.note_id = n.id AND pn.user_id = n.user_id
-    WHERE n.id = ? AND n.user_id = ?
-  `).get(noteId, userId);
+    WHERE n.id = $1 AND n.user_id = $2
+  `, [noteId, userId]);
 }
 
-function hydrateNotes(notes) {
+async function hydrateNotes(notes, client = db) {
   if (!notes.length) return [];
   const ids = notes.map((n) => n.id);
-  const placeholders = ids.map(() => '?').join(',');
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
 
-  const checklists = db.prepare(`
+  const checklists = await client.query(`
     SELECT * FROM note_checklists
     WHERE note_id IN (${placeholders})
     ORDER BY position ASC, id ASC
-  `).all(...ids);
+  `, ...ids);
 
-  const labels = db.prepare(`
+  const labels = await client.query(`
     SELECT nl.note_id, l.id, l.name
     FROM note_labels nl
     JOIN labels l ON l.id = nl.label_id
     WHERE nl.note_id IN (${placeholders})
     ORDER BY l.name ASC
-  `).all(...ids);
+  `, ...ids);
 
-  const attachments = db.prepare(`
+  const attachments = await client.query(`
     SELECT * FROM note_attachments
     WHERE note_id IN (${placeholders})
     ORDER BY created_at DESC
-  `).all(...ids);
+  `, ...ids);
 
-  const reminders = db.prepare(`
+  const reminders = await client.query(`
     SELECT * FROM note_reminders
     WHERE note_id IN (${placeholders})
     ORDER BY remind_at ASC
-  `).all(...ids);
+  `, ...ids);
 
   const checklistByNote = new Map();
   checklists.forEach((row) => {
@@ -196,98 +200,101 @@ function hydrateNotes(notes) {
   }));
 }
 
-function syncChecklist(noteId, checklist) {
-  db.prepare('DELETE FROM note_checklists WHERE note_id = ?').run(noteId);
+async function syncChecklist(noteId, checklist, client = db) {
+  await client.execute('DELETE FROM note_checklists WHERE note_id = $1', [noteId]);
   if (!Array.isArray(checklist) || checklist.length === 0) return;
 
-  const insert = db.prepare(`
-    INSERT INTO note_checklists (note_id, item_text, is_checked, position, created_at, updated_at)
-    VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
-  `);
-
-  checklist.forEach((item, index) => {
+  for (let index = 0; index < checklist.length; index++) {
+    const item = checklist[index];
     const text = String(item?.text || '').trim();
-    if (!text) return;
-    insert.run(noteId, text, normalizeBoolean(item?.is_checked), index);
-  });
+    if (!text) continue;
+    await client.execute(`
+      INSERT INTO note_checklists (note_id, item_text, is_checked, position, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `, [noteId, text, normalizeBoolean(item?.is_checked), index]);
+  }
 }
 
-function ensureLabel(userId, rawName) {
+async function ensureLabel(userId, rawName, client = db) {
   const name = String(rawName || '').trim();
   if (!name) return null;
 
-  const existing = db.prepare('SELECT id, name FROM labels WHERE user_id = ? AND name = ?').get(userId, name);
+  const existing = await client.queryOne('SELECT id, name FROM labels WHERE user_id = $1 AND name = $2', [userId, name]);
   if (existing) return existing;
 
-  const info = db.prepare('INSERT INTO labels (user_id, name) VALUES (?, ?)').run(userId, name);
-  return { id: info.lastInsertRowid, name };
+  const info = await client.execute('INSERT INTO labels (user_id, name) VALUES ($1, $2) RETURNING id', [userId, name]);
+  return { id: info.id, name };
 }
 
-function syncLabels(noteId, userId, labels) {
-  db.prepare('DELETE FROM note_labels WHERE note_id = ?').run(noteId);
+async function syncLabels(noteId, userId, labels, client = db) {
+  await client.execute('DELETE FROM note_labels WHERE note_id = $1', [noteId]);
   if (!Array.isArray(labels) || labels.length === 0) return;
 
-  const insert = db.prepare('INSERT OR IGNORE INTO note_labels (note_id, label_id) VALUES (?, ?)');
-  labels.forEach((label) => {
-    if (!label) return;
+  for (const label of labels) {
+    if (!label) continue;
     let labelId = null;
     if (typeof label === 'number') {
-      const ownLabel = db.prepare('SELECT id FROM labels WHERE id = ? AND user_id = ?').get(label, userId);
+      const ownLabel = await client.queryOne('SELECT id FROM labels WHERE id = $1 AND user_id = $2', [label, userId]);
       labelId = ownLabel ? ownLabel.id : null;
     } else if (typeof label === 'object' && typeof label.id === 'number') {
-      const ownLabel = db.prepare('SELECT id FROM labels WHERE id = ? AND user_id = ?').get(label.id, userId);
+      const ownLabel = await client.queryOne('SELECT id FROM labels WHERE id = $1 AND user_id = $2', [label.id, userId]);
       labelId = ownLabel ? ownLabel.id : null;
     } else {
-      const created = ensureLabel(userId, typeof label === 'object' ? label.name : label);
+      const created = await ensureLabel(userId, typeof label === 'object' ? label.name : label, client);
       labelId = created ? created.id : null;
     }
 
-    if (labelId) insert.run(noteId, labelId);
-  });
+    if (labelId) {
+      await client.execute('INSERT INTO note_labels (note_id, label_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [noteId, labelId]);
+    }
+  }
 }
 
-function syncReminder(noteId, reminderAt) {
+async function syncReminder(noteId, reminderAt, client = db) {
   if (!reminderAt) {
-    db.prepare('DELETE FROM note_reminders WHERE note_id = ?').run(noteId);
+    await client.execute('DELETE FROM note_reminders WHERE note_id = $1', [noteId]);
     return;
   }
 
-  const existing = db.prepare('SELECT id FROM note_reminders WHERE note_id = ? ORDER BY id ASC LIMIT 1').get(noteId);
+  const existing = await client.queryOne('SELECT id FROM note_reminders WHERE note_id = $1 ORDER BY id ASC LIMIT 1', [noteId]);
   if (existing) {
-    db.prepare(`
+    await client.execute(`
       UPDATE note_reminders
-      SET remind_at = ?, done = 0, notified_at = NULL, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(reminderAt, existing.id);
-    db.prepare('DELETE FROM note_reminders WHERE note_id = ? AND id != ?').run(noteId, existing.id);
+      SET remind_at = $1, done = 0, notified_at = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+    `, [reminderAt, existing.id]);
+    await client.execute('DELETE FROM note_reminders WHERE note_id = $1 AND id != $2', [noteId, existing.id]);
   } else {
-    db.prepare(`
+    await client.execute(`
       INSERT INTO note_reminders (note_id, remind_at, done, created_at, updated_at)
-      VALUES (?, ?, 0, datetime('now'), datetime('now'))
-    `).run(noteId, reminderAt);
+      VALUES ($1, $2, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `, [noteId, reminderAt]);
   }
 }
 
-function setFavorite(noteId, userId, enabled) {
+async function setFavorite(noteId, userId, enabled, client = db) {
   if (enabled) {
-    db.prepare('INSERT OR IGNORE INTO favorite_notes (note_id, user_id) VALUES (?, ?)').run(noteId, userId);
+    await client.execute('INSERT INTO favorite_notes (note_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [noteId, userId]);
   } else {
-    db.prepare('DELETE FROM favorite_notes WHERE note_id = ? AND user_id = ?').run(noteId, userId);
+    await client.execute('DELETE FROM favorite_notes WHERE note_id = $1 AND user_id = $2', [noteId, userId]);
   }
 }
 
-function setPinned(noteId, userId, enabled) {
+async function setPinned(noteId, userId, enabled, client = db) {
   if (enabled) {
-    const maxRow = db.prepare('SELECT COALESCE(MAX(pinned_order), 0) as max_order FROM pinned_notes WHERE user_id = ?').get(userId);
-    db.prepare('INSERT OR REPLACE INTO pinned_notes (note_id, user_id, pinned_order) VALUES (?, ?, ?)')
-      .run(noteId, userId, (maxRow?.max_order || 0) + 1);
+    const maxRow = await client.queryOne('SELECT COALESCE(MAX(pinned_order), 0) as max_order FROM pinned_notes WHERE user_id = $1', [userId]);
+    await client.execute(`
+      INSERT INTO pinned_notes (note_id, user_id, pinned_order)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (note_id, user_id) DO UPDATE SET pinned_order = EXCLUDED.pinned_order
+    `, [noteId, userId, (parseInt(maxRow?.max_order || 0, 10)) + 1]);
   } else {
-    db.prepare('DELETE FROM pinned_notes WHERE note_id = ? AND user_id = ?').run(noteId, userId);
+    await client.execute('DELETE FROM pinned_notes WHERE note_id = $1 AND user_id = $2', [noteId, userId]);
   }
 }
 
-function removeNoteFiles(noteId) {
-  const files = db.prepare('SELECT stored_name FROM note_attachments WHERE note_id = ?').all(noteId);
+async function removeNoteFiles(noteId, client = db) {
+  const files = await client.query('SELECT stored_name FROM note_attachments WHERE note_id = $1', [noteId]);
   files.forEach((file) => {
     const fullPath = path.join(UPLOAD_ROOT, file.stored_name);
     if (fs.existsSync(fullPath)) {
@@ -301,9 +308,9 @@ function buildOrder(sort) {
     case 'oldest':
       return 'n.created_at ASC, n.id ASC';
     case 'alphabetical':
-      return 'LOWER(COALESCE(n.title, "")) ASC, n.updated_at DESC';
+      return "LOWER(COALESCE(n.title, '')) ASC, n.updated_at DESC";
     case 'color':
-      return 'LOWER(COALESCE(c.name, "")) ASC, n.updated_at DESC';
+      return "LOWER(COALESCE(c.name, '')) ASC, n.updated_at DESC";
     case 'favorites':
       return 'CASE WHEN fn.id IS NULL THEN 1 ELSE 0 END ASC, n.updated_at DESC';
     case 'pinned':
@@ -314,503 +321,608 @@ function buildOrder(sort) {
   }
 }
 
-router.get('/meta', (req, res) => {
-  purgeExpiredTrash(req.user.id);
+router.get('/meta', async (req, res) => {
+  try {
+    await purgeExpiredTrash(req.user.id);
 
-  const colors = db.prepare('SELECT * FROM note_colors ORDER BY id ASC').all();
-  const labels = db.prepare('SELECT id, name FROM labels WHERE user_id = ? ORDER BY name ASC').all(req.user.id);
+    const colors = await db.query('SELECT * FROM note_colors ORDER BY id ASC');
+    const labels = await db.query('SELECT id, name FROM labels WHERE user_id = $1 ORDER BY name ASC', [req.user.id]);
 
-  const counts = {
-    notes: db.prepare('SELECT COUNT(*) as total FROM notes WHERE user_id = ? AND archived = 0 AND trashed = 0').get(req.user.id).total,
-    reminders: db.prepare(`
+    const notesCount = await db.queryOne('SELECT COUNT(*) as total FROM notes WHERE user_id = $1 AND archived = 0 AND trashed = 0', [req.user.id]);
+    const remindersCount = await db.queryOne(`
       SELECT COUNT(DISTINCT n.id) as total
       FROM notes n
       JOIN note_reminders nr ON nr.note_id = n.id
-      WHERE n.user_id = ? AND n.archived = 0 AND n.trashed = 0 AND nr.done = 0
-    `).get(req.user.id).total,
-    favorites: db.prepare(`
+      WHERE n.user_id = $1 AND n.archived = 0 AND n.trashed = 0 AND nr.done = 0
+    `, [req.user.id]);
+    const favoritesCount = await db.queryOne(`
       SELECT COUNT(*) as total FROM favorite_notes fn
       JOIN notes n ON n.id = fn.note_id
-      WHERE fn.user_id = ? AND n.trashed = 0
-    `).get(req.user.id).total,
-    archived: db.prepare('SELECT COUNT(*) as total FROM notes WHERE user_id = ? AND archived = 1 AND trashed = 0').get(req.user.id).total,
-    trash: db.prepare('SELECT COUNT(*) as total FROM notes WHERE user_id = ? AND trashed = 1').get(req.user.id).total
-  };
+      WHERE fn.user_id = $1 AND n.trashed = 0
+    `, [req.user.id]);
+    const archivedCount = await db.queryOne('SELECT COUNT(*) as total FROM notes WHERE user_id = $1 AND archived = 1 AND trashed = 0', [req.user.id]);
+    const trashCount = await db.queryOne('SELECT COUNT(*) as total FROM notes WHERE user_id = $1 AND trashed = 1', [req.user.id]);
 
-  res.json({ colors, labels, counts });
+    const counts = {
+      notes: parseInt(notesCount?.total || 0, 10),
+      reminders: parseInt(remindersCount?.total || 0, 10),
+      favorites: parseInt(favoritesCount?.total || 0, 10),
+      archived: parseInt(archivedCount?.total || 0, 10),
+      trash: parseInt(trashCount?.total || 0, 10)
+    };
+
+    res.json({ colors, labels, counts });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao carregar metadados das notas: ' + err.message });
+  }
 });
 
-router.get('/', (req, res) => {
-  purgeExpiredTrash(req.user.id);
+router.get('/', async (req, res) => {
+  try {
+    await purgeExpiredTrash(req.user.id);
 
-  const section = String(req.query.section || 'notes');
-  const q = String(req.query.search || req.query.q || '').trim();
-  const sort = String(req.query.sort || 'newest');
-  const labelId = req.query.label ? Number(req.query.label) : (req.query.label_id ? Number(req.query.label_id) : null);
-  const archivedFilter = typeof req.query.archived === 'string' ? req.query.archived === 'true' : null;
-  const favoriteFilter = typeof req.query.favorite === 'string' ? req.query.favorite === 'true' : null;
-  const pinnedFilter = typeof req.query.pinned === 'string' ? req.query.pinned === 'true' : null;
-  const page = Math.max(Number(req.query.page || 1), 1);
-  const pageSize = Math.min(Math.max(Number(req.query.pageSize || 24), 1), 100);
-  const offset = (page - 1) * pageSize;
+    const section = String(req.query.section || 'notes');
+    const q = String(req.query.search || req.query.q || '').trim();
+    const sort = String(req.query.sort || 'newest');
+    const labelId = req.query.label ? Number(req.query.label) : (req.query.label_id ? Number(req.query.label_id) : null);
+    const archivedFilter = typeof req.query.archived === 'string' ? req.query.archived === 'true' : null;
+    const favoriteFilter = typeof req.query.favorite === 'string' ? req.query.favorite === 'true' : null;
+    const pinnedFilter = typeof req.query.pinned === 'string' ? req.query.pinned === 'true' : null;
+    const page = Math.max(Number(req.query.page || 1), 1);
+    const pageSize = Math.min(Math.max(Number(req.query.pageSize || 24), 1), 100);
+    const offset = (page - 1) * pageSize;
 
-  let whereSql = 'WHERE n.user_id = ?';
-  const params = [req.user.id];
+    let whereSql = 'WHERE n.user_id = $1';
+    const params = [req.user.id];
+    let paramIndex = 2;
 
-  if (section === 'favorites') {
-    whereSql += ' AND fn.id IS NOT NULL AND n.trashed = 0';
-  } else if (section === 'archived') {
-    whereSql += ' AND n.archived = 1 AND n.trashed = 0';
-  } else if (section === 'trash') {
-    whereSql += ' AND n.trashed = 1';
-  } else if (section === 'reminders') {
-    whereSql += ' AND n.archived = 0 AND n.trashed = 0 AND nr_filter.id IS NOT NULL';
-  } else {
-    whereSql += ' AND n.archived = 0 AND n.trashed = 0';
-  }
+    if (section === 'favorites') {
+      whereSql += ' AND fn.id IS NOT NULL AND n.trashed = 0';
+    } else if (section === 'archived') {
+      whereSql += ' AND n.archived = 1 AND n.trashed = 0';
+    } else if (section === 'trash') {
+      whereSql += ' AND n.trashed = 1';
+    } else if (section === 'reminders') {
+      whereSql += ' AND n.archived = 0 AND n.trashed = 0 AND nr_filter.id IS NOT NULL';
+    } else {
+      whereSql += ' AND n.archived = 0 AND n.trashed = 0';
+    }
 
-  if (archivedFilter !== null) {
-    whereSql += ' AND n.archived = ?';
-    params.push(archivedFilter ? 1 : 0);
-  }
-  if (favoriteFilter === true) {
-    whereSql += ' AND fn.id IS NOT NULL';
-  }
-  if (favoriteFilter === false) {
-    whereSql += ' AND fn.id IS NULL';
-  }
-  if (pinnedFilter === true) {
-    whereSql += ' AND pn.id IS NOT NULL';
-  }
-  if (pinnedFilter === false) {
-    whereSql += ' AND pn.id IS NULL';
-  }
+    if (archivedFilter !== null) {
+      whereSql += ` AND n.archived = $${paramIndex++}`;
+      params.push(archivedFilter ? 1 : 0);
+    }
+    if (favoriteFilter === true) {
+      whereSql += ' AND fn.id IS NOT NULL';
+    }
+    if (favoriteFilter === false) {
+      whereSql += ' AND fn.id IS NULL';
+    }
+    if (pinnedFilter === true) {
+      whereSql += ' AND pn.id IS NOT NULL';
+    }
+    if (pinnedFilter === false) {
+      whereSql += ' AND pn.id IS NULL';
+    }
 
-  if (labelId) {
-    whereSql += ' AND EXISTS (SELECT 1 FROM note_labels nlf WHERE nlf.note_id = n.id AND nlf.label_id = ?)';
-    params.push(labelId);
-  }
+    if (labelId) {
+      whereSql += ` AND EXISTS (SELECT 1 FROM note_labels nlf WHERE nlf.note_id = n.id AND nlf.label_id = $${paramIndex++})`;
+      params.push(labelId);
+    }
 
-  if (q) {
-    whereSql += `
-      AND (
-        COALESCE(n.title, '') LIKE ?
-        OR COALESCE(n.content, '') LIKE ?
-        OR EXISTS (
-          SELECT 1 FROM note_checklists nc
-          WHERE nc.note_id = n.id AND nc.item_text LIKE ?
+    if (q) {
+      whereSql += `
+        AND (
+          COALESCE(n.title, '') ILIKE $${paramIndex}
+          OR COALESCE(n.content, '') ILIKE $${paramIndex}
+          OR EXISTS (
+            SELECT 1 FROM note_checklists nc
+            WHERE nc.note_id = n.id AND nc.item_text ILIKE $${paramIndex}
+          )
+          OR EXISTS (
+            SELECT 1 FROM note_labels nls
+            JOIN labels ls ON ls.id = nls.label_id
+            WHERE nls.note_id = n.id AND ls.name ILIKE $${paramIndex}
+          )
         )
-        OR EXISTS (
-          SELECT 1 FROM note_labels nls
-          JOIN labels ls ON ls.id = nls.label_id
-          WHERE nls.note_id = n.id AND ls.name LIKE ?
-        )
-      )
+      `;
+      params.push(`%${q}%`);
+      paramIndex++;
+    }
+
+    const baseSql = `
+      FROM notes n
+      LEFT JOIN note_colors c ON c.id = n.color_id
+      LEFT JOIN favorite_notes fn ON fn.note_id = n.id AND fn.user_id = n.user_id
+      LEFT JOIN pinned_notes pn ON pn.note_id = n.id AND pn.user_id = n.user_id
+      LEFT JOIN note_reminders nr_filter ON nr_filter.note_id = n.id AND nr_filter.done = 0
+      ${whereSql}
     `;
-    const like = `%${q}%`;
-    params.push(like, like, like, like);
-  }
 
-  const baseSql = `
-    FROM notes n
-    LEFT JOIN note_colors c ON c.id = n.color_id
-    LEFT JOIN favorite_notes fn ON fn.note_id = n.id AND fn.user_id = n.user_id
-    LEFT JOIN pinned_notes pn ON pn.note_id = n.id AND pn.user_id = n.user_id
-    LEFT JOIN note_reminders nr_filter ON nr_filter.note_id = n.id AND nr_filter.done = 0
-    ${whereSql}
-  `;
+    const totalRow = await db.queryOne(`SELECT COUNT(DISTINCT n.id) as total ${baseSql}`, ...params);
+    const total = parseInt(totalRow?.total || 0, 10);
 
-  const total = db.prepare(`SELECT COUNT(DISTINCT n.id) as total ${baseSql}`).get(...params).total;
+    const orderBy = buildOrder(sort);
+    const queryParams = [...params, pageSize, offset];
+    const limitPlaceholder = `$${params.length + 1}`;
+    const offsetPlaceholder = `$${params.length + 2}`;
 
-  const orderBy = buildOrder(sort);
-  const rows = db.prepare(`
-    SELECT DISTINCT n.*, c.name as color_name, c.bg_color, c.border_color, c.text_color,
-      CASE WHEN fn.id IS NULL THEN 0 ELSE 1 END AS is_favorite,
-      CASE WHEN pn.id IS NULL THEN 0 ELSE 1 END AS is_pinned,
-      COALESCE(pn.pinned_order, 0) AS pinned_order
-    ${baseSql}
-    ORDER BY CASE WHEN pn.id IS NULL THEN 1 ELSE 0 END ASC,
-      CASE WHEN pn.id IS NULL THEN 999999 ELSE pn.pinned_order END ASC,
-      ${orderBy}
-    LIMIT ? OFFSET ?
-  `).all(...params, pageSize, offset);
+    const rows = await db.query(`
+      SELECT DISTINCT n.*, c.name as color_name, c.bg_color, c.border_color, c.text_color,
+        CASE WHEN fn.id IS NULL THEN 0 ELSE 1 END AS is_favorite,
+        CASE WHEN pn.id IS NULL THEN 0 ELSE 1 END AS is_pinned,
+        COALESCE(pn.pinned_order, 0) AS pinned_order
+      ${baseSql}
+      ORDER BY CASE WHEN pn.id IS NULL THEN 1 ELSE 0 END ASC,
+        CASE WHEN pn.id IS NULL THEN 999999 ELSE pn.pinned_order END ASC,
+        ${orderBy}
+      LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}
+    `, ...queryParams);
 
-  res.json({
-    notes: hydrateNotes(rows),
-    pagination: {
-      total,
-      page,
-      pageSize,
-      hasMore: offset + rows.length < total
-    }
-  });
-});
-
-router.get('/notifications', (req, res) => {
-  const rows = db.prepare(`
-    SELECT nr.id as reminder_id, nr.remind_at, n.id as note_id, n.title, n.content
-    FROM note_reminders nr
-    JOIN notes n ON n.id = nr.note_id
-    WHERE n.user_id = ?
-      AND n.trashed = 0
-      AND nr.done = 0
-      AND nr.notified_at IS NULL
-      AND datetime(nr.remind_at) <= datetime('now')
-    ORDER BY nr.remind_at ASC
-    LIMIT 20
-  `).all(req.user.id);
-
-  res.json(rows);
-});
-
-router.post('/reminders/:id/ack', (req, res) => {
-  const row = db.prepare(`
-    SELECT nr.id
-    FROM note_reminders nr
-    JOIN notes n ON n.id = nr.note_id
-    WHERE nr.id = ? AND n.user_id = ?
-  `).get(req.params.id, req.user.id);
-
-  if (!row) return res.status(404).json({ error: 'Lembrete não encontrado.' });
-
-  db.prepare('UPDATE note_reminders SET notified_at = datetime(\'now\') WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
-});
-
-router.post('/labels', (req, res) => {
-  const label = ensureLabel(req.user.id, req.body?.name);
-  if (!label) return res.status(400).json({ error: 'Nome da etiqueta é obrigatório.' });
-  res.status(201).json(label);
-});
-
-router.delete('/labels/:id', (req, res) => {
-  const ownLabel = db.prepare('SELECT id FROM labels WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!ownLabel) return res.status(404).json({ error: 'Etiqueta não encontrada.' });
-
-  db.prepare('DELETE FROM labels WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
-  res.json({ success: true });
-});
-
-router.delete('/trash/empty', (req, res) => {
-  const trashedNotes = db.prepare('SELECT id FROM notes WHERE user_id = ? AND trashed = 1').all(req.user.id);
-  if (!trashedNotes.length) {
-    return res.json({ success: true, deleted_count: 0 });
-  }
-
-  trashedNotes.forEach((note) => removeNoteFiles(note.id));
-
-  const info = db.prepare('DELETE FROM notes WHERE user_id = ? AND trashed = 1').run(req.user.id);
-  logAction({ user: req.user, action: 'empty_trash_notes', recordType: 'note', details: { deleted_count: info.changes } });
-
-  return res.json({ success: true, deleted_count: info.changes });
-});
-
-router.get('/attachments/:attachmentId', (req, res) => {
-  const attachment = db.prepare(`
-    SELECT a.*
-    FROM note_attachments a
-    JOIN notes n ON n.id = a.note_id
-    WHERE a.id = ? AND n.user_id = ?
-  `).get(req.params.attachmentId, req.user.id);
-
-  if (!attachment) return res.status(404).json({ error: 'Anexo não encontrado.' });
-  return res.sendFile(attachment.stored_name, {
-    root: UPLOAD_ROOT,
-    headers: { 'Content-Type': attachment.mime_type || 'application/octet-stream' },
-  });
-});
-
-router.get('/:id', (req, res) => {
-  const note = getNoteById(req.params.id, req.user.id);
-  if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
-  res.json(hydrateNotes([note])[0]);
-});
-
-router.post('/', (req, res) => {
-  const {
-    title,
-    content,
-    color_id,
-    checklist,
-    labels,
-    reminder_at,
-    archived,
-    trashed,
-    is_favorite,
-    is_pinned
-  } = req.body || {};
-
-  const tx = db.transaction(() => {
-    const info = db.prepare(`
-      INSERT INTO notes (user_id, title, content, color_id, archived, trashed, deleted_at, position, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `).run(
-      req.user.id,
-      title || '',
-      content || '',
-      color_id || 1,
-      normalizeBoolean(archived),
-      normalizeBoolean(trashed),
-      trashed ? new Date().toISOString() : null,
-      Date.now()
-    );
-
-    const noteId = info.lastInsertRowid;
-    syncChecklist(noteId, checklist);
-    syncLabels(noteId, req.user.id, labels);
-    syncReminder(noteId, reminder_at || null);
-    setFavorite(noteId, req.user.id, !!is_favorite);
-    setPinned(noteId, req.user.id, !!is_pinned);
-
-    return noteId;
-  });
-
-  const noteId = tx();
-  logAction({ user: req.user, action: 'create_note', recordType: 'note', recordId: noteId });
-
-  const note = hydrateNotes([getNoteById(noteId, req.user.id)])[0];
-  res.status(201).json(note);
-});
-
-router.put('/:id', (req, res) => {
-  const existing = db.prepare('SELECT * FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!existing) return res.status(404).json({ error: 'Nota não encontrada.' });
-
-  const {
-    title,
-    content,
-    color_id,
-    checklist,
-    labels,
-    reminder_at,
-    archived,
-    trashed,
-    is_favorite,
-    is_pinned
-  } = req.body || {};
-
-  const shouldTrash = typeof trashed === 'boolean' ? trashed : !!existing.trashed;
-
-  const tx = db.transaction(() => {
-    db.prepare(`
-      UPDATE notes
-      SET title = ?,
-          content = ?,
-          color_id = ?,
-          archived = ?,
-          trashed = ?,
-          deleted_at = ?,
-          updated_at = datetime('now')
-      WHERE id = ? AND user_id = ?
-    `).run(
-      title ?? existing.title,
-      content ?? existing.content,
-      color_id || existing.color_id || 1,
-      typeof archived === 'boolean' ? normalizeBoolean(archived) : existing.archived,
-      normalizeBoolean(shouldTrash),
-      shouldTrash ? (existing.deleted_at || new Date().toISOString()) : null,
-      req.params.id,
-      req.user.id
-    );
-
-    if (Array.isArray(checklist)) syncChecklist(existing.id, checklist);
-    if (Array.isArray(labels)) syncLabels(existing.id, req.user.id, labels);
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, 'reminder_at')) syncReminder(existing.id, reminder_at || null);
-    if (typeof is_favorite === 'boolean') setFavorite(existing.id, req.user.id, is_favorite);
-    if (typeof is_pinned === 'boolean') setPinned(existing.id, req.user.id, is_pinned);
-  });
-
-  tx();
-  logAction({ user: req.user, action: 'update_note', recordType: 'note', recordId: req.params.id });
-
-  const note = hydrateNotes([getNoteById(req.params.id, req.user.id)])[0];
-  res.json(note);
-});
-
-router.post('/:id/reorder', (req, res) => {
-  const { position } = req.body || {};
-  const own = db.prepare('SELECT id FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!own) return res.status(404).json({ error: 'Nota não encontrada.' });
-
-  db.prepare('UPDATE notes SET position = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?')
-    .run(Number(position || Date.now()), req.params.id, req.user.id);
-  res.json({ success: true });
-});
-
-router.post('/reorder', (req, res) => {
-  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
-  if (!ids.length) return res.status(400).json({ error: 'Lista de IDs inválida.' });
-
-  const tx = db.transaction((list) => {
-    const stmt = db.prepare('UPDATE notes SET position = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?');
-    const base = Date.now();
-    list.forEach((id, index) => stmt.run(base - index, id, req.user.id));
-  });
-
-  tx(ids);
-  res.json({ success: true });
-});
-
-router.post('/:id/attachments', upload.array('files', 10), (req, res) => {
-  const note = db.prepare('SELECT id FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!note) {
-    (req.files || []).forEach((file) => {
-      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    res.json({
+      notes: await hydrateNotes(rows),
+      pagination: {
+        total,
+        page,
+        pageSize,
+        hasMore: offset + rows.length < total
+      }
     });
-    return res.status(404).json({ error: 'Nota não encontrada.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar notas: ' + err.message });
   }
+});
 
-  const files = req.files || [];
-  if (!files.length) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+router.get('/notifications', async (req, res) => {
+  try {
+    const rows = await db.query(`
+      SELECT nr.id as reminder_id, nr.remind_at, n.id as note_id, n.title, n.content
+      FROM note_reminders nr
+      JOIN notes n ON n.id = nr.note_id
+      WHERE n.user_id = $1
+        AND n.trashed = 0
+        AND nr.done = 0
+        AND nr.notified_at IS NULL
+        AND nr.remind_at <= CURRENT_TIMESTAMP
+      ORDER BY nr.remind_at ASC
+      LIMIT 20
+    `, [req.user.id]);
 
-  const insert = db.prepare(`
-    INSERT INTO note_attachments (note_id, file_type, original_name, stored_name, mime_type, file_size)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar notificações: ' + err.message });
+  }
+});
 
-  const insertedIds = [];
-  files.forEach((file) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const isImage = (file.mimetype || '').startsWith('image/');
-    const isAllowedFile = ALLOWED_FILE_MIME.has(file.mimetype) || ALLOWED_FILE_EXT.has(ext);
+router.post('/reminders/:id/ack', async (req, res) => {
+  try {
+    const row = await db.queryOne(`
+      SELECT nr.id
+      FROM note_reminders nr
+      JOIN notes n ON n.id = nr.note_id
+      WHERE nr.id = $1 AND n.user_id = $2
+    `, [req.params.id, req.user.id]);
 
-    if (!isImage && !isAllowedFile) {
-      if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-      return;
+    if (!row) return res.status(404).json({ error: 'Lembrete não encontrado.' });
+
+    await db.execute('UPDATE note_reminders SET notified_at = CURRENT_TIMESTAMP WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/labels', async (req, res) => {
+  try {
+    const label = await ensureLabel(req.user.id, req.body?.name);
+    if (!label) return res.status(400).json({ error: 'Nome da etiqueta é obrigatório.' });
+    res.status(201).json(label);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/labels/:id', async (req, res) => {
+  try {
+    const ownLabel = await db.queryOne('SELECT id FROM labels WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!ownLabel) return res.status(404).json({ error: 'Etiqueta não encontrada.' });
+
+    await db.execute('DELETE FROM labels WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/trash/empty', async (req, res) => {
+  try {
+    const trashedNotes = await db.query('SELECT id FROM notes WHERE user_id = $1 AND trashed = 1', [req.user.id]);
+    if (!trashedNotes.length) {
+      return res.json({ success: true, deleted_count: 0 });
     }
 
-    const info = insert.run(
-      req.params.id,
-      isImage ? 'image' : 'file',
-      file.originalname,
-      path.basename(file.filename),
-      file.mimetype,
-      file.size
-    );
-    insertedIds.push(info.lastInsertRowid);
-  });
+    for (const note of trashedNotes) {
+      await removeNoteFiles(note.id);
+    }
 
-  db.prepare('UPDATE notes SET updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+    const info = await db.execute('DELETE FROM notes WHERE user_id = $1 AND trashed = 1', [req.user.id]);
+    await logAction({ user: req.user, action: 'empty_trash_notes', recordType: 'note', details: { deleted_count: info.changes } });
 
-  if (!insertedIds.length) {
-    return res.status(400).json({ error: 'Nenhum arquivo com formato permitido foi enviado.' });
+    return res.json({ success: true, deleted_count: info.changes });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const placeholders = insertedIds.map(() => '?').join(',');
-  const rows = db.prepare(`
-    SELECT * FROM note_attachments WHERE id IN (${placeholders}) ORDER BY id DESC
-  `).all(...insertedIds);
-
-  res.status(201).json(rows.map((row) => ({
-    id: row.id,
-    note_id: row.note_id,
-    file_type: row.file_type,
-    original_name: row.original_name,
-    mime_type: row.mime_type,
-    file_size: row.file_size,
-    created_at: row.created_at,
-    url: `/api/notes/attachments/${row.id}`
-  })));
 });
 
-router.delete('/:noteId/attachments/:attachmentId', (req, res) => {
-  const row = db.prepare(`
-    SELECT a.*
-    FROM note_attachments a
-    JOIN notes n ON n.id = a.note_id
-    WHERE a.id = ? AND a.note_id = ? AND n.user_id = ?
-  `).get(req.params.attachmentId, req.params.noteId, req.user.id);
+router.get('/attachments/:attachmentId', async (req, res) => {
+  try {
+    const attachment = await db.queryOne(`
+      SELECT a.*
+      FROM note_attachments a
+      JOIN notes n ON n.id = a.note_id
+      WHERE a.id = $1 AND n.user_id = $2
+    `, [req.params.attachmentId, req.user.id]);
 
-  if (!row) return res.status(404).json({ error: 'Anexo não encontrado.' });
-
-  db.prepare('DELETE FROM note_attachments WHERE id = ?').run(row.id);
-  db.prepare('UPDATE notes SET updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?').run(req.params.noteId, req.user.id);
-
-  const fullPath = path.join(UPLOAD_ROOT, row.stored_name);
-  if (fs.existsSync(fullPath)) {
-    try { fs.unlinkSync(fullPath); } catch (_err) {}
+    if (!attachment) return res.status(404).json({ error: 'Anexo não encontrado.' });
+    return res.sendFile(attachment.stored_name, {
+      root: UPLOAD_ROOT,
+      headers: { 'Content-Type': attachment.mime_type || 'application/octet-stream' },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json({ success: true });
 });
 
-router.post('/:id/restore', (req, res) => {
-  const note = db.prepare('SELECT id FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
-
-  db.prepare(`
-    UPDATE notes
-    SET trashed = 0, deleted_at = NULL, archived = 0, updated_at = datetime('now')
-    WHERE id = ? AND user_id = ?
-  `).run(req.params.id, req.user.id);
-
-  const hydrated = hydrateNotes([getNoteById(req.params.id, req.user.id)])[0];
-  res.json(hydrated);
+router.get('/:id', async (req, res) => {
+  try {
+    const note = await getNoteById(req.params.id, req.user.id);
+    if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
+    const hydrated = await hydrateNotes([note]);
+    res.json(hydrated[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/:id/favorite', (req, res) => {
-  const note = db.prepare('SELECT id FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
+router.post('/', async (req, res) => {
+  try {
+    const {
+      title,
+      content,
+      color_id,
+      checklist,
+      labels,
+      reminder_at,
+      archived,
+      trashed,
+      is_favorite,
+      is_pinned
+    } = req.body || {};
 
-  const enabled = typeof req.body?.enabled === 'boolean'
-    ? req.body.enabled
-    : !db.prepare('SELECT id FROM favorite_notes WHERE note_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+    const noteId = await db.transaction(async (tx) => {
+      const info = await tx.execute(`
+        INSERT INTO notes (user_id, title, content, color_id, archived, trashed, deleted_at, position, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING id
+      `, [
+        req.user.id,
+        title || '',
+        content || '',
+        color_id || 1,
+        normalizeBoolean(archived),
+        normalizeBoolean(trashed),
+        trashed ? new Date().toISOString() : null,
+        Date.now()
+      ]);
 
-  setFavorite(req.params.id, req.user.id, enabled);
-  db.prepare('UPDATE notes SET updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+      const newId = info.id;
+      await syncChecklist(newId, checklist, tx);
+      await syncLabels(newId, req.user.id, labels, tx);
+      await syncReminder(newId, reminder_at || null, tx);
+      await setFavorite(newId, req.user.id, !!is_favorite, tx);
+      await setPinned(newId, req.user.id, !!is_pinned, tx);
 
-  const hydrated = hydrateNotes([getNoteById(req.params.id, req.user.id)])[0];
-  res.json(hydrated);
+      return newId;
+    });
+
+    await logAction({ user: req.user, action: 'create_note', recordType: 'note', recordId: noteId });
+
+    const freshNote = await getNoteById(noteId, req.user.id);
+    const hydrated = await hydrateNotes([freshNote]);
+    res.status(201).json(hydrated[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/:id/pin', (req, res) => {
-  const note = db.prepare('SELECT id FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
+router.put('/:id', async (req, res) => {
+  try {
+    const existing = await db.queryOne('SELECT * FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!existing) return res.status(404).json({ error: 'Nota não encontrada.' });
 
-  const enabled = typeof req.body?.enabled === 'boolean'
-    ? req.body.enabled
-    : !db.prepare('SELECT id FROM pinned_notes WHERE note_id = ? AND user_id = ?').get(req.params.id, req.user.id);
+    const {
+      title,
+      content,
+      color_id,
+      checklist,
+      labels,
+      reminder_at,
+      archived,
+      trashed,
+      is_favorite,
+      is_pinned
+    } = req.body || {};
 
-  setPinned(req.params.id, req.user.id, enabled);
-  db.prepare('UPDATE notes SET updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+    const shouldTrash = typeof trashed === 'boolean' ? trashed : !!existing.trashed;
 
-  const hydrated = hydrateNotes([getNoteById(req.params.id, req.user.id)])[0];
-  res.json(hydrated);
+    await db.transaction(async (tx) => {
+      await tx.execute(`
+        UPDATE notes
+        SET title = $1,
+            content = $2,
+            color_id = $3,
+            archived = $4,
+            trashed = $5,
+            deleted_at = $6,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $7 AND user_id = $8
+      `, [
+        title ?? existing.title,
+        content ?? existing.content,
+        color_id || existing.color_id || 1,
+        typeof archived === 'boolean' ? normalizeBoolean(archived) : existing.archived,
+        normalizeBoolean(shouldTrash),
+        shouldTrash ? (existing.deleted_at || new Date().toISOString()) : null,
+        req.params.id,
+        req.user.id
+      ]);
+
+      if (Array.isArray(checklist)) await syncChecklist(existing.id, checklist, tx);
+      if (Array.isArray(labels)) await syncLabels(existing.id, req.user.id, labels, tx);
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'reminder_at')) await syncReminder(existing.id, reminder_at || null, tx);
+      if (typeof is_favorite === 'boolean') await setFavorite(existing.id, req.user.id, is_favorite, tx);
+      if (typeof is_pinned === 'boolean') await setPinned(existing.id, req.user.id, is_pinned, tx);
+    });
+
+    await logAction({ user: req.user, action: 'update_note', recordType: 'note', recordId: req.params.id });
+
+    const freshNote = await getNoteById(req.params.id, req.user.id);
+    const hydrated = await hydrateNotes([freshNote]);
+    res.json(hydrated[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/:id/archive', (req, res) => {
-  const note = db.prepare('SELECT id, archived FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
+router.post('/:id/reorder', async (req, res) => {
+  try {
+    const { position } = req.body || {};
+    const own = await db.queryOne('SELECT id FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!own) return res.status(404).json({ error: 'Nota não encontrada.' });
 
-  const enabled = typeof req.body?.enabled === 'boolean' ? req.body.enabled : !note.archived;
-  db.prepare('UPDATE notes SET archived = ?, updated_at = datetime(\'now\') WHERE id = ? AND user_id = ?')
-    .run(enabled ? 1 : 0, req.params.id, req.user.id);
-
-  const hydrated = hydrateNotes([getNoteById(req.params.id, req.user.id)])[0];
-  res.json(hydrated);
+    await db.execute('UPDATE notes SET position = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3', [
+      Number(position || Date.now()), req.params.id, req.user.id
+    ]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/:id', (req, res) => {
-  const force = String(req.query.force || '') === 'true';
-  const existing = db.prepare('SELECT * FROM notes WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-  if (!existing) return res.status(404).json({ error: 'Nota não encontrada.' });
+router.post('/reorder', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ error: 'Lista de IDs inválida.' });
 
-  if (!force) {
-    db.prepare(`
+    await db.transaction(async (tx) => {
+      const base = Date.now();
+      for (let index = 0; index < ids.length; index++) {
+        await tx.execute('UPDATE notes SET position = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3', [
+          base - index, ids[index], req.user.id
+        ]);
+      }
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/attachments', upload.array('files', 10), async (req, res) => {
+  try {
+    const note = await db.queryOne('SELECT id FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!note) {
+      (req.files || []).forEach((file) => {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      });
+      return res.status(404).json({ error: 'Nota não encontrada.' });
+    }
+
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+
+    const insertedIds = [];
+    for (const file of files) {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isImage = (file.mimetype || '').startsWith('image/');
+      const isAllowedFile = ALLOWED_FILE_MIME.has(file.mimetype) || ALLOWED_FILE_EXT.has(ext);
+
+      if (!isImage && !isAllowedFile) {
+        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        continue;
+      }
+
+      const info = await db.execute(`
+        INSERT INTO note_attachments (note_id, file_type, original_name, stored_name, mime_type, file_size)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+      `, [
+        req.params.id,
+        isImage ? 'image' : 'file',
+        file.originalname,
+        path.basename(file.filename),
+        file.mimetype,
+        file.size
+      ]);
+      insertedIds.push(info.id);
+    }
+
+    await db.execute('UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+
+    if (!insertedIds.length) {
+      return res.status(400).json({ error: 'Nenhum arquivo com formato permitido foi enviado.' });
+    }
+
+    const placeholders = insertedIds.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await db.query(`
+      SELECT * FROM note_attachments WHERE id IN (${placeholders}) ORDER BY id DESC
+    `, ...insertedIds);
+
+    res.status(201).json(rows.map((row) => ({
+      id: row.id,
+      note_id: row.note_id,
+      file_type: row.file_type,
+      original_name: row.original_name,
+      mime_type: row.mime_type,
+      file_size: row.file_size,
+      created_at: row.created_at,
+      url: `/api/notes/attachments/${row.id}`
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:noteId/attachments/:attachmentId', async (req, res) => {
+  try {
+    const row = await db.queryOne(`
+      SELECT a.*
+      FROM note_attachments a
+      JOIN notes n ON n.id = a.note_id
+      WHERE a.id = $1 AND a.note_id = $2 AND n.user_id = $3
+    `, [req.params.attachmentId, req.params.noteId, req.user.id]);
+
+    if (!row) return res.status(404).json({ error: 'Anexo não encontrado.' });
+
+    await db.execute('DELETE FROM note_attachments WHERE id = $1', [row.id]);
+    await db.execute('UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2', [req.params.noteId, req.user.id]);
+
+    const fullPath = path.join(UPLOAD_ROOT, row.stored_name);
+    if (fs.existsSync(fullPath)) {
+      try { fs.unlinkSync(fullPath); } catch (_err) {}
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/restore', async (req, res) => {
+  try {
+    const note = await db.queryOne('SELECT id FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
+
+    await db.execute(`
       UPDATE notes
-      SET trashed = 1, deleted_at = COALESCE(deleted_at, datetime('now')), updated_at = datetime('now')
-      WHERE id = ? AND user_id = ?
-    `).run(req.params.id, req.user.id);
+      SET trashed = 0, deleted_at = NULL, archived = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND user_id = $2
+    `, [req.params.id, req.user.id]);
 
-    logAction({ user: req.user, action: 'trash_note', recordType: 'note', recordId: req.params.id });
-    return res.json({ success: true, moved_to_trash: true });
+    const freshNote = await getNoteById(req.params.id, req.user.id);
+    const hydrated = await hydrateNotes([freshNote]);
+    res.json(hydrated[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+});
 
-  removeNoteFiles(existing.id);
-  db.prepare('DELETE FROM notes WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+router.post('/:id/favorite', async (req, res) => {
+  try {
+    const note = await db.queryOne('SELECT id FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
 
-  logAction({ user: req.user, action: 'delete_note_permanently', recordType: 'note', recordId: req.params.id });
-  return res.json({ success: true, moved_to_trash: false });
+    const existingFav = await db.queryOne('SELECT id FROM favorite_notes WHERE note_id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    const enabled = typeof req.body?.enabled === 'boolean'
+      ? req.body.enabled
+      : !existingFav;
+
+    await setFavorite(req.params.id, req.user.id, enabled);
+    await db.execute('UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+
+    const freshNote = await getNoteById(req.params.id, req.user.id);
+    const hydrated = await hydrateNotes([freshNote]);
+    res.json(hydrated[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/pin', async (req, res) => {
+  try {
+    const note = await db.queryOne('SELECT id FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
+
+    const existingPinned = await db.queryOne('SELECT id FROM pinned_notes WHERE note_id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    const enabled = typeof req.body?.enabled === 'boolean'
+      ? req.body.enabled
+      : !existingPinned;
+
+    await setPinned(req.params.id, req.user.id, enabled);
+    await db.execute('UPDATE notes SET updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+
+    const freshNote = await getNoteById(req.params.id, req.user.id);
+    const hydrated = await hydrateNotes([freshNote]);
+    res.json(hydrated[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/archive', async (req, res) => {
+  try {
+    const note = await db.queryOne('SELECT id, archived FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!note) return res.status(404).json({ error: 'Nota não encontrada.' });
+
+    const enabled = typeof req.body?.enabled === 'boolean' ? req.body.enabled : !note.archived;
+    await db.execute('UPDATE notes SET archived = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND user_id = $3', [
+      enabled ? 1 : 0, req.params.id, req.user.id
+    ]);
+
+    const freshNote = await getNoteById(req.params.id, req.user.id);
+    const hydrated = await hydrateNotes([freshNote]);
+    res.json(hydrated[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    const force = String(req.query.force || '') === 'true';
+    const existing = await db.queryOne('SELECT * FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!existing) return res.status(404).json({ error: 'Nota não encontrada.' });
+
+    if (!force) {
+      await db.execute(`
+        UPDATE notes
+        SET trashed = 1, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND user_id = $2
+      `, [req.params.id, req.user.id]);
+
+      await logAction({ user: req.user, action: 'trash_note', recordType: 'note', recordId: req.params.id });
+      return res.json({ success: true, moved_to_trash: true });
+    }
+
+    await removeNoteFiles(existing.id);
+    await db.execute('DELETE FROM notes WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+
+    await logAction({ user: req.user, action: 'delete_note_permanently', recordType: 'note', recordId: req.params.id });
+    return res.json({ success: true, moved_to_trash: false });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

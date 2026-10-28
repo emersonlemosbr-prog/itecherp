@@ -13,20 +13,22 @@ const { ensureFinancialHistoryUpToDate } = require('../utils/financialHistory');
 const { getStorageService } = require('../services/storage');
 const { normalizePartDetails, recordOnDelivery } = require('../services/serviceOrderPartWithdrawal');
 const { encryptDevicePassword, decryptDevicePassword } = require('../utils/deviceCrypto');
+const { readSettings } = require('../services/settings');
+const { generateTracking } = require('../services/publicTracking');
 
 const cloudPhotos = require('../services/cloudinaryPhotos');
 const router = express.Router();
 router.use(authenticate);
 
-router.post('/:id/tracking', (req, res, next) => {
+router.post('/:id/tracking', async (req, res, next) => {
   const storeId = req.user.store_id || 1;
   res.set('Cache-Control', 'no-store');
   if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error: 'OS inválida.' });
   try {
-    const order = db.prepare('SELECT id FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
+    const order = await db.queryOne('SELECT id FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
     if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
-    const result = require('../services/publicTracking').generateTracking(db, req.params.id);
+    const result = await generateTracking(db, req.params.id);
     if (!result) return res.status(404).json({ error: 'Ordem de serviço não encontrada.' });
     res.json(result);
   } catch (error) { next(error); }
@@ -85,47 +87,47 @@ function computePaymentStatus(payment_method) {
 }
 
 // Cria/atualiza a garantia e a conta de fiado de acordo com o estado atual da OS
-function syncSideEffects(order, trustedNow) {
+async function syncSideEffects(order, trustedNow, client = db) {
   const storeId = order.store_id || 1;
 
   // Fiado
-  const existingCredit = db.prepare('SELECT * FROM credit_accounts WHERE service_order_id = ? AND store_id = ?').get(order.id, storeId);
+  const existingCredit = await client.queryOne('SELECT * FROM credit_accounts WHERE service_order_id = $1 AND store_id = $2', [order.id, storeId]);
   if (order.payment_status === 'credit_account') {
     if (!existingCredit) {
-      db.prepare(`
+      await client.execute(`
         INSERT INTO credit_accounts (store_id, customer_id, service_order_id, description, amount, pickup_date, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'open', ?)
-      `).run(storeId, order.customer_id, order.id, order.description, order.service_price, order.delivery_date, trustedNow);
+        VALUES ($1, $2, $3, $4, $5, $6, 'open', $7)
+      `, [storeId, order.customer_id, order.id, order.description, order.service_price, order.delivery_date, trustedNow]);
     } else if (existingCredit.status === 'open') {
-      db.prepare(`
+      await client.execute(`
         UPDATE credit_accounts
-        SET customer_id = ?, description = ?, amount = ?, pickup_date = ?
-        WHERE id = ? AND store_id = ?
-      `).run(order.customer_id, order.description, order.service_price, order.delivery_date, existingCredit.id, storeId);
+        SET customer_id = $1, description = $2, amount = $3, pickup_date = $4
+        WHERE id = $5 AND store_id = $6
+      `, [order.customer_id, order.description, order.service_price, order.delivery_date, existingCredit.id, storeId]);
     }
   } else if (existingCredit && existingCredit.status === 'open') {
-    db.prepare('DELETE FROM credit_accounts WHERE id = ? AND store_id = ?').run(existingCredit.id, storeId);
+    await client.execute('DELETE FROM credit_accounts WHERE id = $1 AND store_id = $2', [existingCredit.id, storeId]);
   }
 
   // Garantia: gerada quando a OS é entregue (delivered) e não foi "não realizado"
-  const existingWarranty = db.prepare('SELECT * FROM warranties WHERE service_order_id = ? AND store_id = ?').get(order.id, storeId);
+  const existingWarranty = await client.queryOne('SELECT * FROM warranties WHERE service_order_id = $1 AND store_id = $2', [order.id, storeId]);
   if (order.status === 'delivered' && order.payment_status !== 'not_performed') {
     const start = order.delivery_date || new Date().toISOString().slice(0, 10);
     const end = new Date(new Date(start).getTime() + (order.warranty_days || 90) * 86400000)
       .toISOString().slice(0, 10);
 
     if (!existingWarranty) {
-      db.prepare(`
+      await client.execute(`
         INSERT INTO warranties (store_id, service_order_id, customer_id, pickup_date, warranty_start, warranty_end, brand, model, amount_paid, description, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(storeId, order.id, order.customer_id, order.delivery_date, start, end, order.brand, order.model, order.service_price, order.description, trustedNow);
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `, [storeId, order.id, order.customer_id, order.delivery_date, start, end, order.brand, order.model, order.service_price, order.description, trustedNow]);
     } else {
-      db.prepare(`
+      await client.execute(`
         UPDATE warranties
-        SET customer_id = ?, pickup_date = ?, warranty_start = ?, warranty_end = ?,
-            brand = ?, model = ?, amount_paid = ?, description = ?
-        WHERE id = ? AND store_id = ?
-      `).run(
+        SET customer_id = $1, pickup_date = $2, warranty_start = $3, warranty_end = $4,
+            brand = $5, model = $6, amount_paid = $7, description = $8
+        WHERE id = $9 AND store_id = $10
+      `, [
         order.customer_id,
         order.delivery_date,
         start,
@@ -136,91 +138,114 @@ function syncSideEffects(order, trustedNow) {
         order.description,
         existingWarranty.id,
         storeId
-      );
+      ]);
     }
   } else if (existingWarranty) {
-    db.prepare('DELETE FROM warranties WHERE id = ? AND store_id = ?').run(existingWarranty.id, storeId);
+    await client.execute('DELETE FROM warranties WHERE id = $1 AND store_id = $2', [existingWarranty.id, storeId]);
   }
 }
 
-router.get('/', (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const { q, status, payment_status } = req.query;
-  let sql = `
-    SELECT so.*, COALESCE(so.customer_name_snapshot, c.first_name) AS first_name,
-      CASE WHEN so.customer_name_snapshot IS NOT NULL THEN '' ELSE c.last_name END AS last_name,
-      COALESCE(so.customer_phone_snapshot, c.phone) AS phone
-    FROM service_orders so
-    JOIN customers c ON c.id = so.customer_id
-    WHERE so.store_id = ?
-  `;
+router.get('/', async (req, res, next) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const { q, status, payment_status } = req.query;
+    let sql = `
+      SELECT so.*, COALESCE(so.customer_name_snapshot, c.first_name) AS first_name,
+        CASE WHEN so.customer_name_snapshot IS NOT NULL THEN '' ELSE c.last_name END AS last_name,
+        COALESCE(so.customer_phone_snapshot, c.phone) AS phone
+      FROM service_orders so
+      JOIN customers c ON c.id = so.customer_id
+      WHERE so.store_id = $1
+    `;
 
-  const params = [storeId];
-  if (q) {
-    sql += ` AND (so.order_number LIKE ? OR c.first_name LIKE ? OR c.last_name LIKE ? OR so.customer_name_snapshot LIKE ? OR so.brand LIKE ? OR so.model LIKE ?)`;
-    const like = `%${q}%`;
-    params.push(like, like, like, like, like, like);
+    const params = [storeId];
+    let paramIndex = 2;
+
+    if (q) {
+      sql += ` AND (so.order_number ILIKE $${paramIndex} OR c.first_name ILIKE $${paramIndex} OR c.last_name ILIKE $${paramIndex} OR so.customer_name_snapshot ILIKE $${paramIndex} OR so.brand ILIKE $${paramIndex} OR so.model ILIKE $${paramIndex})`;
+      params.push(`%${q}%`);
+      paramIndex++;
+    }
+    if (status) {
+      sql += ` AND so.status = $${paramIndex++}`;
+      params.push(status);
+    }
+    if (payment_status) {
+      sql += ` AND so.payment_status = $${paramIndex++}`;
+      params.push(payment_status);
+    }
+    sql += ' ORDER BY so.entry_date DESC, so.id DESC LIMIT 300';
+
+    const rows = await db.query(sql, ...params);
+    const orders = rows.map((row) => {
+      const { unlock_password, ...safeRow } = row;
+      return safeRow;
+    });
+    res.json(orders);
+  } catch (error) {
+    next(error);
   }
-  if (status) { sql += ' AND so.status = ?'; params.push(status); }
-  if (payment_status) { sql += ' AND so.payment_status = ?'; params.push(payment_status); }
-  sql += ' ORDER BY so.entry_date DESC, so.id DESC LIMIT 300';
-
-  const orders = db.prepare(sql).all(...params).map((row) => {
-    // Não expõe senhas em consultas de listagem
-    const { unlock_password, ...safeRow } = row;
-    return safeRow;
-  });
-  res.json(orders);
 });
 
-router.get('/:id', (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const order = db.prepare(`
-    SELECT so.*, COALESCE(so.customer_name_snapshot, c.first_name) AS first_name,
-      CASE WHEN so.customer_name_snapshot IS NOT NULL THEN '' ELSE c.last_name END AS last_name,
-      COALESCE(so.customer_phone_snapshot, c.phone) AS phone,
-      COALESCE(so.customer_address_snapshot, c.address) AS address,
-      COALESCE(so.supplier_name_snapshot, s.name) AS supplier_name,
-      (SELECT w.id FROM cash_withdrawals w WHERE w.service_order_id = so.id AND w.source_type = 'service_order_part' AND w.store_id = so.store_id) AS part_withdrawal_id
-    FROM service_orders so
-    JOIN customers c ON c.id = so.customer_id
-    LEFT JOIN stock_suppliers s ON s.id = so.supplier_id
-    WHERE so.id = ? AND so.store_id = ?
-  `).get(req.params.id, storeId);
+router.get('/:id', async (req, res, next) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const order = await db.queryOne(`
+      SELECT so.*, COALESCE(so.customer_name_snapshot, c.first_name) AS first_name,
+        CASE WHEN so.customer_name_snapshot IS NOT NULL THEN '' ELSE c.last_name END AS last_name,
+        COALESCE(so.customer_phone_snapshot, c.phone) AS phone,
+        COALESCE(so.customer_address_snapshot, c.address) AS address,
+        COALESCE(so.supplier_name_snapshot, s.name) AS supplier_name,
+        (SELECT w.id FROM cash_withdrawals w WHERE w.service_order_id = so.id AND w.source_type = 'service_order_part' AND w.store_id = so.store_id) AS part_withdrawal_id
+      FROM service_orders so
+      JOIN customers c ON c.id = so.customer_id
+      LEFT JOIN stock_suppliers s ON s.id = so.supplier_id
+      WHERE so.id = $1 AND so.store_id = $2
+    `, [req.params.id, storeId]);
 
-  if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
-  res.json({
-    ...order,
-    unlock_password: decryptDevicePassword(order.unlock_password),
-    photos: db.prepare('SELECT * FROM service_order_photos WHERE service_order_id = ? ORDER BY id').all(order.id).map(serializePhoto)
-  });
+    if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
+
+    const photoRows = await db.query('SELECT * FROM service_order_photos WHERE service_order_id = $1 ORDER BY id', [order.id]);
+
+    res.json({
+      ...order,
+      unlock_password: decryptDevicePassword(order.unlock_password),
+      photos: photoRows.map(serializePhoto)
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.get('/:id/photos', (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const order = db.prepare('SELECT id, order_number FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
-  if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
+router.get('/:id/photos', async (req, res, next) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const order = await db.queryOne('SELECT id, order_number FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
-  const rows = db.prepare(`
-    SELECT sp.*, COALESCE(sp.created_by_name_snapshot, u.full_name) AS created_by_name
-    FROM service_order_photos sp
-    LEFT JOIN users u ON u.id = sp.created_by
-    WHERE sp.service_order_id = ?
-    ORDER BY sp.created_at ASC, sp.id ASC
-  `).all(req.params.id);
+    const rows = await db.query(`
+      SELECT sp.*, COALESCE(sp.created_by_name_snapshot, u.full_name) AS created_by_name
+      FROM service_order_photos sp
+      LEFT JOIN users u ON u.id = sp.created_by
+      WHERE sp.service_order_id = $1
+      ORDER BY sp.created_at ASC, sp.id ASC
+    `, [req.params.id]);
 
-  res.json(rows.map((row) => serializePhoto(row, { full_name: row.created_by_name })));
+    res.json(rows.map((row) => serializePhoto(row, { full_name: row.created_by_name })));
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('/:id/photos/:photoId', async (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const order = db.prepare('SELECT id FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
-  if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
-
-  const photo = db.prepare('SELECT * FROM service_order_photos WHERE id = ? AND service_order_id = ?').get(req.params.photoId, req.params.id);
-  if (!photo) return res.status(404).json({ error: 'Foto não encontrada.' });
-
   try {
+    const storeId = req.user.store_id || 1;
+    const order = await db.queryOne('SELECT id FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
+
+    const photo = await db.queryOne('SELECT * FROM service_order_photos WHERE id = $1 AND service_order_id = $2', [req.params.photoId, req.params.id]);
+    if (!photo) return res.status(404).json({ error: 'Foto não encontrada.' });
+
     if (photo.url) return res.redirect(photo.url);
     const storage = getStorageService();
     const item = await storage.read(photo.storage_key);
@@ -234,25 +259,30 @@ router.get('/:id/photos/:photoId', async (req, res) => {
 });
 
 router.get('/:id/photos/:photoId/url', async (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const order = db.prepare('SELECT id FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
-  if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
+  try {
+    const storeId = req.user.store_id || 1;
+    const order = await db.queryOne('SELECT id FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
-  const photo = db.prepare('SELECT * FROM service_order_photos WHERE id = ? AND service_order_id = ?').get(req.params.photoId, req.params.id);
-  if (!photo) return res.status(404).json({ error: 'Foto não encontrada.' });
+    const photo = await db.queryOne('SELECT * FROM service_order_photos WHERE id = $1 AND service_order_id = $2', [req.params.photoId, req.params.id]);
+    if (!photo) return res.status(404).json({ error: 'Foto não encontrada.' });
 
-  res.json({ url: photo.url || null });
+    res.json({ url: photo.url || null });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.post('/:id/photos', (req, res, next) => upload.array('photos', MAX_PHOTOS)(req, res, (error) => error ? res.status(400).json({ error: 'Envie até ' + MAX_PHOTOS + ' imagens JPG, PNG ou WebP, com até 10 MB cada.' }) : next()), async (req, res) => {
   const storeId = req.user.store_id || 1;
-  const order = db.prepare('SELECT id, order_number FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
+  const order = await db.queryOne('SELECT id, order_number FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
   if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
   const files = Array.isArray(req.files) ? req.files : [];
   if (!files.length) return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
 
-  const currentCount = db.prepare('SELECT COUNT(*) AS total FROM service_order_photos WHERE service_order_id = ?').get(req.params.id).total;
+  const countRow = await db.queryOne('SELECT COUNT(*) AS total FROM service_order_photos WHERE service_order_id = $1', [req.params.id]);
+  const currentCount = parseInt(countRow?.total || 0, 10);
   if (currentCount + files.length > MAX_PHOTOS) {
     return res.status(400).json({ error: `Limite de ${MAX_PHOTOS} fotos atingido.` });
   }
@@ -268,29 +298,6 @@ router.post('/:id/photos', (req, res, next) => upload.array('photos', MAX_PHOTOS
   const uploaded = [];
   const inserted = [];
   let committed = false;
-  const tx = db.transaction((rows) => {
-    const count = db.prepare('SELECT COUNT(*) AS total FROM service_order_photos WHERE service_order_id = ?').get(req.params.id).total;
-    if (count + rows.length > MAX_PHOTOS) throw new Error('Limite de fotos atingido.');
-    rows.forEach((row) => {
-      const info = db.prepare(`
-        INSERT INTO service_order_photos (
-          service_order_id, storage_key, url, public_id, original_name, mime_type, file_size, photo_type, description, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      `).run(
-        req.params.id,
-        row.storage_key,
-        row.url,
-        row.public_id,
-        row.original_name,
-        row.mime_type,
-        row.file_size,
-        row.photo_type,
-        row.description,
-        req.user.id
-      );
-      inserted.push({ id: info.lastInsertRowid, ...row });
-    });
-  });
 
   try {
     const rowsToSave = [];
@@ -320,7 +327,33 @@ router.post('/:id/photos', (req, res, next) => upload.array('photos', MAX_PHOTOS
       });
     }
 
-    tx(rowsToSave);
+    await db.transaction(async (tx) => {
+      const checkCountRow = await tx.queryOne('SELECT COUNT(*) AS total FROM service_order_photos WHERE service_order_id = $1', [req.params.id]);
+      if (parseInt(checkCountRow?.total || 0, 10) + rowsToSave.length > MAX_PHOTOS) {
+        throw new Error('Limite de fotos atingido.');
+      }
+      for (const row of rowsToSave) {
+        const info = await tx.execute(`
+          INSERT INTO service_order_photos (
+            service_order_id, storage_key, url, public_id, original_name, mime_type, file_size, photo_type, description, created_by, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+          RETURNING id
+        `, [
+          req.params.id,
+          row.storage_key,
+          row.url,
+          row.public_id,
+          row.original_name,
+          row.mime_type,
+          row.file_size,
+          row.photo_type,
+          row.description,
+          req.user.id
+        ]);
+        inserted.push({ id: info.id, ...row });
+      }
+    });
+
     committed = true;
     res.status(201).json(inserted.map((row) => serializePhoto({
       ...row,
@@ -330,27 +363,31 @@ router.post('/:id/photos', (req, res, next) => upload.array('photos', MAX_PHOTOS
     }, req.user)));
   } catch (error) {
     if (!committed) await Promise.allSettled(uploaded.map((publicId) => cloudPhotos.delete(publicId)));
-    console.error('[SERVICE_ORDER_PHOTO_UPLOAD_FAILED]');
+    console.error('[SERVICE_ORDER_PHOTO_UPLOAD_FAILED]', error.message);
     res.status(400).json({ error: error.message || 'Falha ao enviar foto.' });
   }
 });
 
 router.delete('/:id/photos/:photoId', async (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const order = db.prepare('SELECT id FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
-  if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
-
-  const photo = db.prepare('SELECT * FROM service_order_photos WHERE id = ? AND service_order_id = ?').get(req.params.photoId, req.params.id);
-  if (!photo) return res.status(404).json({ error: 'Foto não encontrada.' });
-
   try {
-    const deleted = photo.public_id ? await cloudPhotos.delete(photo.public_id) : await getStorageService().delete(photo.storage_key);
-    if (!deleted) return res.status(502).json({ error: 'Não foi possível remover o arquivo. O registro foi preservado.' });
-  } catch (_) { return res.status(502).json({ error: 'Falha ao excluir no armazenamento. Tente novamente.' }); }
+    const storeId = req.user.store_id || 1;
+    const order = await db.queryOne('SELECT id FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (!order) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
-  db.prepare('DELETE FROM service_order_photos WHERE id = ?').run(photo.id);
-  logAction({ user: req.user, action: 'delete_service_order_photo', recordType: 'service_order_photo', recordId: photo.id, details: { service_order_id: req.params.id, storage_key: photo.storage_key } });
-  res.json({ success: true });
+    const photo = await db.queryOne('SELECT * FROM service_order_photos WHERE id = $1 AND service_order_id = $2', [req.params.photoId, req.params.id]);
+    if (!photo) return res.status(404).json({ error: 'Foto não encontrada.' });
+
+    try {
+      const deleted = photo.public_id ? await cloudPhotos.delete(photo.public_id) : await getStorageService().delete(photo.storage_key);
+      if (!deleted) return res.status(502).json({ error: 'Não foi possível remover o arquivo. O registro foi preservado.' });
+    } catch (_) { return res.status(502).json({ error: 'Falha ao excluir no armazenamento. Tente novamente.' }); }
+
+    await db.execute('DELETE FROM service_order_photos WHERE id = $1', [photo.id]);
+    await logAction({ user: req.user, action: 'delete_service_order_photo', recordType: 'service_order_photo', recordId: photo.id, details: { service_order_id: req.params.id, storage_key: photo.storage_key } });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/', async (req, res, next) => {
@@ -362,18 +399,17 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'Cliente e data de entrada são obrigatórios.' });
     }
 
-    // Validar se o cliente pertence a esta loja
-    const customer = db.prepare('SELECT id FROM customers WHERE id = ? AND (store_id = ? OR store_id IS NULL)').get(b.customer_id, storeId);
+    const customer = await db.queryOne('SELECT id FROM customers WHERE id = $1 AND (store_id = $2 OR store_id IS NULL)', [b.customer_id, storeId]);
     if (!customer) return res.status(404).json({ error: 'Cliente não encontrado nesta loja.' });
 
     const service_price = Number(b.service_price) || 0;
-    const { partsCost: parts_cost, supplierId: supplier_id } = normalizePartDetails(db, b.parts_cost, b.supplier_id);
+    const { partsCost: parts_cost, supplierId: supplier_id } = await normalizePartDetails(db, b.parts_cost, b.supplier_id);
     const additional_costs = Number(b.additional_costs) || 0;
     const profit = service_price - parts_cost - additional_costs;
     const payment_method = b.payment_method || 'pending';
     const payment_status = computePaymentStatus(payment_method);
-    const order_number = nextOrderNumber(storeId);
-    const settings = require('../services/settings').readSettings(storeId);
+    const order_number = await nextOrderNumber(storeId);
+    const settings = await readSettings(storeId);
 
     const unlock_type = ['none', 'pin', 'password', 'pattern'].includes(b.unlock_type) ? b.unlock_type : 'none';
     let unlock_password = null;
@@ -396,33 +432,35 @@ router.post('/', async (req, res, next) => {
       ? (typeof b.accessories_json === 'object' ? JSON.stringify(b.accessories_json) : String(b.accessories_json))
       : null;
 
-    const { order, withdrawalId } = db.transaction(() => {
-      const info = db.prepare(`
+    const { order, withdrawalId } = await db.transaction(async (tx) => {
+      const info = await tx.execute(`
         INSERT INTO service_orders (
           store_id, order_number, customer_id, brand, model, imei1, imei2, entry_date, expected_delivery_date,
           delivery_date, description, notes, service_price, parts_cost, supplier_id, additional_costs, profit,
           payment_method, payment_status, status, warranty_days,
           unlock_type, unlock_password, unlock_pattern, device_condition, battery_health, checklist_notes, checklist_json, accessories_json,
           created_by, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-      `).run(
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+        RETURNING id
+      `, [
         storeId, order_number, b.customer_id, b.brand || null, b.model || null, b.imei1 || null, b.imei2 || null,
         b.entry_date, b.expected_delivery_date || null, b.delivery_date || (b.status === 'delivered' ? trustedNow.slice(0, 10) : null), b.description || null,
         b.notes || null, service_price, parts_cost, supplier_id, additional_costs, profit,
         payment_method, payment_status, b.status || 'received', b.warranty_days ?? settings.documents.warranty_days,
         unlock_type, unlock_password, unlock_pattern, device_condition, battery_health, checklist_notes, checklist_json, accessories_json,
         req.user.id, trustedNow, trustedNow
-      );
+      ]);
 
-      const order = db.prepare('SELECT * FROM service_orders WHERE id = ? AND store_id = ?').get(info.lastInsertRowid, storeId);
-      syncSideEffects(order, trustedNow);
-      const withdrawalId = recordOnDelivery(db, null, order, trustedNow, req.user.id);
-      return { order, withdrawalId };
-    })();
+      const createdOrder = await tx.queryOne('SELECT * FROM service_orders WHERE id = $1 AND store_id = $2', [info.id, storeId]);
+      await syncSideEffects(createdOrder, trustedNow, tx);
+      const partWithdrawalId = await recordOnDelivery(tx, null, createdOrder, trustedNow, req.user.id);
+      return { order: createdOrder, withdrawalId: partWithdrawalId };
+    });
+
     await ensureFinancialHistoryUpToDate(trustedNow, storeId);
 
-    logAction({ user: req.user, action: 'create_service_order', recordType: 'service_order', recordId: order.id, details: { order_number } });
-    if (withdrawalId) logAction({ user: req.user, action: 'sync_cash_withdrawal_from_service_order', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { service_order_id: order.id } });
+    await logAction({ user: req.user, action: 'create_service_order', recordType: 'service_order', recordId: order.id, details: { order_number } });
+    if (withdrawalId) await logAction({ user: req.user, action: 'sync_cash_withdrawal_from_service_order', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { service_order_id: order.id } });
     emitDashboardRefresh({ source: 'service_order_create', orderId: order.id, orderNumber: order.order_number });
     res.status(201).json({
       ...order,
@@ -437,7 +475,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
-    const existing = db.prepare('SELECT * FROM service_orders WHERE id = ? AND (store_id = ? OR store_id IS NULL)').get(req.params.id, storeId);
+    const existing = await db.queryOne('SELECT * FROM service_orders WHERE id = $1 AND (store_id = $2 OR store_id IS NULL)', [req.params.id, storeId]);
     if (!existing) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
     const b = req.body;
@@ -445,8 +483,8 @@ router.put('/:id', async (req, res, next) => {
     const nextStatus = b.status ?? existing.status;
     const proposedPartsCost = b.parts_cost !== undefined ? b.parts_cost : existing.parts_cost;
     const proposedSupplierId = b.supplier_id !== undefined ? b.supplier_id : existing.supplier_id;
-    const { partsCost: parts_cost, supplierId: supplier_id } = normalizePartDetails(db, proposedPartsCost, proposedSupplierId);
-    const existingPartWithdrawal = db.prepare("SELECT id FROM cash_withdrawals WHERE service_order_id = ? AND source_type = 'service_order_part' AND (store_id = ? OR store_id IS NULL)").get(existing.id, storeId);
+    const { partsCost: parts_cost, supplierId: supplier_id } = await normalizePartDetails(db, proposedPartsCost, proposedSupplierId);
+    const existingPartWithdrawal = await db.queryOne("SELECT id FROM cash_withdrawals WHERE service_order_id = $1 AND source_type = 'service_order_part' AND (store_id = $2 OR store_id IS NULL)", [existing.id, storeId]);
     if (existingPartWithdrawal && b.delivery_date !== undefined && (b.delivery_date || null) !== (existing.delivery_date || null)) {
       return res.status(409).json({ error: 'A data de entrega não pode ser alterada após a retirada automática.' });
     }
@@ -503,16 +541,16 @@ router.put('/:id', async (req, res, next) => {
       ? (b.accessories_json ? (typeof b.accessories_json === 'object' ? JSON.stringify(b.accessories_json) : String(b.accessories_json)) : null)
       : existing.accessories_json;
 
-    const { order, withdrawalId } = db.transaction(() => {
-      db.prepare(`
+    const { order, withdrawalId } = await db.transaction(async (tx) => {
+      await tx.execute(`
         UPDATE service_orders SET
-          brand=?, model=?, imei1=?, imei2=?, entry_date=?, expected_delivery_date=?, delivery_date=?,
-          description=?, notes=?, service_price=?, parts_cost=?, supplier_id=?, additional_costs=?, profit=?,
-          payment_method=?, payment_status=?, status=?, warranty_days=?,
-          unlock_type=?, unlock_password=?, unlock_pattern=?, device_condition=?, battery_health=?, checklist_notes=?, checklist_json=?, accessories_json=?,
-          updated_at=?
-        WHERE id=? AND (store_id=? OR store_id IS NULL)
-      `).run(
+          brand=$1, model=$2, imei1=$3, imei2=$4, entry_date=$5, expected_delivery_date=$6, delivery_date=$7,
+          description=$8, notes=$9, service_price=$10, parts_cost=$11, supplier_id=$12, additional_costs=$13, profit=$14,
+          payment_method=$15, payment_status=$16, status=$17, warranty_days=$18,
+          unlock_type=$19, unlock_password=$20, unlock_pattern=$21, device_condition=$22, battery_health=$23, checklist_notes=$24, checklist_json=$25, accessories_json=$26,
+          updated_at=$27
+        WHERE id=$28 AND (store_id=$29 OR store_id IS NULL)
+      `, [
         b.brand ?? existing.brand, b.model ?? existing.model, b.imei1 ?? existing.imei1, b.imei2 ?? existing.imei2,
         b.entry_date ?? existing.entry_date, b.expected_delivery_date ?? existing.expected_delivery_date,
         deliveryDate, b.description ?? existing.description, b.notes ?? existing.notes,
@@ -520,22 +558,25 @@ router.put('/:id', async (req, res, next) => {
         nextStatus, b.warranty_days ?? existing.warranty_days,
         unlock_type, unlock_password, unlock_pattern, device_condition, battery_health, checklist_notes, checklist_json, accessories_json,
         trustedNow, req.params.id, storeId
-      );
-      const order = db.prepare('SELECT * FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
-      syncSideEffects(order, trustedNow);
-      const withdrawalId = recordOnDelivery(db, existing.status, order, trustedNow, req.user.id);
-      return { order, withdrawalId };
-    })();
+      ]);
+      const updatedOrder = await tx.queryOne('SELECT * FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+      await syncSideEffects(updatedOrder, trustedNow, tx);
+      const partWithdrawalId = await recordOnDelivery(tx, existing.status, updatedOrder, trustedNow, req.user.id);
+      return { order: updatedOrder, withdrawalId: partWithdrawalId };
+    });
+
     await ensureFinancialHistoryUpToDate(trustedNow, storeId);
 
-    logAction({ user: req.user, action: 'update_service_order', recordType: 'service_order', recordId: order.id, details: { status: order.status } });
-    if (withdrawalId) logAction({ user: req.user, action: 'sync_cash_withdrawal_from_service_order', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { service_order_id: order.id } });
+    await logAction({ user: req.user, action: 'update_service_order', recordType: 'service_order', recordId: order.id, details: { status: order.status } });
+    if (withdrawalId) await logAction({ user: req.user, action: 'sync_cash_withdrawal_from_service_order', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { service_order_id: order.id } });
     emitDashboardRefresh({ source: 'service_order_update', orderId: order.id, orderNumber: order.order_number });
+
+    const photoRows = await db.query('SELECT * FROM service_order_photos WHERE service_order_id = $1 ORDER BY id', [order.id]);
     res.json({
       ...order,
       unlock_password: decryptDevicePassword(order.unlock_password),
       part_withdrawal_id: withdrawalId || null,
-      photos: db.prepare('SELECT * FROM service_order_photos WHERE service_order_id = ? ORDER BY id').all(order.id).map(serializePhoto)
+      photos: photoRows.map(serializePhoto)
     });
   } catch (error) {
     next(error);
@@ -543,31 +584,39 @@ router.put('/:id', async (req, res, next) => {
 });
 
 router.delete('/:id', requireRole('admin'), async (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const existing = db.prepare('SELECT id, order_number FROM service_orders WHERE id = ? AND store_id = ?').get(req.params.id, storeId);
-  if (!existing) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
-  if (db.prepare("SELECT id FROM cash_withdrawals WHERE service_order_id = ? AND source_type = 'service_order_part' AND store_id = ?").get(req.params.id, storeId)) {
-    return res.status(409).json({ error: 'Esta OS possui uma retirada automática de peça e não pode ser excluída.' });
-  }
+  try {
+    const storeId = req.user.store_id || 1;
+    const existing = await db.queryOne('SELECT id, order_number FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (!existing) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
-  const photos = db.prepare('SELECT * FROM service_order_photos WHERE service_order_id = ?').all(req.params.id);
-  const storage = getStorageService();
-  for (const photo of photos) {
-    try {
-      const deleted = photo.public_id ? await cloudPhotos.delete(photo.public_id) : await storage.delete(photo.storage_key);
-      if (!deleted) throw new Error('Falha ao excluir foto.');
-    } catch (err) {
-      return res.status(502).json({ error: 'Não foi possível excluir as fotos. A OS foi preservada.' });
+    const hasWithdrawal = await db.queryOne("SELECT id FROM cash_withdrawals WHERE service_order_id = $1 AND source_type = 'service_order_part' AND store_id = $2", [req.params.id, storeId]);
+    if (hasWithdrawal) {
+      return res.status(409).json({ error: 'Esta OS possui uma retirada automática de peça e não pode ser excluída.' });
     }
-  }
 
-  db.prepare('DELETE FROM warranties WHERE service_order_id = ? AND store_id = ?').run(req.params.id, storeId);
-  db.prepare('DELETE FROM credit_accounts WHERE service_order_id = ? AND store_id = ?').run(req.params.id, storeId);
-  db.prepare('DELETE FROM service_orders WHERE id = ? AND store_id = ?').run(req.params.id, storeId);
-  await ensureFinancialHistoryUpToDate(await getTrustedNowSqlite(), storeId);
-  logAction({ user: req.user, action: 'delete_service_order', recordType: 'service_order', recordId: req.params.id });
-  emitDashboardRefresh({ source: 'service_order_delete', orderId: Number(req.params.id), orderNumber: existing?.order_number || null });
-  res.json({ success: true });
+    const photos = await db.query('SELECT * FROM service_order_photos WHERE service_order_id = $1', [req.params.id]);
+    const storage = getStorageService();
+    for (const photo of photos) {
+      try {
+        const deleted = photo.public_id ? await cloudPhotos.delete(photo.public_id) : await storage.delete(photo.storage_key);
+        if (!deleted) throw new Error('Falha ao excluir foto.');
+      } catch (err) {
+        return res.status(502).json({ error: 'Não foi possível excluir as fotos. A OS foi preservada.' });
+      }
+    }
+
+    await db.execute('DELETE FROM warranties WHERE service_order_id = $1 AND store_id = $2', [req.params.id, storeId]);
+    await db.execute('DELETE FROM credit_accounts WHERE service_order_id = $1 AND store_id = $2', [req.params.id, storeId]);
+    await db.execute('DELETE FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+
+    const trustedNow = await getTrustedNowSqlite();
+    await ensureFinancialHistoryUpToDate(trustedNow, storeId);
+    await logAction({ user: req.user, action: 'delete_service_order', recordType: 'service_order', recordId: req.params.id });
+    emitDashboardRefresh({ source: 'service_order_delete', orderId: Number(req.params.id), orderNumber: existing?.order_number || null });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao excluir ordem de serviço: ' + err.message });
+  }
 });
 
 module.exports = router;

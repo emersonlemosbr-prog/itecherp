@@ -8,7 +8,11 @@ const defaultPermissions = Object.fromEntries(
 
 function userView(user) {
   let saved = {};
-  try { saved = JSON.parse(user.permissions || '{}'); } catch {}
+  try {
+    saved = typeof user.permissions === 'object' && user.permissions !== null
+      ? user.permissions
+      : JSON.parse(user.permissions || '{}');
+  } catch {}
   const { password_hash, ...safe } = user;
   return {
     ...safe,
@@ -20,56 +24,67 @@ function userView(user) {
       : { ...defaultPermissions, ...saved }
   };
 }
-function hasColumn(table, col) {
-  try {
-    return db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col);
-  } catch {
-    return false;
+
+async function row(storeId = 1) {
+  return await db.queryOne('SELECT * FROM system_settings WHERE store_id = $1 LIMIT 1', [storeId]);
+}
+
+async function readSettings(storeId = 1) {
+  const current = await row(storeId);
+  if (!current || !current.value) {
+    return {
+      store: {
+        name: 'iTech Celular e Informática',
+        trade_name: 'iTech',
+        email: 'contato@itechcelulareinformatica.com.br',
+        phone: '',
+        whatsapp: '',
+        address: { street: '', number: '', complement: '', district: '', city: '', state: '', zip: '' },
+        logo: '',
+      },
+      documents: {
+        receipt_terms: 'Agradecemos a preferência! Garantia legal de 90 dias.',
+        warranty_terms: 'Garantia legal de 90 dias para defeitos de fabricação e serviços executados.',
+        quote_terms: 'Orçamento válido por 10 dias.',
+        ticket_message: 'Obrigado pela preferência! Volte sempre.',
+        warranty_days: 90,
+      },
+      system: {
+        theme: 'dark',
+        home: '/',
+        auto_backup: false,
+        backup_frequency: 'daily',
+      },
+      finance: {
+        default_payment_method: 'pix',
+      },
+    };
   }
+  return typeof current.value === 'object' && current.value !== null
+    ? current.value
+    : JSON.parse(current.value);
 }
 
-function row(storeId = 1) {
-  if (hasColumn('system_settings', 'store_id')) {
-    return db.prepare('SELECT * FROM system_settings WHERE store_id=?').get(storeId) ||
-           db.prepare('SELECT * FROM system_settings WHERE id=1').get();
-  }
-  return db.prepare('SELECT * FROM system_settings WHERE id=1').get();
+async function sequences(storeId = 1) {
+  const rows = await db.query('SELECT kind, next_value FROM document_sequences WHERE store_id = $1', [storeId]);
+  return Object.fromEntries(rows.map(({ kind, next_value }) => [kind, next_value]));
 }
 
-function readSettings(storeId = 1) {
-  const current = row(storeId);
-  if (!current) throw new Error('Configurações do sistema não encontradas.');
-  return JSON.parse(current.value);
-}
-
-function sequences(storeId = 1) {
-  if (hasColumn('document_sequences', 'store_id')) {
-    return Object.fromEntries(db.prepare('SELECT kind, next_value FROM document_sequences WHERE store_id=?').all(storeId)
-      .map(({ kind, next_value }) => [kind, next_value]));
-  }
-  return Object.fromEntries(db.prepare('SELECT kind, next_value FROM document_sequences').all()
-    .map(({ kind, next_value }) => [kind, next_value]));
-}
-
-function nextNumber(kind, storeId = 1) {
-  return db.transaction(() => {
-    if (hasColumn('document_sequences', 'store_id')) {
-      let current = db.prepare('SELECT next_value FROM document_sequences WHERE store_id=? AND kind=?').get(storeId, kind);
-      if (!current) {
-        db.prepare('INSERT OR IGNORE INTO document_sequences (store_id, kind, next_value) VALUES (?, ?, 1)').run(storeId, kind);
-        current = { next_value: 1 };
-      }
-      db.prepare('UPDATE document_sequences SET next_value=? WHERE store_id=? AND kind=?').run(current.next_value + 1, storeId, kind);
-      return current.next_value;
-    }
-    let current = db.prepare('SELECT next_value FROM document_sequences WHERE kind=?').get(kind);
+async function nextNumber(kind, storeId = 1) {
+  return db.transaction(async (tx) => {
+    let current = await tx.queryOne('SELECT next_value FROM document_sequences WHERE store_id = $1 AND kind = $2 FOR UPDATE', [storeId, kind]);
     if (!current) {
-      db.prepare('INSERT OR IGNORE INTO document_sequences (kind, next_value) VALUES (?, 1)').run(kind);
+      await tx.query(`
+        INSERT INTO document_sequences (store_id, kind, next_value)
+        VALUES ($1, $2, 1)
+        ON CONFLICT (store_id, kind) DO NOTHING
+      `, [storeId, kind]);
       current = { next_value: 1 };
     }
-    db.prepare('UPDATE document_sequences SET next_value=? WHERE kind=?').run(current.next_value + 1, kind);
-    return current.next_value;
-  })();
+    const val = current.next_value;
+    await tx.query('UPDATE document_sequences SET next_value = next_value + 1 WHERE store_id = $1 AND kind = $2', [storeId, kind]);
+    return val;
+  });
 }
-module.exports = { defaultPermissions, userView, readSettings, sequences, nextNumber, row };
 
+module.exports = { defaultPermissions, userView, readSettings, sequences, nextNumber, row };

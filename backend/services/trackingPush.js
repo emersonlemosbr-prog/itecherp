@@ -1,19 +1,15 @@
-﻿const crypto = require('crypto');
+const crypto = require('crypto');
 const webpush = require('web-push');
 const labels = { received: 'Recebido', diagnosis: 'Em Diagnóstico', waiting_parts: 'Aguardando Peças', repairing: 'Em Reparo', ready: 'Pronto para Retirada', delivered: 'Entregue', not_performed: 'Reparo Não Realizado' };
 
 function migrate(db) {
-  db.exec(`CREATE TABLE IF NOT EXISTS tracking_push (
-    order_id INTEGER NOT NULL REFERENCES service_orders(id) ON DELETE CASCADE,
-    endpoint TEXT NOT NULL, subscription TEXT NOT NULL, token TEXT NOT NULL,
-    last_history INTEGER NOT NULL, PRIMARY KEY(order_id, endpoint)
-  )`);
+  // A tabela tracking_push já está incluída no postgresSchema.sql
 }
 
 function mount(app, db, find) {
   app.get('/api/public/push-key', (_req, res) => res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || null }));
   app.post('/api/public/service-order/:token/subscriptions',
-    require('express').json({ limit: '16kb' }), find, (req, res) => {
+    require('express').json({ limit: '16kb' }), find, async (req, res) => {
       const subscription = req.body;
       let url;
       try { url = new URL(subscription?.endpoint); } catch { return res.status(400).json({ error: 'Inscrição inválida.' }); }
@@ -24,13 +20,16 @@ function mount(app, db, find) {
       }
       const token = req.params.token;
       const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-      const order = db.prepare('SELECT id FROM service_orders WHERE public_token_hash = ?').get(tokenHash);
+      const order = await db.queryOne('SELECT id FROM service_orders WHERE public_token_hash = $1', [tokenHash]);
       if (!order) return res.status(404).json({ error: 'Acompanhamento não encontrado.' });
-      const latest = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM service_order_status_history WHERE service_order_id = ?').get(order.id).id;
-      db.prepare(`INSERT INTO tracking_push (order_id, endpoint, subscription, token, last_history)
-        VALUES (?, ?, ?, ?, ?) ON CONFLICT(order_id, endpoint) DO UPDATE SET
-        subscription = excluded.subscription, token = excluded.token, last_history = excluded.last_history`)
-        .run(order.id, subscription.endpoint, JSON.stringify(subscription), token, latest);
+      const latestRow = await db.queryOne('SELECT COALESCE(MAX(id), 0) AS id FROM service_order_status_history WHERE service_order_id = $1', [order.id]);
+      const latest = latestRow?.id || 0;
+      await db.query(`
+        INSERT INTO tracking_push (order_id, endpoint, subscription, token, last_history)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT(order_id, endpoint) DO UPDATE SET
+          subscription = EXCLUDED.subscription, token = EXCLUDED.token, last_history = EXCLUDED.last_history
+      `, [order.id, subscription.endpoint, JSON.stringify(subscription), token, latest]);
       res.status(201).json({ status: 'ok' });
     });
 }
@@ -45,20 +44,23 @@ function startWorker(db) {
     if (busy || stopped) return;
     busy = true;
     try {
-      const rows = db.prepare(`SELECT p.order_id, p.endpoint, p.subscription, p.token, p.last_history,
+      const rows = await db.query(`
+        SELECT p.order_id, p.endpoint, p.subscription, p.token, p.last_history,
           o.order_number, o.public_token_hash
-        FROM tracking_push p JOIN service_orders o ON o.id = p.order_id`).all();
-      const next = db.prepare(`SELECT id, status FROM service_order_status_history
-        WHERE service_order_id = ? AND id > ? ORDER BY id LIMIT 1`);
-      const advance = db.prepare('UPDATE tracking_push SET last_history = ? WHERE order_id = ? AND endpoint = ? AND last_history = ?');
-      const remove = db.prepare('DELETE FROM tracking_push WHERE order_id = ? AND endpoint = ?');
+        FROM tracking_push p
+        JOIN service_orders o ON o.id = p.order_id
+      `);
+
       for (const row of rows) {
         if (stopped) break;
         if (crypto.createHash('sha256').update(row.token).digest('hex') !== row.public_token_hash) {
-          remove.run(row.order_id, row.endpoint);
+          await db.query('DELETE FROM tracking_push WHERE order_id = $1 AND endpoint = $2', [row.order_id, row.endpoint]);
           continue;
         }
-        const history = next.get(row.order_id, row.last_history);
+        const history = await db.queryOne(
+          'SELECT id, status FROM service_order_status_history WHERE service_order_id = $1 AND id > $2 ORDER BY id LIMIT 1',
+          [row.order_id, row.last_history]
+        );
         if (!history) continue;
         const payload = JSON.stringify({
           title: `OS-${String(row.order_number).replace(/^(?:(?:SO|OS)[\s-]*)+/i, '')}`,
@@ -68,10 +70,16 @@ function startWorker(db) {
         });
         try {
           await webpush.sendNotification(JSON.parse(row.subscription), payload);
-          advance.run(history.id, row.order_id, row.endpoint, row.last_history);
+          await db.query(
+            'UPDATE tracking_push SET last_history = $1 WHERE order_id = $2 AND endpoint = $3 AND last_history = $4',
+            [history.id, row.order_id, row.endpoint, row.last_history]
+          );
         } catch (error) {
-          if (error.statusCode === 404 || error.statusCode === 410) remove.run(row.order_id, row.endpoint);
-          else console.error('[PUBLIC_TRACKING] Falha ao enviar push:', error.statusCode || error.message);
+          if (error.statusCode === 404 || error.statusCode === 410) {
+            await db.query('DELETE FROM tracking_push WHERE order_id = $1 AND endpoint = $2', [row.order_id, row.endpoint]);
+          } else {
+            console.error('[PUBLIC_TRACKING] Falha ao enviar push:', error.statusCode || error.message);
+          }
         }
       }
     } catch (error) {
@@ -84,4 +92,3 @@ function startWorker(db) {
 }
 
 module.exports = { migrate, mount, startWorker };
-

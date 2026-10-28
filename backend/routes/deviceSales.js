@@ -4,6 +4,7 @@ const db = require('../db/database')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { getTrustedNowSqlite } = require('../utils/time')
 const { emitDashboardRefresh, emitInventoryRefresh } = require('../utils/events')
+const { nextNumber } = require('../services/settings')
 
 const router = express.Router()
 router.use(authenticate)
@@ -35,7 +36,7 @@ function getMailTransport() {
 
 function parseItems(itemsJson) {
   try {
-    return JSON.parse(itemsJson || '[]')
+    return typeof itemsJson === 'string' ? JSON.parse(itemsJson || '[]') : (itemsJson || [])
   } catch {
     return []
   }
@@ -98,34 +99,25 @@ function mapPaymentMethod(method) {
   return 'cash'
 }
 
-function generateStoreSaleNumber(storeId) { return require('../services/settings').nextNumber('sale', storeId); }
-
-function ensureCustomerForDeviceSale(payload, storeId = 1) {
+async function ensureCustomerForDeviceSale(payload, storeId = 1) {
   const name = String(payload.customer_name || '').trim()
   if (!name) return null
 
   const normalizedPhone = String(payload.phone || '').replace(/\D/g, '')
-  const normalizedCpf = String(payload.customer_cpf_cnpj || '').replace(/\D/g, '')
 
-  const existingCustomer = db.prepare(`
+  const existingCustomer = await db.queryOne(`
     SELECT *
     FROM customers
-    WHERE store_id = ? AND ((? != '' AND phone = ?) OR (? != '' AND REPLACE(REPLACE(REPLACE(phone, '(', ''), ')', ''), ' ', '') = ?))
-  `).get(
-    storeId,
-    normalizedPhone,
-    normalizedPhone,
-    normalizedPhone,
-    normalizedPhone,
-  )
+    WHERE store_id = $1 AND (($2 != '' AND phone = $2) OR ($2 != '' AND REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $2))
+  `, [storeId, normalizedPhone])
 
   if (existingCustomer) return existingCustomer
 
-  const customer = db.prepare(`
+  const customer = await db.queryOne(`
     SELECT *
     FROM customers
-    WHERE store_id = ? AND ? != '' AND LOWER(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) = LOWER(?)
-  `).get(storeId, name, name)
+    WHERE store_id = $1 AND $2 != '' AND LOWER(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) = LOWER($2)
+  `, [storeId, name])
 
   if (customer) return customer
 
@@ -134,105 +126,97 @@ function ensureCustomerForDeviceSale(payload, storeId = 1) {
   const first_name = parts.shift() || 'Cliente'
   const last_name = parts.join(' ') || 'Device Sale'
 
-  const insert = db.prepare(`
+  const insert = await db.execute(`
     INSERT INTO customers (store_id, first_name, last_name, address, phone, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-  `).run(storeId, first_name, last_name, payload.address || null, payload.phone || null)
+    VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    RETURNING id
+  `, [storeId, first_name, last_name, payload.address || null, payload.phone || null])
 
-  return db.prepare('SELECT * FROM customers WHERE id = ? AND store_id = ?').get(insert.lastInsertRowid, storeId)
+  return db.queryOne('SELECT * FROM customers WHERE id = $1 AND store_id = $2', [insert.id, storeId])
 }
 
-function findMatchingStockProduct(productLabel, storeId = 1) {
+async function findMatchingStockProduct(productLabel, storeId = 1, client = db) {
   const label = String(productLabel || '').trim().toLowerCase()
   if (!label) return null
 
-  return db.prepare(`
+  return client.queryOne(`
     SELECT p.id, p.name, p.model, p.code, COALESCE(l.quantity, 0) AS quantity
     FROM stock_products p
     LEFT JOIN stock_levels l ON l.product_id = p.id
     WHERE p.is_active = 1
-      AND p.store_id = ?
+      AND p.store_id = $1
       AND (
-        LOWER(COALESCE(p.name, '')) = ?
-        OR LOWER(COALESCE(p.model, '')) = ?
-        OR LOWER(COALESCE(p.name, '')) LIKE ?
-        OR LOWER(COALESCE(p.model, '')) LIKE ?
-        OR LOWER(COALESCE(p.code, '')) LIKE ?
+        LOWER(COALESCE(p.name, '')) = $2
+        OR LOWER(COALESCE(p.model, '')) = $2
+        OR LOWER(COALESCE(p.name, '')) LIKE $3
+        OR LOWER(COALESCE(p.model, '')) LIKE $3
+        OR LOWER(COALESCE(p.code, '')) LIKE $3
       )
     ORDER BY CASE
-      WHEN LOWER(COALESCE(p.name, '')) = ? THEN 0
-      WHEN LOWER(COALESCE(p.model, '')) = ? THEN 1
+      WHEN LOWER(COALESCE(p.name, '')) = $2 THEN 0
+      WHEN LOWER(COALESCE(p.model, '')) = $2 THEN 1
       ELSE 2
     END, p.id ASC
     LIMIT 1
-  `).get(
-    storeId,
-    label,
-    label,
-    `%${label}%`,
-    `%${label}%`,
-    `%${label}%`,
-    label,
-    label
-  )
+  `, [storeId, label, `%${label}%`])
 }
 
-function createOrUpdateStoreSaleReference({ deviceSaleId, paymentMethod, totalAmount, saleDate, items, userId, trustedNow, createdByCustomerName, storeId = 1 }) {
+async function createOrUpdateStoreSaleReference({ deviceSaleId, paymentMethod, totalAmount, saleDate, items, userId, trustedNow, storeId = 1 }) {
   const notes = `device_sale:${deviceSaleId}`
-  const existingStoreSale = db.prepare('SELECT * FROM store_sales WHERE notes = ? AND store_id = ?').get(notes, storeId)
+  const existingStoreSale = await db.queryOne('SELECT * FROM store_sales WHERE notes = $1 AND store_id = $2', [notes, storeId])
 
-  const itemRows = (Array.isArray(items) ? items : [])
-    .map((item) => {
-      const product = findMatchingStockProduct(String(item.product || '').trim(), storeId)
-      const quantity = Number(item.quantity) || 0
-      const unitPrice = Number(item.unit_price) || 0
-      const subtotal = quantity * unitPrice
+  const itemRows = []
+  for (const item of (Array.isArray(items) ? items : [])) {
+    const product = await findMatchingStockProduct(String(item.product || '').trim(), storeId)
+    const quantity = Number(item.quantity) || 0
+    const unitPrice = Number(item.unit_price) || 0
+    const subtotal = quantity * unitPrice
 
-      if (!product || quantity <= 0) return null
+    if (!product || quantity <= 0) continue
 
-      return {
-        product_id: product.id,
-        product_name: String(product.name || item.product || '').trim() || 'Aparelho',
-        product_code: String(product.code || ''),
-        quantity,
-        unit_price: unitPrice,
-        subtotal,
-      }
+    itemRows.push({
+      product_id: product.id,
+      product_name: String(product.name || item.product || '').trim() || 'Aparelho',
+      product_code: String(product.code || ''),
+      quantity,
+      unit_price: unitPrice,
+      subtotal,
     })
-    .filter(Boolean)
+  }
 
   if (existingStoreSale) {
     const subtotal = itemRows.reduce((sum, item) => sum + item.subtotal, 0)
 
-    db.prepare(`
+    await db.execute(`
       UPDATE store_sales SET
-        subtotal = ?,
-        total_amount = ?,
-        payment_method = ?,
-        notes = ?,
-        updated_at = datetime('now')
-      WHERE id = ? AND store_id = ?
-    `).run(subtotal, totalAmount, paymentMethod, notes, existingStoreSale.id, storeId)
+        subtotal = $1,
+        total_amount = $2,
+        payment_method = $3,
+        notes = $4,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5 AND store_id = $6
+    `, [subtotal, totalAmount, paymentMethod, notes, existingStoreSale.id, storeId])
 
-    db.prepare('DELETE FROM store_sale_items WHERE sale_id = ?').run(existingStoreSale.id)
+    await db.execute('DELETE FROM store_sale_items WHERE sale_id = $1', [existingStoreSale.id])
 
     for (const item of itemRows) {
-      db.prepare(`
+      await db.execute(`
         INSERT INTO store_sale_items (store_id, sale_id, product_id, product_name, product_code, cost_price, unit_price, quantity, subtotal, is_canceled)
-        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 0)
-      `).run(storeId, existingStoreSale.id, item.product_id, item.product_name, item.product_code, item.unit_price, item.quantity, item.subtotal)
+        VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, 0)
+      `, [storeId, existingStoreSale.id, item.product_id, item.product_name, item.product_code, item.unit_price, item.quantity, item.subtotal])
     }
 
     return existingStoreSale.id
   }
 
-  const saleNumber = generateStoreSaleNumber(storeId)
-  const saleInfo = db.prepare(`
+  const saleNumber = await nextNumber('sale', storeId)
+  const saleInfo = await db.execute(`
     INSERT INTO store_sales (
       store_id, sale_number, subtotal, discount_type, discount_value, discount_amount,
       total_amount, payment_method, notes, is_canceled, created_by, created_at
-    ) VALUES (?, ?, ?, NULL, 0, 0, ?, ?, ?, 0, ?, ?)
-  `).run(
+    ) VALUES ($1, $2, $3, NULL, 0, 0, $4, $5, $6, 0, $7, $8)
+    RETURNING id
+  `, [
     storeId,
     saleNumber,
     totalAmount,
@@ -241,41 +225,40 @@ function createOrUpdateStoreSaleReference({ deviceSaleId, paymentMethod, totalAm
     notes,
     userId,
     trustedNow
-  )
+  ])
 
   for (const item of itemRows) {
-    db.prepare(`
+    await db.execute(`
       INSERT INTO store_sale_items (
         store_id, sale_id, product_id, product_name, product_code, cost_price, unit_price, quantity, subtotal, is_canceled
-      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 0)
-    `).run(storeId, saleInfo.lastInsertRowid, item.product_id, item.product_name, item.product_code, item.unit_price, item.quantity, item.subtotal)
+      ) VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, 0)
+    `, [storeId, saleInfo.id, item.product_id, item.product_name, item.product_code, item.unit_price, item.quantity, item.subtotal])
   }
 
-  return saleInfo.lastInsertRowid
+  return saleInfo.id
 }
 
-function syncRelatedStockAdjustments({ items, deviceSaleId, userId, trustedNow, storeId = 1 }) {
-  const sync = db.transaction(() => {
-    const previousMovements = db.prepare(`
+async function syncRelatedStockAdjustments({ items, deviceSaleId, userId, trustedNow, storeId = 1 }) {
+  await db.transaction(async (tx) => {
+    const previousMovements = await tx.query(`
       SELECT * FROM stock_movements
-      WHERE reference_type = 'device_sale' AND reference_id = ? AND store_id = ?
+      WHERE reference_type = 'device_sale' AND reference_id = $1 AND store_id = $2
       ORDER BY id ASC
-    `).all(deviceSaleId, storeId)
+    `, [deviceSaleId, storeId])
 
     for (const movement of previousMovements) {
-      const level = db.prepare('SELECT quantity FROM stock_levels WHERE product_id = ?').get(movement.product_id)
+      const level = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [movement.product_id])
       if (!level) continue
 
       const previousQuantity = Number(level.quantity) || 0
       const restoredQuantity = previousQuantity - (Number(movement.quantity_delta) || 0)
-      db.prepare('UPDATE stock_levels SET quantity = ?, updated_at = ? WHERE product_id = ?')
-        .run(restoredQuantity, trustedNow, movement.product_id)
-      db.prepare(`
+      await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [restoredQuantity, trustedNow, movement.product_id])
+      await tx.execute(`
         INSERT INTO stock_movements (
           store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
           reason, reference_type, reference_id, user_id, user_name, created_at
-        ) VALUES (?, ?, 'adjustment', ?, ?, ?, ?, 'device_sale_reversal', ?, ?, ?, ?)
-      `).run(
+        ) VALUES ($1, $2, 'adjustment', $3, $4, $5, $6, 'device_sale_reversal', $7, $8, $9, $10)
+      `, [
         storeId,
         movement.product_id,
         restoredQuantity - previousQuantity,
@@ -286,16 +269,16 @@ function syncRelatedStockAdjustments({ items, deviceSaleId, userId, trustedNow, 
         userId,
         'Sistema',
         trustedNow
-      )
+      ])
     }
 
     if (previousMovements.length) {
-      db.prepare("DELETE FROM stock_movements WHERE reference_type = 'device_sale' AND reference_id = ? AND store_id = ?").run(deviceSaleId, storeId)
+      await tx.execute("DELETE FROM stock_movements WHERE reference_type = 'device_sale' AND reference_id = $1 AND store_id = $2", [deviceSaleId, storeId])
     }
 
     const quantitiesByProduct = new Map()
     for (const item of items || []) {
-      const product = findMatchingStockProduct(item.product, storeId)
+      const product = await findMatchingStockProduct(item.product, storeId, tx)
       if (!product) continue
       quantitiesByProduct.set(product.id, {
         product,
@@ -305,7 +288,7 @@ function syncRelatedStockAdjustments({ items, deviceSaleId, userId, trustedNow, 
 
     for (const { product, quantity } of quantitiesByProduct.values()) {
       if (quantity <= 0) continue
-      const level = db.prepare('SELECT quantity FROM stock_levels WHERE product_id = ?').get(product.id)
+      const level = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [product.id])
       const previousQuantity = Number(level?.quantity) || 0
       if (quantity > previousQuantity) {
         const error = new Error(`Estoque insuficiente para ${product.name}.`)
@@ -314,14 +297,13 @@ function syncRelatedStockAdjustments({ items, deviceSaleId, userId, trustedNow, 
       }
 
       const newQuantity = previousQuantity - quantity
-      db.prepare('UPDATE stock_levels SET quantity = ?, updated_at = ? WHERE product_id = ?')
-        .run(newQuantity, trustedNow, product.id)
-      db.prepare(`
+      await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [newQuantity, trustedNow, product.id])
+      await tx.execute(`
         INSERT INTO stock_movements (
           store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
           reason, reference_type, reference_id, user_id, user_name, created_at
-        ) VALUES (?, ?, 'sale', ?, ?, ?, ?, 'device_sale', ?, ?, ?, ?)
-      `).run(
+        ) VALUES ($1, $2, 'sale', $3, $4, $5, $6, 'device_sale', $7, $8, $9, $10)
+      `, [
         storeId,
         product.id,
         -quantity,
@@ -332,53 +314,60 @@ function syncRelatedStockAdjustments({ items, deviceSaleId, userId, trustedNow, 
         userId,
         'Sistema',
         trustedNow
-      )
+      ])
     }
   })
-
-  sync()
 }
 
-function nextOrderNumber(storeId) { return require('../services/settings').nextNumber('device', storeId); }
-
-function getSaleById(id, storeId = 1) {
-  const sale = db.prepare(`
+async function getSaleById(id, storeId = 1) {
+  const sale = await db.queryOne(`
     SELECT ds.*, c.first_name, c.last_name
     FROM device_sales ds
     LEFT JOIN customers c ON c.id = ds.customer_id
-    WHERE ds.id = ? AND ds.store_id = ?
-  `).get(id, storeId)
+    WHERE ds.id = $1 AND ds.store_id = $2
+  `, [id, storeId])
 
   if (!sale) return null
   return { ...sale, items: parseItems(sale.items_json) }
 }
 
-router.get('/', (req, res) => {
-  const storeId = req.user.store_id || 1
-  const { q } = req.query
-  let sql = `
-    SELECT ds.*, c.first_name, c.last_name
-    FROM device_sales ds
-    LEFT JOIN customers c ON c.id = ds.customer_id
-    WHERE ds.store_id = ?
-  `
-  const params = [storeId]
-  if (q) {
-    const like = `%${q}%`
-    sql += ` AND (ds.order_number LIKE ? OR ds.customer_name LIKE ? OR ds.customer_cpf_cnpj LIKE ? OR ds.phone LIKE ? OR ds.email LIKE ? OR ds.seller_name LIKE ?)`
-    params.push(like, like, like, like, like, like)
-  }
-  sql += ' ORDER BY ds.sale_date DESC, ds.id DESC LIMIT 200'
+router.get('/', async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1
+    const { q } = req.query
+    let sql = `
+      SELECT ds.*, c.first_name, c.last_name
+      FROM device_sales ds
+      LEFT JOIN customers c ON c.id = ds.customer_id
+      WHERE ds.store_id = $1
+    `
+    const params = [storeId]
+    let paramIndex = 2
+    if (q) {
+      const like = `%${q}%`
+      sql += ` AND (ds.order_number ILIKE $${paramIndex} OR ds.customer_name ILIKE $${paramIndex} OR ds.customer_cpf_cnpj ILIKE $${paramIndex} OR ds.phone ILIKE $${paramIndex} OR ds.email ILIKE $${paramIndex} OR ds.seller_name ILIKE $${paramIndex})`
+      params.push(like)
+      paramIndex++
+    }
+    sql += ' ORDER BY ds.sale_date DESC, ds.id DESC LIMIT 200'
 
-  const sales = db.prepare(sql).all(...params).map((sale) => ({ ...sale, items: parseItems(sale.items_json) }))
-  res.json(sales)
+    const rows = await db.query(sql, ...params)
+    const sales = rows.map((sale) => ({ ...sale, items: parseItems(sale.items_json) }))
+    res.json(sales)
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar vendas de aparelhos: ' + err.message })
+  }
 })
 
-router.get('/:id', (req, res) => {
-  const storeId = req.user.store_id || 1
-  const sale = getSaleById(req.params.id, storeId)
-  if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' })
-  res.json(sale)
+router.get('/:id', async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1
+    const sale = await getSaleById(req.params.id, storeId)
+    if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' })
+    res.json(sale)
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar venda: ' + err.message })
+  }
 })
 
 router.post('/email', async (req, res) => {
@@ -440,7 +429,7 @@ async function persistDeviceSale({ user, payload, existing = null }) {
   }
 
   const trustedNow = await getTrustedNowSqlite()
-  const customer = ensureCustomerForDeviceSale(normalizedPayload, storeId)
+  const customer = await ensureCustomerForDeviceSale(normalizedPayload, storeId)
   if (!customer) {
     const error = new Error('Não foi possível registrar o cliente da venda.')
     error.statusCode = 400
@@ -452,13 +441,13 @@ async function persistDeviceSale({ user, payload, existing = null }) {
   const deviceSaleId = Number(existing?.id || saleRecord.id || 0)
 
   if (deviceSaleId) {
-    db.prepare(`
+    await db.execute(`
       UPDATE device_sales SET
-        customer_id = ?, sale_date = ?, seller_name = ?, customer_name = ?, customer_cpf_cnpj = ?, address = ?,
-        city = ?, state = ?, cep = ?, phone = ?, email = ?, horario = ?, payment_method = ?, notes = ?,
-        items_json = ?, total_amount = ?, updated_at = datetime('now')
-      WHERE id = ? AND store_id = ?
-    `).run(
+        customer_id = $1, sale_date = $2, seller_name = $3, customer_name = $4, customer_cpf_cnpj = $5, address = $6,
+        city = $7, state = $8, cep = $9, phone = $10, email = $11, horario = $12, payment_method = $13, notes = $14,
+        items_json = $15, total_amount = $16, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $17 AND store_id = $18
+    `, [
       customer.id,
       normalizedPayload.sale_date,
       normalizedPayload.seller_name,
@@ -477,15 +466,16 @@ async function persistDeviceSale({ user, payload, existing = null }) {
       normalizedPayload.total_amount,
       deviceSaleId,
       storeId
-    )
+    ])
   } else {
-    const orderNumber = nextOrderNumber(storeId)
-    const info = db.prepare(`
+    const orderNumber = await nextNumber('device', storeId)
+    const info = await db.execute(`
       INSERT INTO device_sales (
         store_id, order_number, customer_id, sale_date, seller_name, customer_name, customer_cpf_cnpj, address,
         city, state, cep, phone, email, horario, payment_method, notes, items_json, total_amount, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      RETURNING id
+    `, [
       storeId,
       orderNumber,
       customer.id,
@@ -505,11 +495,11 @@ async function persistDeviceSale({ user, payload, existing = null }) {
       JSON.stringify(normalizedPayload.items),
       normalizedPayload.total_amount,
       user.id
-    )
+    ])
 
-    const created = getSaleById(info.lastInsertRowid, storeId)
-    const storeSaleId = createOrUpdateStoreSaleReference({
-      deviceSaleId: info.lastInsertRowid,
+    const created = await getSaleById(info.id, storeId)
+    const storeSaleId = await createOrUpdateStoreSaleReference({
+      deviceSaleId: info.id,
       paymentMethod,
       totalAmount: Number(normalizedPayload.total_amount),
       saleDate: normalizedPayload.sale_date,
@@ -519,15 +509,15 @@ async function persistDeviceSale({ user, payload, existing = null }) {
       storeId,
     })
 
-    syncRelatedStockAdjustments({ items: normalizedPayload.items, deviceSaleId: info.lastInsertRowid, userId: user.id, trustedNow, storeId })
+    await syncRelatedStockAdjustments({ items: normalizedPayload.items, deviceSaleId: info.id, userId: user.id, trustedNow, storeId })
 
-    emitDashboardRefresh({ source: 'device_sale', saleId: info.lastInsertRowid, saleNumber: created.order_number })
-    emitInventoryRefresh({ source: 'device_sale', saleId: info.lastInsertRowid, saleNumber: created.order_number, storeSaleId })
+    emitDashboardRefresh({ source: 'device_sale', saleId: info.id, saleNumber: created.order_number })
+    emitInventoryRefresh({ source: 'device_sale', saleId: info.id, saleNumber: created.order_number, storeSaleId })
     return created
   }
 
-  const updatedSale = getSaleById(deviceSaleId, storeId)
-  const storeSaleId = createOrUpdateStoreSaleReference({
+  const updatedSale = await getSaleById(deviceSaleId, storeId)
+  const storeSaleId = await createOrUpdateStoreSaleReference({
     deviceSaleId,
     paymentMethod,
     totalAmount: Number(normalizedPayload.total_amount),
@@ -538,7 +528,7 @@ async function persistDeviceSale({ user, payload, existing = null }) {
     storeId,
   })
 
-  syncRelatedStockAdjustments({ items: normalizedPayload.items, deviceSaleId, userId: user.id, trustedNow, storeId })
+  await syncRelatedStockAdjustments({ items: normalizedPayload.items, deviceSaleId, userId: user.id, trustedNow, storeId })
 
   emitDashboardRefresh({ source: 'device_sale_update', saleId: deviceSaleId, saleNumber: updatedSale.order_number })
   emitInventoryRefresh({ source: 'device_sale_update', saleId: deviceSaleId, saleNumber: updatedSale.order_number, storeSaleId })
@@ -557,7 +547,7 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1
-    const existing = getSaleById(req.params.id, storeId)
+    const existing = await getSaleById(req.params.id, storeId)
     if (!existing) return res.status(404).json({ error: 'Venda não encontrada.' })
 
     const saved = await persistDeviceSale({ user: req.user, payload: req.body, existing })
@@ -570,17 +560,17 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', requireRole('admin'), async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1
-    const existing = getSaleById(req.params.id, storeId)
+    const existing = await getSaleById(req.params.id, storeId)
     if (!existing) return res.status(404).json({ error: 'Venda não encontrada.' })
 
     const trustedNow = await getTrustedNowSqlite()
-    syncRelatedStockAdjustments({ items: [], deviceSaleId: existing.id, userId: req.user.id, trustedNow, storeId })
-    db.prepare(`
+    await syncRelatedStockAdjustments({ items: [], deviceSaleId: existing.id, userId: req.user.id, trustedNow, storeId })
+    await db.execute(`
       UPDATE store_sales
-      SET is_canceled = 1, canceled_at = ?, canceled_by = ?, cancel_reason = ?
-      WHERE notes = ? AND store_id = ?
-    `).run(trustedNow, req.user.id, 'Venda de aparelho excluída', `device_sale:${existing.id}`, storeId)
-    db.prepare('DELETE FROM device_sales WHERE id = ? AND store_id = ?').run(existing.id, storeId)
+      SET is_canceled = 1, canceled_at = $1, canceled_by = $2, cancel_reason = $3
+      WHERE notes = $4 AND store_id = $5
+    `, [trustedNow, req.user.id, 'Venda de aparelho excluída', `device_sale:${existing.id}`, storeId])
+    await db.execute('DELETE FROM device_sales WHERE id = $1 AND store_id = $2', [existing.id, storeId])
     emitDashboardRefresh({ source: 'device_sale_delete', saleId: existing.id, saleNumber: existing.order_number })
     emitInventoryRefresh({ source: 'device_sale_delete', saleId: existing.id, saleNumber: existing.order_number })
     res.json({ success: true })

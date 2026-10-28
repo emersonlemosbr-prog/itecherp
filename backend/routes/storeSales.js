@@ -4,6 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 const { getTrustedNowSqlite } = require('../utils/time');
 const { emitDashboardRefresh, emitInventoryRefresh } = require('../utils/events');
+const { nextNumber } = require('../services/settings');
 
 const router = express.Router();
 router.use(authenticate);
@@ -20,8 +21,6 @@ function sanitizeInt(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function nextSaleNumber(storeId) { return require('../services/settings').nextNumber('sale', storeId); }
-
 function normalizeItems(items) {
   if (!Array.isArray(items)) return [];
 
@@ -33,8 +32,8 @@ function normalizeItems(items) {
     .filter((item) => item.product_id > 0);
 }
 
-function getSaleById(saleId, includeCanceled = false, storeId = 1) {
-  const sale = db.prepare(`
+async function getSaleById(saleId, includeCanceled = false, storeId = 1, client = db) {
+  const sale = await client.queryOne(`
     SELECT
       s.*,
       COALESCE(s.created_by_name_snapshot, u.full_name) as seller_name,
@@ -42,70 +41,54 @@ function getSaleById(saleId, includeCanceled = false, storeId = 1) {
     FROM store_sales s
     LEFT JOIN users u ON u.id = s.created_by
     LEFT JOIN users uc ON uc.id = s.canceled_by
-    WHERE s.id = ? AND s.store_id = ? ${includeCanceled ? '' : 'AND COALESCE(s.is_canceled, 0) = 0'}
-  `).get(saleId, storeId);
+    WHERE s.id = $1 AND s.store_id = $2 ${includeCanceled ? '' : 'AND COALESCE(s.is_canceled, 0) = 0'}
+  `, [saleId, storeId]);
 
   if (!sale) return null;
 
-  const items = db.prepare(`
+  const items = await client.query(`
     SELECT
       i.*, p.model, c.name as category_name
     FROM store_sale_items i
     LEFT JOIN stock_products p ON p.id = i.product_id
     LEFT JOIN stock_categories c ON c.id = p.category_id
-    WHERE i.sale_id = ? ${includeCanceled ? '' : 'AND COALESCE(i.is_canceled, 0) = 0'}
+    WHERE i.sale_id = $1 ${includeCanceled ? '' : 'AND COALESCE(i.is_canceled, 0) = 0'}
     ORDER BY i.id ASC
-  `).all(saleId);
+  `, [saleId]);
 
   return { ...sale, items };
 }
 
-function runSqliteTransaction(work) {
-  db.exec('BEGIN');
-  try {
-    const result = work();
-    db.exec('COMMIT');
-    return result;
-  } catch (error) {
-    try {
-      db.exec('ROLLBACK');
-    } catch (_rollbackError) {
-      // Ignora erro de rollback para preservar o erro original.
-    }
-    throw error;
-  }
-}
-
-function cancelSaleWithReversal({ saleId, trustedNow, cancelReason, user }) {
+async function cancelSaleWithReversal({ saleId, trustedNow, cancelReason, user }) {
   const storeId = user.store_id || 1;
-  return runSqliteTransaction(() => {
-    const sale = db.prepare('SELECT * FROM store_sales WHERE id = ? AND store_id = ?').get(saleId, storeId);
+  return db.transaction(async (tx) => {
+    const sale = await tx.queryOne('SELECT * FROM store_sales WHERE id = $1 AND store_id = $2', [saleId, storeId]);
     if (!sale) throw new Error('SALE_NOT_FOUND');
     if (Number(sale.is_canceled) === 1) throw new Error('SALE_ALREADY_CANCELED');
 
-    const items = db.prepare(`
+    const items = await tx.query(`
       SELECT * FROM store_sale_items
-      WHERE sale_id = ? AND COALESCE(is_canceled, 0) = 0
+      WHERE sale_id = $1 AND COALESCE(is_canceled, 0) = 0
       ORDER BY id ASC
-    `).all(saleId);
+    `, [saleId]);
     if (!items.length) throw new Error('SALE_ITEMS_NOT_FOUND');
 
     for (const item of items) {
-      const stockLevel = db.prepare('SELECT quantity FROM stock_levels WHERE product_id = ?').get(item.product_id);
+      const stockLevel = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [item.product_id]);
       if (!stockLevel) throw new Error(`STOCK_LEVEL_NOT_FOUND:${item.product_id}`);
 
       const previousQuantity = sanitizeInt(stockLevel.quantity, 0);
       const restoreQty = Math.max(0, sanitizeInt(item.quantity, 0));
       const newQuantity = previousQuantity + restoreQty;
 
-      db.prepare('UPDATE stock_levels SET quantity = ?, updated_at = ? WHERE product_id = ?').run(newQuantity, trustedNow, item.product_id);
+      await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [newQuantity, trustedNow, item.product_id]);
 
-      db.prepare(`
+      await tx.execute(`
         INSERT INTO stock_movements (
           store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
           reason, reference_type, reference_id, user_id, user_name, created_at
-        ) VALUES (?, ?, 'adjustment', ?, ?, ?, ?, 'sale_reversal', ?, ?, ?, ?)
-      `).run(
+        ) VALUES ($1, $2, 'adjustment', $3, $4, $5, $6, 'sale_reversal', $7, $8, $9, $10)
+      `, [
         storeId,
         item.product_id,
         restoreQty,
@@ -116,87 +99,102 @@ function cancelSaleWithReversal({ saleId, trustedNow, cancelReason, user }) {
         user.id,
         user.full_name,
         trustedNow
-      );
+      ]);
     }
 
-    db.prepare('UPDATE store_sale_items SET is_canceled = 1, canceled_at = ? WHERE sale_id = ?').run(trustedNow, saleId);
-    db.prepare(`
+    await tx.execute('UPDATE store_sale_items SET is_canceled = 1, canceled_at = $1 WHERE sale_id = $2', [trustedNow, saleId]);
+    await tx.execute(`
       UPDATE store_sales
-      SET is_canceled = 1, canceled_at = ?, canceled_by = ?, cancel_reason = ?
-      WHERE id = ? AND store_id = ?
-    `).run(trustedNow, user.id, cancelReason, saleId, storeId);
+      SET is_canceled = 1, canceled_at = $1, canceled_by = $2, cancel_reason = $3
+      WHERE id = $4 AND store_id = $5
+    `, [trustedNow, user.id, cancelReason, saleId, storeId]);
 
     return sale;
   });
 }
 
-router.get('/products', (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const q = String(req.query?.q || '').trim();
+router.get('/products', async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const q = String(req.query?.q || '').trim();
 
-  let sql = `
-    SELECT
-      p.id,
-      p.name,
-      p.model,
-      p.code,
-      p.sale_price,
-      p.cost_price,
-      p.min_stock,
-      c.name as category_name,
-      COALESCE(l.quantity, 0) as quantity
-    FROM stock_products p
-    LEFT JOIN stock_categories c ON c.id = p.category_id
-    LEFT JOIN stock_levels l ON l.product_id = p.id
-    WHERE p.is_active = 1 AND p.store_id = ?
-  `;
+    let sql = `
+      SELECT
+        p.id,
+        p.name,
+        p.model,
+        p.code,
+        p.sale_price,
+        p.cost_price,
+        p.min_stock,
+        c.name as category_name,
+        COALESCE(l.quantity, 0) as quantity
+      FROM stock_products p
+      LEFT JOIN stock_categories c ON c.id = p.category_id
+      LEFT JOIN stock_levels l ON l.product_id = p.id
+      WHERE p.is_active = 1 AND p.store_id = $1
+    `;
 
-  const params = [storeId];
-  if (q) {
-    const like = `%${q}%`;
-    sql += " AND (p.name LIKE ? OR p.code LIKE ? OR COALESCE(p.model, '') LIKE ?)";
-    params.push(like, like, like);
+    const params = [storeId];
+    let paramIndex = 2;
+    if (q) {
+      const like = `%${q}%`;
+      sql += ` AND (p.name ILIKE $${paramIndex} OR p.code ILIKE $${paramIndex} OR COALESCE(p.model, '') ILIKE $${paramIndex})`;
+      params.push(like);
+      paramIndex++;
+    }
+
+    sql += ' ORDER BY LOWER(p.name) ASC LIMIT 120';
+    const rows = await db.query(sql, ...params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar produtos para venda: ' + err.message });
   }
-
-  sql += ' ORDER BY p.name COLLATE NOCASE ASC LIMIT 120';
-  res.json(db.prepare(sql).all(...params));
 });
 
-router.get('/history', (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const rows = db.prepare(`
-    SELECT
-      s.id,
-      s.sale_number,
-      s.created_at,
-      s.payment_method,
-      s.total_amount,
-      s.subtotal,
-      s.discount_type,
-      s.discount_value,
-      s.discount_amount,
-      COALESCE(s.created_by_name_snapshot, u.full_name) as seller_name,
-      (
-        SELECT GROUP_CONCAT(i.product_name || ' x' || i.quantity, ' | ')
-        FROM store_sale_items i
-        WHERE i.sale_id = s.id AND COALESCE(i.is_canceled, 0) = 0
-      ) as products_summary
-    FROM store_sales s
-    LEFT JOIN users u ON u.id = s.created_by
-    WHERE COALESCE(s.is_canceled, 0) = 0 AND s.store_id = ?
-    ORDER BY s.created_at DESC, s.id DESC
-    LIMIT 300
-  `).all(storeId);
+router.get('/history', async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const rows = await db.query(`
+      SELECT
+        s.id,
+        s.sale_number,
+        s.created_at,
+        s.payment_method,
+        s.total_amount,
+        s.subtotal,
+        s.discount_type,
+        s.discount_value,
+        s.discount_amount,
+        COALESCE(s.created_by_name_snapshot, u.full_name) as seller_name,
+        (
+          SELECT STRING_AGG(i.product_name || ' x' || i.quantity, ' | ')
+          FROM store_sale_items i
+          WHERE i.sale_id = s.id AND COALESCE(i.is_canceled, 0) = 0
+        ) as products_summary
+      FROM store_sales s
+      LEFT JOIN users u ON u.id = s.created_by
+      WHERE COALESCE(s.is_canceled, 0) = 0 AND s.store_id = $1
+      ORDER BY s.created_at DESC, s.id DESC
+      LIMIT 300
+    `, [storeId]);
 
-  res.json(rows);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao listar histórico de vendas: ' + err.message });
+  }
 });
 
-router.get('/history/:id', (req, res) => {
-  const storeId = req.user.store_id || 1;
-  const includeCanceled = req.user.role === 'admin' && String(req.query.include_canceled || '').toLowerCase() === 'true';
-  const sale = getSaleById(req.params.id, includeCanceled, storeId);
-  if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' });
-  res.json(sale);
+router.get('/history/:id', async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const includeCanceled = req.user.role === 'admin' && String(req.query.include_canceled || '').toLowerCase() === 'true';
+    const sale = await getSaleById(req.params.id, includeCanceled, storeId);
+    if (!sale) return res.status(404).json({ error: 'Venda não encontrada.' });
+    res.json(sale);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar venda: ' + err.message });
+  }
 });
 
 router.post('/finalize', async (req, res, next) => {
@@ -218,98 +216,101 @@ router.post('/finalize', async (req, res, next) => {
 
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
-
-    const finalizeTx = () => runSqliteTransaction(() => {
-      const expandedItems = items.map((item) => {
-        const product = db.prepare(`
-          SELECT p.id, p.name, p.code, p.sale_price, p.cost_price, p.is_active, COALESCE(l.quantity, 0) as quantity
-          FROM stock_products p
-          JOIN stock_levels l ON l.product_id = p.id
-          WHERE p.id = ? AND p.store_id = ?
-        `).get(item.product_id, storeId);
-
-        if (!product) throw new Error(`PRODUCT_NOT_FOUND:${item.product_id}`);
-        if (!product.is_active) throw new Error(`INACTIVE_PRODUCT:${item.product_id}`);
-        if (item.quantity > product.quantity) throw new Error(`INSUFFICIENT_STOCK:${product.id}`);
-
-        const unitPrice = sanitizeNumber(product.sale_price, 0);
-        const costPrice = sanitizeNumber(product.cost_price, 0);
-        const subtotal = unitPrice * item.quantity;
-        return { ...item, product, unitPrice, costPrice, subtotal };
-      });
-
-      const subtotal = expandedItems.reduce((sum, item) => sum + item.subtotal, 0);
-      const discountAmount = discountType === 'percent'
-        ? Math.min(subtotal, subtotal * (discountValue / 100))
-        : Math.min(subtotal, discountValue);
-      const totalAmount = Math.max(0, subtotal - discountAmount);
-
-      const saleInfo = db.prepare(`
-        INSERT INTO store_sales (
-          store_id, sale_number, subtotal, discount_type, discount_value, discount_amount,
-          total_amount, payment_method, notes, is_canceled, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-      `).run(
-        storeId,
-        nextSaleNumber(storeId),
-        subtotal,
-        discountType,
-        discountValue,
-        discountAmount,
-        totalAmount,
-        paymentMethod,
-        notes || null,
-        req.user.id,
-        trustedNow
-      );
-
-      for (const item of expandedItems) {
-        db.prepare(`
-          INSERT INTO store_sale_items (
-            store_id, sale_id, product_id, product_name, product_code, cost_price, unit_price, quantity, subtotal, is_canceled
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-        `).run(
-          storeId,
-          saleInfo.lastInsertRowid,
-          item.product.id,
-          item.product.name,
-          item.product.code,
-          item.costPrice,
-          item.unitPrice,
-          item.quantity,
-          item.subtotal
-        );
-
-        const previousQuantity = sanitizeInt(item.product.quantity, 0);
-        const newQuantity = previousQuantity - item.quantity;
-
-        db.prepare('UPDATE stock_levels SET quantity = ?, updated_at = ? WHERE product_id = ?').run(newQuantity, trustedNow, item.product.id);
-
-        db.prepare(`
-          INSERT INTO stock_movements (
-            store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
-            reason, reference_type, reference_id, user_id, user_name, created_at
-          ) VALUES (?, ?, 'sale', ?, ?, ?, ?, 'sale', ?, ?, ?, ?)
-        `).run(
-          storeId,
-          item.product.id,
-          -item.quantity,
-          previousQuantity,
-          newQuantity,
-          `Venda ${saleInfo.lastInsertRowid}`,
-          saleInfo.lastInsertRowid,
-          req.user.id,
-          req.user.full_name,
-          trustedNow
-        );
-      }
-
-      return saleInfo.lastInsertRowid;
-    });
+    const saleNumber = await nextNumber('sale', storeId);
 
     let saleId;
     try {
-      saleId = finalizeTx();
+      saleId = await db.transaction(async (tx) => {
+        const expandedItems = [];
+        for (const item of items) {
+          const product = await tx.queryOne(`
+            SELECT p.id, p.name, p.code, p.sale_price, p.cost_price, p.is_active, COALESCE(l.quantity, 0) as quantity
+            FROM stock_products p
+            JOIN stock_levels l ON l.product_id = p.id
+            WHERE p.id = $1 AND p.store_id = $2
+          `, [item.product_id, storeId]);
+
+          if (!product) throw new Error(`PRODUCT_NOT_FOUND:${item.product_id}`);
+          if (!product.is_active) throw new Error(`INACTIVE_PRODUCT:${item.product_id}`);
+          if (item.quantity > product.quantity) throw new Error(`INSUFFICIENT_STOCK:${product.id}`);
+
+          const unitPrice = sanitizeNumber(product.sale_price, 0);
+          const costPrice = sanitizeNumber(product.cost_price, 0);
+          const subtotal = unitPrice * item.quantity;
+          expandedItems.push({ ...item, product, unitPrice, costPrice, subtotal });
+        }
+
+        const subtotal = expandedItems.reduce((sum, item) => sum + item.subtotal, 0);
+        const discountAmount = discountType === 'percent'
+          ? Math.min(subtotal, subtotal * (discountValue / 100))
+          : Math.min(subtotal, discountValue);
+        const totalAmount = Math.max(0, subtotal - discountAmount);
+
+        const saleInfo = await tx.execute(`
+          INSERT INTO store_sales (
+            store_id, sale_number, subtotal, discount_type, discount_value, discount_amount,
+            total_amount, payment_method, notes, is_canceled, created_by, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11)
+          RETURNING id
+        `, [
+          storeId,
+          saleNumber,
+          subtotal,
+          discountType,
+          discountValue,
+          discountAmount,
+          totalAmount,
+          paymentMethod,
+          notes || null,
+          req.user.id,
+          trustedNow
+        ]);
+
+        const newSaleId = saleInfo.id;
+
+        for (const item of expandedItems) {
+          await tx.execute(`
+            INSERT INTO store_sale_items (
+              store_id, sale_id, product_id, product_name, product_code, cost_price, unit_price, quantity, subtotal, is_canceled
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0)
+          `, [
+            storeId,
+            newSaleId,
+            item.product.id,
+            item.product.name,
+            item.product.code,
+            item.costPrice,
+            item.unitPrice,
+            item.quantity,
+            item.subtotal
+          ]);
+
+          const previousQuantity = sanitizeInt(item.product.quantity, 0);
+          const newQuantity = previousQuantity - item.quantity;
+
+          await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [newQuantity, trustedNow, item.product.id]);
+
+          await tx.execute(`
+            INSERT INTO stock_movements (
+              store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
+              reason, reference_type, reference_id, user_id, user_name, created_at
+            ) VALUES ($1, $2, 'sale', $3, $4, $5, $6, 'sale', $7, $8, $9, $10)
+          `, [
+            storeId,
+            item.product.id,
+            -item.quantity,
+            previousQuantity,
+            newQuantity,
+            `Venda ${newSaleId}`,
+            newSaleId,
+            req.user.id,
+            req.user.full_name,
+            trustedNow
+          ]);
+        }
+
+        return newSaleId;
+      });
     } catch (error) {
       const message = String(error.message || '');
       if (message.startsWith('PRODUCT_NOT_FOUND:')) {
@@ -317,7 +318,7 @@ router.post('/finalize', async (req, res, next) => {
       }
       if (message.startsWith('INSUFFICIENT_STOCK:')) {
         const productId = message.split(':')[1];
-        const product = db.prepare('SELECT name, code FROM stock_products WHERE id = ? AND store_id = ?').get(productId, storeId);
+        const product = await db.queryOne('SELECT name, code FROM stock_products WHERE id = $1 AND store_id = $2', [productId, storeId]);
         return res.status(400).json({ error: `Estoque insuficiente para ${product?.name || 'um produto'} (${product?.code || 'sem código'}).` });
       }
       if (message.startsWith('INACTIVE_PRODUCT:')) {
@@ -326,8 +327,8 @@ router.post('/finalize', async (req, res, next) => {
       return next(error);
     }
 
-    const sale = getSaleById(saleId, false, storeId);
-    logAction({ user: req.user, action: 'finalize_store_sale', recordType: 'store_sale', recordId: saleId, details: { sale_number: sale.sale_number } });
+    const sale = await getSaleById(saleId, false, storeId);
+    await logAction({ user: req.user, action: 'finalize_store_sale', recordType: 'store_sale', recordId: saleId, details: { sale_number: sale.sale_number } });
     emitDashboardRefresh({ source: 'store_sale', saleId, saleNumber: sale.sale_number });
     emitInventoryRefresh({ source: 'store_sale', saleId, saleNumber: sale.sale_number });
     res.status(201).json(sale);
@@ -346,7 +347,7 @@ router.post('/:id/cancel', requireRole('admin'), async (req, res, next) => {
 
     let canceledSale;
     try {
-      canceledSale = cancelSaleWithReversal({
+      canceledSale = await cancelSaleWithReversal({
         saleId,
         trustedNow,
         cancelReason,
@@ -364,7 +365,7 @@ router.post('/:id/cancel', requireRole('admin'), async (req, res, next) => {
       throw error;
     }
 
-    logAction({
+    await logAction({
       user: req.user,
       action: 'cancel_store_sale',
       recordType: 'store_sale',
@@ -391,7 +392,7 @@ router.delete('/:id', requireRole('admin'), async (req, res, next) => {
 
     let canceledSale;
     try {
-      canceledSale = cancelSaleWithReversal({
+      canceledSale = await cancelSaleWithReversal({
         saleId,
         trustedNow,
         cancelReason,
@@ -409,7 +410,7 @@ router.delete('/:id', requireRole('admin'), async (req, res, next) => {
       throw error;
     }
 
-    logAction({
+    await logAction({
       user: req.user,
       action: 'delete_store_sale_with_reversal',
       recordType: 'store_sale',

@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
-const { userView } = require('../services/settings');
+const { userView, readSettings } = require('../services/settings');
 const {
   checkStoreSubscription,
   isNicknameAvailable,
@@ -48,10 +48,10 @@ function loginRateLimit(req, res, next) {
 /**
  * Retorna dados visuais públicos da loja (nome, logo)
  */
-router.get('/branding', (req, res) => {
+router.get('/branding', async (req, res) => {
   try {
     const storeId = req.query.store_id ? Number(req.query.store_id) : 1;
-    const settings = require('../services/settings').readSettings(storeId);
+    const settings = await readSettings(storeId);
     res.json({ name: settings.store.name, logo: settings.store.logo });
   } catch {
     res.json({ name: 'iTech ERP', logo: '' });
@@ -61,7 +61,7 @@ router.get('/branding', (req, res) => {
 /**
  * Validação de disponibilidade de nickname em tempo real
  */
-router.get('/check-nickname', (req, res) => {
+router.get('/check-nickname', async (req, res) => {
   const { nickname } = req.query;
   if (!nickname) {
     return res.status(400).json({ available: false, error: 'Informe um nickname.' });
@@ -70,7 +70,7 @@ router.get('/check-nickname', (req, res) => {
   if (!/^[\w.@-]{3,60}$/.test(clean)) {
     return res.json({ available: false, error: 'Nickname deve ter entre 3 e 60 caracteres (letras, números, ponto, hífen ou sublinhado).' });
   }
-  const available = isNicknameAvailable(clean);
+  const available = await isNicknameAvailable(clean);
   res.json({
     available,
     nickname: clean,
@@ -105,7 +105,7 @@ router.post('/register-store', async (req, res) => {
       return res.status(400).json({ error: 'A senha do ERP deve ter no mínimo 6 caracteres.' });
     }
 
-    const created = createStoreWithInitialData({
+    const created = await createStoreWithInitialData({
       storeName: finalStoreName,
       ownerName: finalOwnerName,
       ownerEmail: finalEmail,
@@ -174,18 +174,18 @@ router.post('/google', async (req, res) => {
     const name = googleUser.name;
 
     // 1. Cenário: Usuário já cadastrado com esta conta Google vinculada
-    const storeByGoogle = db.prepare('SELECT * FROM stores WHERE google_id = ?').get(googleId);
+    const storeByGoogle = await db.queryOne('SELECT * FROM stores WHERE google_id = $1', [googleId]);
     if (storeByGoogle) {
-      let user = db.prepare("SELECT * FROM users WHERE store_id = ? AND role = 'admin' AND active = 1 ORDER BY is_master DESC, id ASC LIMIT 1").get(storeByGoogle.id);
+      let user = await db.queryOne("SELECT * FROM users WHERE store_id = $1 AND role = 'admin' AND active = 1 ORDER BY is_master DESC, id ASC LIMIT 1", [storeByGoogle.id]);
       if (!user) {
-        user = db.prepare("SELECT * FROM users WHERE store_id = ? AND active = 1 ORDER BY id ASC LIMIT 1").get(storeByGoogle.id);
+        user = await db.queryOne("SELECT * FROM users WHERE store_id = $1 AND active = 1 ORDER BY id ASC LIMIT 1", [storeByGoogle.id]);
       }
       if (!user) {
         return res.status(403).json({ error: 'Nenhum usuário ativo encontrado para esta loja. Entre em contato com a equipe de suporte.' });
       }
 
-      db.prepare("UPDATE stores SET last_access = datetime('now') WHERE id = ?").run(storeByGoogle.id);
-      db.prepare("UPDATE users SET last_access = datetime('now') WHERE id = ?").run(user.id);
+      await db.execute('UPDATE stores SET last_access = CURRENT_TIMESTAMP WHERE id = $1', [storeByGoogle.id]);
+      await db.execute('UPDATE users SET last_access = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
 
       const token = jwt.sign(
         {
@@ -225,7 +225,7 @@ router.post('/google', async (req, res) => {
     }
 
     // 2. Cenário: Loja já existe com o mesmo e-mail, mas AINDA NÃO vinculada à conta Google
-    const storeByEmail = db.prepare('SELECT * FROM stores WHERE LOWER(owner_email) = ?').get(email);
+    const storeByEmail = await db.queryOne('SELECT * FROM stores WHERE LOWER(owner_email) = $1', [email]);
     if (storeByEmail) {
       // Se não informou a senha da loja existente, solicitar confirmação de propriedade
       if (!linkPassword) {
@@ -239,7 +239,7 @@ router.post('/google', async (req, res) => {
       }
 
       // Validar senha informada
-      let user = db.prepare("SELECT * FROM users WHERE store_id = ? AND role = 'admin' ORDER BY is_master DESC, id ASC LIMIT 1").get(storeByEmail.id);
+      let user = await db.queryOne("SELECT * FROM users WHERE store_id = $1 AND role = 'admin' ORDER BY is_master DESC, id ASC LIMIT 1", [storeByEmail.id]);
       let isMatch = false;
 
       if (storeByEmail.owner_password_hash) {
@@ -258,9 +258,9 @@ router.post('/google', async (req, res) => {
       }
 
       // Senha validada: vincular google_id com segurança
-      db.prepare("UPDATE stores SET google_id = ?, updated_at = datetime('now'), last_access = datetime('now') WHERE id = ?").run(googleId, storeByEmail.id);
+      await db.execute('UPDATE stores SET google_id = $1, updated_at = CURRENT_TIMESTAMP, last_access = CURRENT_TIMESTAMP WHERE id = $2', [googleId, storeByEmail.id]);
       if (user) {
-        db.prepare("UPDATE users SET last_access = datetime('now') WHERE id = ?").run(user.id);
+        await db.execute('UPDATE users SET last_access = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
       }
 
       const token = jwt.sign(
@@ -328,7 +328,7 @@ router.post('/forgot-password', async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const store = db.prepare('SELECT id, name, owner_name, owner_email FROM stores WHERE LOWER(owner_email) = ?').get(cleanEmail);
+    const store = await db.queryOne('SELECT id, name, owner_name, owner_email FROM stores WHERE LOWER(owner_email) = $1', [cleanEmail]);
 
     if (!store) {
       // Por segurança, retorna mensagem genérica para não revelar existência de e-mail
@@ -344,13 +344,13 @@ router.post('/forgot-password', async (req, res) => {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hora
 
     // Invalidar tokens antigos deste e-mail
-    db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE LOWER(email) = ? AND used_at IS NULL").run(cleanEmail);
+    await db.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE LOWER(email) = $1 AND used_at IS NULL', [cleanEmail]);
 
     // Salvar novo token
-    db.prepare(`
+    await db.execute(`
       INSERT INTO password_reset_tokens (email, token_hash, target_type, target_id, expires_at)
-      VALUES (?, ?, 'owner', ?, ?)
-    `).run(cleanEmail, tokenHash, store.id, expiresAt);
+      VALUES ($1, $2, 'owner', $3, $4)
+    `, [cleanEmail, tokenHash, store.id, expiresAt]);
 
     // Log para testes e conferência quando SMTP não configurado
     const resetLink = `http://localhost:5174/recuperar-senha?token=${resetToken}`;
@@ -387,10 +387,10 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    const resetRecord = db.prepare(`
+    const resetRecord = await db.queryOne(`
       SELECT * FROM password_reset_tokens
-      WHERE token_hash = ? AND used_at IS NULL AND expires_at > datetime('now')
-    `).get(tokenHash);
+      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+    `, [tokenHash]);
 
     if (!resetRecord) {
       return res.status(400).json({ error: 'Link de redefinição expirado ou inválido.' });
@@ -398,17 +398,17 @@ router.post('/reset-password', async (req, res) => {
 
     const hash = bcrypt.hashSync(newPassword, 12);
 
-    db.transaction(() => {
+    await db.transaction(async (tx) => {
       // Atualizar senha do proprietário e do usuário master do ERP daquela loja
       if (resetRecord.target_type === 'owner') {
-        db.prepare('UPDATE stores SET owner_password_hash = ? WHERE id = ?').run(hash, resetRecord.target_id);
+        await tx.execute('UPDATE stores SET owner_password_hash = $1 WHERE id = $2', [hash, resetRecord.target_id]);
         // Atualiza a senha do usuário master correspondente no ERP
-        db.prepare('UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE store_id = ? AND is_master = 1').run(hash, resetRecord.target_id);
+        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE store_id = $2 AND is_master = 1', [hash, resetRecord.target_id]);
       }
 
       // Marcar token como utilizado
-      db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE id = ?").run(resetRecord.id);
-    })();
+      await tx.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [resetRecord.id]);
+    });
 
     res.json({
       success: true,
@@ -430,7 +430,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
       return res.status(400).json({ error: 'Informe usuário e senha.' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(username.trim().toLowerCase());
+    const user = await db.queryOne('SELECT * FROM users WHERE LOWER(username) = $1', [username.trim().toLowerCase()]);
     if (!user || !user.active) {
       return res.status(401).json({ error: 'Usuário ou senha inválidos.' });
     }
@@ -443,7 +443,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
     // Verificação de status e assinatura da loja (Multi-Tenant)
     let storeData = null;
     if (user.store_id) {
-      const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(user.store_id);
+      const store = await db.queryOne('SELECT * FROM stores WHERE id = $1', [user.store_id]);
       if (!store) {
         return res.status(403).json({ error: 'Loja associada a este usuário não foi encontrada.' });
       }
@@ -486,10 +486,10 @@ router.post('/login', loginRateLimit, async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
     );
 
-    logAction({ user, action: 'login', recordType: 'auth' });
-    db.prepare("UPDATE users SET last_access=datetime('now') WHERE id=?").run(user.id);
+    await logAction({ user, action: 'login', recordType: 'auth' });
+    await db.execute('UPDATE users SET last_access = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
     if (user.store_id) {
-      db.prepare("UPDATE stores SET last_access=datetime('now') WHERE id=?").run(user.store_id);
+      await db.execute('UPDATE stores SET last_access = CURRENT_TIMESTAMP WHERE id = $1', [user.store_id]);
     }
 
     res.json({

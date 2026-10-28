@@ -62,18 +62,18 @@ function parseYearMonthKey(value) {
   return { year: Number(yearText), month: Number(monthText) };
 }
 
-function getOpenPeriods(current, storeId = 1) {
-  const rows = db.prepare(`
+async function getOpenPeriods(current, storeId = 1) {
+  const rows = await db.query(`
     SELECT DISTINCT ym
     FROM (
-      SELECT strftime('%Y-%m', entry_date) AS ym FROM service_orders WHERE store_id = ?
+      SELECT TO_CHAR(entry_date, 'YYYY-MM') AS ym FROM service_orders WHERE store_id = $1
       UNION ALL
-      SELECT strftime('%Y-%m', created_at) AS ym FROM store_sales WHERE store_id = ? AND COALESCE(is_canceled, 0) = 0
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS ym FROM store_sales WHERE store_id = $1 AND COALESCE(is_canceled, 0) = 0
       UNION ALL
-      SELECT strftime('%Y-%m', withdrawal_date) AS ym FROM cash_withdrawals WHERE store_id = ?
-    )
+      SELECT TO_CHAR(withdrawal_date, 'YYYY-MM') AS ym FROM cash_withdrawals WHERE store_id = $1
+    ) t
     WHERE ym IS NOT NULL
-  `).all(storeId, storeId, storeId);
+  `, storeId);
 
   const periods = new Map();
   periods.set(`${current.year}-${current.month}`, current);
@@ -89,13 +89,13 @@ function getOpenPeriods(current, storeId = 1) {
   return [...periods.values()].sort((left, right) => comparePeriods(right, left));
 }
 
-function getClosedSnapshots(current, storeId = 1) {
-  return db.prepare(`
+async function getClosedSnapshots(current, storeId = 1) {
+  return db.query(`
     SELECT *
     FROM financial_history
-    WHERE store_id = ? AND (year < ? OR (year = ? AND month < ?))
+    WHERE store_id = $1 AND (year < $2 OR (year = $2 AND month < $3))
     ORDER BY year DESC, month DESC
-  `).all(storeId, current.year, current.year, current.month);
+  `, storeId, current.year, current.month);
 }
 
 router.get('/', async (req, res, next) => {
@@ -109,21 +109,22 @@ router.get('/', async (req, res, next) => {
     const filterMonth = parseOptionalInt(req.query.month);
     const quickSearch = normalizeQueryValue(req.query.q);
 
-    const closedSnapshots = getClosedSnapshots(currentPeriod, storeId);
-    const openPeriods = getOpenPeriods(currentPeriod, storeId).filter((period) => {
+    const closedSnapshots = await getClosedSnapshots(currentPeriod, storeId);
+    const openPeriodsAll = await getOpenPeriods(currentPeriod, storeId);
+    const openPeriods = openPeriodsAll.filter((period) => {
       if (filterYear && period.year !== filterYear) return false;
       if (filterMonth && period.month !== filterMonth) return false;
       return true;
     });
 
-    const openItems = openPeriods.map((period) => {
-      const liveSnapshot = computeMonthlySnapshot(period.year, period.month, storeId);
+    const openItems = await Promise.all(openPeriods.map(async (period) => {
+      const liveSnapshot = await computeMonthlySnapshot(period.year, period.month, storeId);
       return formatHistoryItem({
         id: `live-${period.year}-${String(period.month).padStart(2, '0')}`,
         created_at: trustedNow,
         ...liveSnapshot,
       }, true);
-    });
+    }));
 
     const closedItems = closedSnapshots
       .filter((row) => {
@@ -140,12 +141,14 @@ router.get('/', async (req, res, next) => {
 
     const filteredRows = applyQuickSearch(items, quickSearch);
 
-    const availableYears = db.prepare(`
+    const yearRows = await db.query(`
       SELECT DISTINCT year
       FROM financial_history
-      WHERE store_id = ?
+      WHERE store_id = $1
       ORDER BY year DESC
-    `).all(storeId).map((row) => row.year);
+    `, storeId);
+
+    const availableYears = yearRows.map((row) => row.year);
 
     if (!availableYears.includes(currentPeriod.year)) {
       availableYears.unshift(currentPeriod.year);
@@ -177,10 +180,11 @@ router.get('/:id', async (req, res, next) => {
         return res.status(404).json({ error: 'Registro não encontrado nesta loja.' });
       }
 
+      const liveData = await computeMonthlySnapshot(period.year, period.month, storeId);
       return res.json(formatHistoryItem({
         id: paramId,
         created_at: trustedNow,
-        ...computeMonthlySnapshot(period.year, period.month, storeId),
+        ...liveData,
       }, true));
     }
 
@@ -189,7 +193,7 @@ router.get('/:id', async (req, res, next) => {
       return res.status(400).json({ error: 'ID inválido.' });
     }
 
-    const row = db.prepare('SELECT * FROM financial_history WHERE id = ? AND store_id = ?').get(id, storeId);
+    const row = await db.queryOne('SELECT * FROM financial_history WHERE id = $1 AND store_id = $2', [id, storeId]);
     if (!row) {
       return res.status(404).json({ error: 'Registro não encontrado nesta loja.' });
     }

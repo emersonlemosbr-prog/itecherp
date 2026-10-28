@@ -2,7 +2,7 @@
 const jwt = require('jsonwebtoken');
  const db = require('../db/database');
 
-function authenticatePlatformAdmin(req, res, next) {
+async function authenticatePlatformAdmin(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
 
@@ -16,7 +16,7 @@ function authenticatePlatformAdmin(req, res, next) {
       return res.status(403).json({ error: 'Acesso exclusivo para administradores da plataforma iTech ERP.' });
     }
 
-    const admin = db.prepare('SELECT id, name, email, role, active, session_version FROM platform_users WHERE id = ?').get(payload.id);
+    const admin = await db.queryOne('SELECT id, name, email, role, active, session_version FROM platform_users WHERE id = $1', [payload.id]);
     if (!admin || !admin.active) {
       return res.status(401).json({ error: 'Conta de administrador da plataforma inativa ou não encontrada.' });
     }

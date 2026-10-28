@@ -11,47 +11,47 @@ router.use(authenticate, requireRole('admin'));
 
 const clearingOperationsInProgress = new Set();
 
-function ensureUserColumns() {
-  try {
-    const cols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
-    if (!cols.includes('active')) {
-      db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
-    }
-    if (!cols.includes('session_version')) {
-      db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
-    }
-  } catch (_) {}
-}
-ensureUserColumns();
-
 function placeholders(arr) {
   return arr.map(() => '?').join(',');
 }
 
 // GET /api/danger-zone/stats
 // Returns counts, dependencies, and protection status for all manageable entities
-router.get('/stats', (req, res, next) => {
+router.get('/stats', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
 
-    // 1. Clientes (idêntico ao módulo de Clientes: is_system = 0 e store_id da loja)
-    const customersCount = db.prepare(
-      'SELECT COUNT(*) n FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0'
-    ).get(storeId, storeId).n;
+    // 1. Clientes
+    const customersRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0',
+      [storeId, storeId]
+    );
+    const customersCount = parseInt(customersRow?.n, 10) || 0;
+
+    const [soCustRow, dsCustRow, caCustRow, wCustRow] = await Promise.all([
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM service_orders WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)',
+        [storeId, storeId, storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM device_sales WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)',
+        [storeId, storeId, storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM credit_accounts WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)',
+        [storeId, storeId, storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM warranties WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)',
+        [storeId, storeId, storeId, storeId]
+      ),
+    ]);
 
     const customerDeps = {
-      service_orders: db.prepare(
-        'SELECT COUNT(*) n FROM service_orders WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)'
-      ).get(storeId, storeId, storeId, storeId).n,
-      device_sales: db.prepare(
-        'SELECT COUNT(*) n FROM device_sales WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)'
-      ).get(storeId, storeId, storeId, storeId).n,
-      credit_accounts: db.prepare(
-        'SELECT COUNT(*) n FROM credit_accounts WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)'
-      ).get(storeId, storeId, storeId, storeId).n,
-      warranties: db.prepare(
-        'SELECT COUNT(*) n FROM warranties WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_system = 0)'
-      ).get(storeId, storeId, storeId, storeId).n,
+      service_orders: parseInt(soCustRow?.n, 10) || 0,
+      device_sales: parseInt(dsCustRow?.n, 10) || 0,
+      credit_accounts: parseInt(caCustRow?.n, 10) || 0,
+      warranties: parseInt(wCustRow?.n, 10) || 0,
     };
     customerDeps.hasDependencies = (
       customerDeps.service_orders > 0 ||
@@ -60,72 +60,105 @@ router.get('/stats', (req, res, next) => {
       customerDeps.warranties > 0
     );
 
-    // 2. Ordens de Serviço (idêntico ao módulo de OS: store_id da loja)
-    const soCount = db.prepare(
-      'SELECT COUNT(*) n FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL)'
-    ).get(storeId, storeId).n;
+    // 2. Ordens de Serviço
+    const soRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL)',
+      [storeId, storeId]
+    );
+    const soCount = parseInt(soRow?.n, 10) || 0;
+
+    const [soPhotosRow, soWarrRow, soWithRow, soCredRow] = await Promise.all([
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM service_order_photos WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM warranties WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM cash_withdrawals WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM credit_accounts WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [storeId, storeId]
+      ),
+    ]);
 
     const soDetails = {
-      photos: db.prepare(
-        'SELECT COUNT(*) n FROM service_order_photos WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
-      warranties: db.prepare(
-        'SELECT COUNT(*) n FROM warranties WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
-      linked_withdrawals: db.prepare(
-        'SELECT COUNT(*) n FROM cash_withdrawals WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
-      linked_credit: db.prepare(
-        'SELECT COUNT(*) n FROM credit_accounts WHERE service_order_id IN (SELECT id FROM service_orders WHERE store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
+      photos: parseInt(soPhotosRow?.n, 10) || 0,
+      warranties: parseInt(soWarrRow?.n, 10) || 0,
+      linked_withdrawals: parseInt(soWithRow?.n, 10) || 0,
+      linked_credit: parseInt(soCredRow?.n, 10) || 0,
     };
 
-    // 3. Estoque e Produtos (idêntico ao módulo de Estoque: produtos ativos e níveis de estoque)
-    const totalProductsCount = db.prepare(
-      'SELECT COUNT(*) n FROM stock_products WHERE store_id = ? OR (? = 1 AND store_id IS NULL)'
-    ).get(storeId, storeId).n;
+    // 3. Estoque e Produtos
+    const [totalProdRow, activeProdRow, stockQtyRow, stockMovRow] = await Promise.all([
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM stock_products WHERE store_id = ? OR (? = 1 AND store_id IS NULL)',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM stock_products WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_active = 1',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COALESCE(SUM(l.quantity), 0) AS n FROM stock_levels l JOIN stock_products p ON p.id = l.product_id WHERE (p.store_id = ? OR (? = 1 AND p.store_id IS NULL)) AND p.is_active = 1',
+        [storeId, storeId]
+      ),
+      db.queryOne(`
+        SELECT COUNT(*) AS n
+        FROM stock_movements sm
+        WHERE (sm.store_id = ? OR (? = 1 AND sm.store_id IS NULL))
+           OR sm.product_id IN (SELECT id FROM stock_products WHERE store_id = ? OR (? = 1 AND store_id IS NULL))
+      `, [storeId, storeId, storeId, storeId]),
+    ]);
 
-    const activeProductsCount = db.prepare(
-      'SELECT COUNT(*) n FROM stock_products WHERE (store_id = ? OR (? = 1 AND store_id IS NULL)) AND is_active = 1'
-    ).get(storeId, storeId).n;
-
+    const totalProductsCount = parseInt(totalProdRow?.n, 10) || 0;
+    const activeProductsCount = parseInt(activeProdRow?.n, 10) || 0;
     const inactiveProductsCount = Math.max(0, totalProductsCount - activeProductsCount);
+    const stockQtyTotal = parseFloat(stockQtyRow?.n) || 0;
+    const stockMovementsCount = parseInt(stockMovRow?.n, 10) || 0;
 
-    const stockQtyTotal = db.prepare(
-      'SELECT COALESCE(SUM(l.quantity), 0) n FROM stock_levels l JOIN stock_products p ON p.id = l.product_id WHERE (p.store_id = ? OR (? = 1 AND p.store_id IS NULL)) AND p.is_active = 1'
-    ).get(storeId, storeId).n;
-
-    // Movimentações de Estoque (origem idêntica ao Controle de Estoque > Movimentações)
-    const stockMovementsCount = db.prepare(`
-      SELECT COUNT(*) n
-      FROM stock_movements sm
-      WHERE (sm.store_id = ? OR (? = 1 AND sm.store_id IS NULL))
-         OR sm.product_id IN (SELECT id FROM stock_products WHERE store_id = ? OR (? = 1 AND store_id IS NULL))
-    `).get(storeId, storeId, storeId, storeId).n;
+    const salesItemsRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM store_sale_items ssi JOIN stock_products p ON p.id = ssi.product_id WHERE p.store_id = ? OR (? = 1 AND p.store_id IS NULL)',
+      [storeId, storeId]
+    );
+    const salesItemsCount = parseInt(salesItemsRow?.n, 10) || 0;
 
     const inventoryDeps = {
-      sales_items: db.prepare(
-        'SELECT COUNT(*) n FROM store_sale_items ssi JOIN stock_products p ON p.id = ssi.product_id WHERE p.store_id = ? OR (? = 1 AND p.store_id IS NULL)'
-      ).get(storeId, storeId).n,
+      sales_items: salesItemsCount,
       movements: stockMovementsCount,
+      hasDependencies: (salesItemsCount > 0 || stockMovementsCount > 0),
     };
-    inventoryDeps.hasDependencies = (inventoryDeps.sales_items > 0 || inventoryDeps.movements > 0);
 
-    // 4. Fornecedores (idêntico ao módulo de Estoque > Fornecedores)
-    const suppliersCount = db.prepare(
-      'SELECT COUNT(*) n FROM stock_suppliers WHERE store_id = ? OR (? = 1 AND store_id IS NULL)'
-    ).get(storeId, storeId).n;
+    // 4. Fornecedores
+    const suppRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM stock_suppliers WHERE store_id = ? OR (? = 1 AND store_id IS NULL)',
+      [storeId, storeId]
+    );
+    const suppliersCount = parseInt(suppRow?.n, 10) || 0;
+
+    const [suppProdRow, suppSoRow, suppWithRow] = await Promise.all([
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM stock_products WHERE supplier_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM service_orders WHERE supplier_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM cash_withdrawals WHERE supplier_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [storeId, storeId]
+      ),
+    ]);
 
     const supplierDeps = {
-      products: db.prepare(
-        'SELECT COUNT(*) n FROM stock_products WHERE supplier_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
-      service_orders: db.prepare(
-        'SELECT COUNT(*) n FROM service_orders WHERE supplier_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
-      withdrawals: db.prepare(
-        'SELECT COUNT(*) n FROM cash_withdrawals WHERE supplier_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
+      products: parseInt(suppProdRow?.n, 10) || 0,
+      service_orders: parseInt(suppSoRow?.n, 10) || 0,
+      withdrawals: parseInt(suppWithRow?.n, 10) || 0,
     };
     supplierDeps.hasDependencies = (
       supplierDeps.products > 0 ||
@@ -133,22 +166,27 @@ router.get('/stats', (req, res, next) => {
       supplierDeps.withdrawals > 0
     );
 
-    // 5. Categorias (idêntico ao módulo de Estoque > Categorias)
-    const categoriesCount = db.prepare(
-      'SELECT COUNT(*) n FROM stock_categories WHERE store_id = ? OR (? = 1 AND store_id IS NULL)'
-    ).get(storeId, storeId).n;
+    // 5. Categorias
+    const catRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM stock_categories WHERE store_id = ? OR (? = 1 AND store_id IS NULL)',
+      [storeId, storeId]
+    );
+    const categoriesCount = parseInt(catRow?.n, 10) || 0;
 
+    const catProdRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM stock_products WHERE category_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+      [storeId, storeId]
+    );
     const categoryDeps = {
-      products: db.prepare(
-        'SELECT COUNT(*) n FROM stock_products WHERE category_id IS NOT NULL AND (store_id = ? OR (? = 1 AND store_id IS NULL))'
-      ).get(storeId, storeId).n,
+      products: parseInt(catProdRow?.n, 10) || 0,
+      hasDependencies: (parseInt(catProdRow?.n, 10) || 0) > 0,
     };
-    categoryDeps.hasDependencies = (categoryDeps.products > 0);
 
     // 6. Usuários e Funcionários
-    const allUsers = db.prepare(
-      'SELECT id, full_name, username, role, is_master, active FROM users WHERE store_id = ? OR (? = 1 AND store_id IS NULL) ORDER BY full_name COLLATE NOCASE'
-    ).all(storeId, storeId);
+    const allUsers = await db.query(
+      'SELECT id, full_name, username, role, is_master, active FROM users WHERE store_id = ? OR (? = 1 AND store_id IS NULL) ORDER BY LOWER(full_name)',
+      [storeId, storeId]
+    );
 
     const activeAdminsCount = allUsers.filter(u => u.role === 'admin' && u.active).length;
 
@@ -182,26 +220,29 @@ router.get('/stats', (req, res, next) => {
     let partsModelsCount = 0;
     let partsBrandsCount = 0;
     try {
-      partsModelsCount = db.prepare('SELECT COUNT(*) n FROM parts_models').get().n;
-      partsBrandsCount = db.prepare("SELECT COUNT(*) n FROM parts_options WHERE kind = 'brand'").get().n;
+      const pmRow = await db.queryOne('SELECT COUNT(*) AS n FROM parts_models');
+      const pbRow = await db.queryOne("SELECT COUNT(*) AS n FROM parts_options WHERE kind = 'brand'");
+      partsModelsCount = parseInt(pmRow?.n, 10) || 0;
+      partsBrandsCount = parseInt(pbRow?.n, 10) || 0;
     } catch (_) {}
 
     let notesCount = 0;
     try {
-      notesCount = db.prepare('SELECT COUNT(*) n FROM notes WHERE store_id = ? OR (? = 1 AND store_id IS NULL)').get(storeId, storeId).n;
+      const nRow = await db.queryOne('SELECT COUNT(*) AS n FROM notes WHERE store_id = ? OR (? = 1 AND store_id IS NULL)', [storeId, storeId]);
+      notesCount = parseInt(nRow?.n, 10) || 0;
     } catch (_) {}
 
-    // 8. Informações de backup existentes no sistema
+    // 8. Informações de backup
     let lastBackup = null;
     try {
-      const settingsRow = db.prepare('SELECT last_backup FROM system_settings WHERE store_id = ? OR (? = 1 AND store_id IS NULL)').get(storeId, storeId);
+      const settingsRow = await db.queryOne('SELECT last_backup FROM system_settings WHERE store_id = ? OR (? = 1 AND store_id IS NULL)', [storeId, storeId]);
       lastBackup = settingsRow?.last_backup || null;
     } catch (_) {}
 
-    // Nome da loja associada para identificação unívoca
+    // Nome da loja associada
     let storeName = 'Loja Principal';
     try {
-      const storeRow = db.prepare('SELECT name FROM stores WHERE id = ?').get(storeId);
+      const storeRow = await db.queryOne('SELECT name FROM stores WHERE id = ?', [storeId]);
       if (storeRow?.name) storeName = storeRow.name;
     } catch (_) {}
 
@@ -219,7 +260,7 @@ router.get('/stats', (req, res, next) => {
         details: soDetails,
       },
       inventory: {
-        count: activeProductsCount, // Contagem operacional ativa (idêntico ao módulo de Estoque)
+        count: activeProductsCount,
         active_count: activeProductsCount,
         total_count: totalProductsCount,
         inactive_count: inactiveProductsCount,
@@ -269,26 +310,34 @@ router.get('/stats', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/customers
-router.post('/clear/customers', (req, res, next) => {
+router.post('/clear/customers', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
 
     // Verificar dependências
-    const linkedOrders = db.prepare(
-      'SELECT COUNT(*) n FROM service_orders WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)'
-    ).get(storeId, storeId).n;
+    const [loRow, lsRow, lcRow, lwRow] = await Promise.all([
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM service_orders WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM device_sales WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM credit_accounts WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)',
+        [storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM warranties WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)',
+        [storeId, storeId]
+      ),
+    ]);
 
-    const linkedSales = db.prepare(
-      'SELECT COUNT(*) n FROM device_sales WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)'
-    ).get(storeId, storeId).n;
-
-    const linkedCredit = db.prepare(
-      'SELECT COUNT(*) n FROM credit_accounts WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)'
-    ).get(storeId, storeId).n;
-
-    const linkedWarranties = db.prepare(
-      'SELECT COUNT(*) n FROM warranties WHERE (store_id = ? OR store_id IS NULL) AND customer_id IN (SELECT id FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0)'
-    ).get(storeId, storeId).n;
+    const linkedOrders = parseInt(loRow?.n, 10) || 0;
+    const linkedSales = parseInt(lsRow?.n, 10) || 0;
+    const linkedCredit = parseInt(lcRow?.n, 10) || 0;
+    const linkedWarranties = parseInt(lwRow?.n, 10) || 0;
 
     if (linkedOrders > 0 || linkedSales > 0 || linkedCredit > 0 || linkedWarranties > 0) {
       const parts = [];
@@ -310,17 +359,19 @@ router.post('/clear/customers', (req, res, next) => {
       });
     }
 
-    const totalBefore = db.prepare(
-      'SELECT COUNT(*) n FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0'
-    ).get(storeId).n;
+    const totalBeforeRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0',
+      [storeId]
+    );
+    const totalBefore = parseInt(totalBeforeRow?.n, 10) || 0;
 
     if (totalBefore === 0) {
       return res.json({ success: true, count: 0, message: 'Nenhum cliente cadastrado para excluir.' });
     }
 
-    const result = db.transaction(() => {
-      const del = db.prepare('DELETE FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0').run(storeId);
-      logAction({
+    const result = await db.transaction(async (tx) => {
+      const del = await tx.execute('DELETE FROM customers WHERE (store_id = ? OR store_id IS NULL) AND is_system = 0', [storeId]);
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_customers',
         recordType: 'danger_zone',
@@ -328,7 +379,7 @@ router.post('/clear/customers', (req, res, next) => {
         details: { count: del.changes, store_id: storeId },
       });
       return del.changes;
-    })();
+    });
 
     res.json({
       success: true,
@@ -341,13 +392,14 @@ router.post('/clear/customers', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/service-orders
-router.post('/clear/service-orders', (req, res, next) => {
+router.post('/clear/service-orders', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
 
-    const orders = db.prepare(
-      'SELECT id FROM service_orders WHERE store_id = ? OR store_id IS NULL'
-    ).all(storeId);
+    const orders = await db.query(
+      'SELECT id FROM service_orders WHERE store_id = ? OR store_id IS NULL',
+      [storeId]
+    );
 
     if (orders.length === 0) {
       return res.json({ success: true, count: 0, message: 'Nenhuma ordem de serviço cadastrada para excluir.' });
@@ -356,33 +408,29 @@ router.post('/clear/service-orders', (req, res, next) => {
     const orderIds = orders.map(o => o.id);
     const inClause = placeholders(orderIds);
 
-    const result = db.transaction(() => {
+    const result = await db.transaction(async (tx) => {
       // 1. Limpar histórico de status das ordens
-      db.prepare(`DELETE FROM service_order_status_history WHERE service_order_id IN (${inClause})`).run(...orderIds);
+      await tx.execute(`DELETE FROM service_order_status_history WHERE service_order_id IN (${inClause})`, orderIds);
 
       // 2. Limpar fotos vinculadas às ordens (registros no banco)
-      db.prepare(`DELETE FROM service_order_photos WHERE service_order_id IN (${inClause})`).run(...orderIds);
+      await tx.execute(`DELETE FROM service_order_photos WHERE service_order_id IN (${inClause})`, orderIds);
 
       // 3. Desvincular verificações de vírus sem apagar relatórios de segurança
       try {
-        db.prepare(`UPDATE virus_scans SET service_order_id = NULL WHERE service_order_id IN (${inClause})`).run(...orderIds);
+        await tx.execute(`UPDATE virus_scans SET service_order_id = NULL WHERE service_order_id IN (${inClause})`, orderIds);
       } catch (_) {}
 
       // 4. Limpar garantias criadas a partir destas ordens
-      db.prepare(`DELETE FROM warranties WHERE service_order_id IN (${inClause})`).run(...orderIds);
+      await tx.execute(`DELETE FROM warranties WHERE service_order_id IN (${inClause})`, orderIds);
 
-      // 5. PRESERVAÇÃO RIGOROSA DO HISTÓRICO FINANCEIRO:
-      // Retiradas de caixa (cash_withdrawals) geradas para compras de peças de OS
-      // NUNCA são apagadas; desvincula-se service_order_id para manter o livro caixa 100% íntegro.
-      db.prepare(`UPDATE cash_withdrawals SET service_order_id = NULL WHERE service_order_id IN (${inClause})`).run(...orderIds);
-
-      // Fiados (credit_accounts) vinculados às ordens são preservados como recebíveis
-      db.prepare(`UPDATE credit_accounts SET service_order_id = NULL WHERE service_order_id IN (${inClause})`).run(...orderIds);
+      // 5. Preservação de caixa e fiados
+      await tx.execute(`UPDATE cash_withdrawals SET service_order_id = NULL WHERE service_order_id IN (${inClause})`, orderIds);
+      await tx.execute(`UPDATE credit_accounts SET service_order_id = NULL WHERE service_order_id IN (${inClause})`, orderIds);
 
       // 6. Excluir as ordens de serviço
-      const del = db.prepare(`DELETE FROM service_orders WHERE id IN (${inClause})`).run(...orderIds);
+      const del = await tx.execute(`DELETE FROM service_orders WHERE id IN (${inClause})`, orderIds);
 
-      logAction({
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_service_orders',
         recordType: 'danger_zone',
@@ -391,7 +439,7 @@ router.post('/clear/service-orders', (req, res, next) => {
       });
 
       return del.changes;
-    })();
+    });
 
     res.json({
       success: true,
@@ -404,21 +452,21 @@ router.post('/clear/service-orders', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/inventory
-router.post('/clear/inventory', (req, res, next) => {
+router.post('/clear/inventory', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const action = req.body?.action || 'delete'; // 'delete' | 'zero_stock' | 'deactivate'
 
     // Alternativa segura 1: Zerar quantidades em estoque
     if (action === 'zero_stock') {
-      const updated = db.transaction(() => {
-        const stmt = db.prepare(`
+      const updated = await db.transaction(async (tx) => {
+        const stmt = await tx.execute(`
           UPDATE stock_levels
-          SET quantity = 0, updated_at = datetime('now')
+          SET quantity = 0, updated_at = CURRENT_TIMESTAMP
           WHERE product_id IN (SELECT id FROM stock_products WHERE store_id = ? OR store_id IS NULL)
-        `).run(storeId);
+        `, [storeId]);
 
-        logAction({
+        await logAction({
           user: req.user,
           action: 'danger_zone_zero_stock',
           recordType: 'danger_zone',
@@ -426,7 +474,7 @@ router.post('/clear/inventory', (req, res, next) => {
           details: { count: stmt.changes, store_id: storeId },
         });
         return stmt.changes;
-      })();
+      });
 
       return res.json({
         success: true,
@@ -438,14 +486,14 @@ router.post('/clear/inventory', (req, res, next) => {
 
     // Alternativa segura 2: Desativar produtos
     if (action === 'deactivate') {
-      const updated = db.transaction(() => {
-        const stmt = db.prepare(`
+      const updated = await db.transaction(async (tx) => {
+        const stmt = await tx.execute(`
           UPDATE stock_products
-          SET is_active = 0, deleted_at = datetime('now'), updated_at = datetime('now')
+          SET is_active = 0, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
           WHERE (store_id = ? OR store_id IS NULL) AND is_active = 1
-        `).run(storeId);
+        `, [storeId]);
 
-        logAction({
+        await logAction({
           user: req.user,
           action: 'danger_zone_deactivate_products',
           recordType: 'danger_zone',
@@ -453,7 +501,7 @@ router.post('/clear/inventory', (req, res, next) => {
           details: { count: stmt.changes, store_id: storeId },
         });
         return stmt.changes;
-      })();
+      });
 
       return res.json({
         success: true,
@@ -464,20 +512,22 @@ router.post('/clear/inventory', (req, res, next) => {
     }
 
     // Ação: Exclusão física de produtos
-    // Verificar dependências com vendas de produtos (store_sale_items) e movimentações (stock_movements)
-    const salesCount = db.prepare(`
-      SELECT COUNT(*) n
+    const salesRow = await db.queryOne(`
+      SELECT COUNT(*) AS n
       FROM store_sale_items ssi
       JOIN stock_products p ON p.id = ssi.product_id
       WHERE p.store_id = ? OR p.store_id IS NULL
-    `).get(storeId).n;
+    `, [storeId]);
 
-    const movementsCount = db.prepare(`
-      SELECT COUNT(*) n
+    const movRow = await db.queryOne(`
+      SELECT COUNT(*) AS n
       FROM stock_movements sm
       JOIN stock_products p ON p.id = sm.product_id
       WHERE p.store_id = ? OR p.store_id IS NULL
-    `).get(storeId).n;
+    `, [storeId]);
+
+    const salesCount = parseInt(salesRow?.n, 10) || 0;
+    const movementsCount = parseInt(movRow?.n, 10) || 0;
 
     if (salesCount > 0 || movementsCount > 0) {
       return res.status(409).json({
@@ -491,25 +541,27 @@ router.post('/clear/inventory', (req, res, next) => {
       });
     }
 
-    const totalProducts = db.prepare(
-      'SELECT COUNT(*) n FROM stock_products WHERE store_id = ? OR store_id IS NULL'
-    ).get(storeId).n;
+    const totalProductsRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM stock_products WHERE store_id = ? OR store_id IS NULL',
+      [storeId]
+    );
+    const totalProducts = parseInt(totalProductsRow?.n, 10) || 0;
 
     if (totalProducts === 0) {
       return res.json({ success: true, count: 0, message: 'Nenhum produto cadastrado para excluir.' });
     }
 
-    const result = db.transaction(() => {
+    const result = await db.transaction(async (tx) => {
       // Excluir níveis de estoque
-      db.prepare(`
+      await tx.execute(`
         DELETE FROM stock_levels
         WHERE product_id IN (SELECT id FROM stock_products WHERE store_id = ? OR store_id IS NULL)
-      `).run(storeId);
+      `, [storeId]);
 
       // Excluir produtos
-      const del = db.prepare('DELETE FROM stock_products WHERE store_id = ? OR store_id IS NULL').run(storeId);
+      const del = await tx.execute('DELETE FROM stock_products WHERE store_id = ? OR store_id IS NULL', [storeId]);
 
-      logAction({
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_inventory',
         recordType: 'danger_zone',
@@ -518,7 +570,7 @@ router.post('/clear/inventory', (req, res, next) => {
       });
 
       return del.changes;
-    })();
+    });
 
     res.json({
       success: true,
@@ -531,16 +583,14 @@ router.post('/clear/inventory', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/stock-movements
-router.post('/clear/stock-movements', (req, res, next) => {
+router.post('/clear/stock-movements', async (req, res, next) => {
   const storeId = req.user.store_id || 1;
   const opKey = `stock_movements:${storeId}`;
 
-  // Validação estrita de perfil administrativo no backend
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ error: 'Acesso restrito a administradores autorizados.' });
   }
 
-  // Prevenção de execuções concorrentes ou duplicadas
   if (clearingOperationsInProgress.has(opKey)) {
     return res.status(409).json({
       error: 'Uma operação de limpeza de movimentações de estoque já está em processamento para esta loja.',
@@ -551,15 +601,14 @@ router.post('/clear/stock-movements', (req, res, next) => {
   clearingOperationsInProgress.add(opKey);
 
   try {
-    // 1. Contagem real das movimentações antes da limpeza
-    const countRow = db.prepare(`
-      SELECT COUNT(*) n
+    const countRow = await db.queryOne(`
+      SELECT COUNT(*) AS n
       FROM stock_movements sm
       WHERE (sm.store_id = ? OR (? = 1 AND sm.store_id IS NULL))
          OR sm.product_id IN (SELECT id FROM stock_products WHERE store_id = ? OR (? = 1 AND store_id IS NULL))
-    `).get(storeId, storeId, storeId, storeId);
+    `, [storeId, storeId, storeId, storeId]);
 
-    const totalMovements = countRow ? countRow.n : 0;
+    const totalMovements = parseInt(countRow?.n, 10) || 0;
 
     if (totalMovements === 0) {
       return res.json({
@@ -569,16 +618,14 @@ router.post('/clear/stock-movements', (req, res, next) => {
       });
     }
 
-    // 2. Exclusão atômica em transação SQLite (garante que falhas não causem exclusão parcial)
-    const deletedCount = db.transaction(() => {
-      const del = db.prepare(`
+    const deletedCount = await db.transaction(async (tx) => {
+      const del = await tx.execute(`
         DELETE FROM stock_movements
         WHERE (store_id = ? OR (? = 1 AND store_id IS NULL))
            OR product_id IN (SELECT id FROM stock_products WHERE store_id = ? OR (? = 1 AND store_id IS NULL))
-      `).run(storeId, storeId, storeId, storeId);
+      `, [storeId, storeId, storeId, storeId]);
 
-      // 3. Auditoria do administrador com todos os detalhes obrigatórios
-      logAction({
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_stock_movements',
         recordType: 'danger_zone',
@@ -595,9 +642,8 @@ router.post('/clear/stock-movements', (req, res, next) => {
       });
 
       return del.changes;
-    })();
+    });
 
-    // 4. Notificar em tempo real para atualização imediata das telas conectadas
     emitInventoryRefresh({ store_id: storeId, action: 'clear_stock_movements', count: deletedCount });
     emitDashboardRefresh({ store_id: storeId });
 
@@ -619,22 +665,28 @@ router.post('/clear/stock-movements', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/suppliers
-router.post('/clear/suppliers', (req, res, next) => {
+router.post('/clear/suppliers', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
 
-    // Verificar dependências
-    const linkedProducts = db.prepare(
-      'SELECT COUNT(*) n FROM stock_products WHERE supplier_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)'
-    ).get(storeId).n;
+    const [spRow, soRow, cwRow] = await Promise.all([
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM stock_products WHERE supplier_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)',
+        [storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM service_orders WHERE supplier_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)',
+        [storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM cash_withdrawals WHERE supplier_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)',
+        [storeId]
+      ),
+    ]);
 
-    const linkedOrders = db.prepare(
-      'SELECT COUNT(*) n FROM service_orders WHERE supplier_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)'
-    ).get(storeId).n;
-
-    const linkedWithdrawals = db.prepare(
-      'SELECT COUNT(*) n FROM cash_withdrawals WHERE supplier_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)'
-    ).get(storeId).n;
+    const linkedProducts = parseInt(spRow?.n, 10) || 0;
+    const linkedOrders = parseInt(soRow?.n, 10) || 0;
+    const linkedWithdrawals = parseInt(cwRow?.n, 10) || 0;
 
     if (linkedProducts > 0 || linkedOrders > 0 || linkedWithdrawals > 0) {
       const parts = [];
@@ -654,17 +706,19 @@ router.post('/clear/suppliers', (req, res, next) => {
       });
     }
 
-    const totalSuppliers = db.prepare(
-      'SELECT COUNT(*) n FROM stock_suppliers WHERE store_id = ? OR store_id IS NULL'
-    ).get(storeId).n;
+    const totalSuppliersRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM stock_suppliers WHERE store_id = ? OR store_id IS NULL',
+      [storeId]
+    );
+    const totalSuppliers = parseInt(totalSuppliersRow?.n, 10) || 0;
 
     if (totalSuppliers === 0) {
       return res.json({ success: true, count: 0, message: 'Nenhum fornecedor cadastrado para excluir.' });
     }
 
-    const result = db.transaction(() => {
-      const del = db.prepare('DELETE FROM stock_suppliers WHERE store_id = ? OR store_id IS NULL').run(storeId);
-      logAction({
+    const result = await db.transaction(async (tx) => {
+      const del = await tx.execute('DELETE FROM stock_suppliers WHERE store_id = ? OR store_id IS NULL', [storeId]);
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_suppliers',
         recordType: 'danger_zone',
@@ -672,7 +726,7 @@ router.post('/clear/suppliers', (req, res, next) => {
         details: { count: del.changes, store_id: storeId },
       });
       return del.changes;
-    })();
+    });
 
     res.json({
       success: true,
@@ -685,14 +739,15 @@ router.post('/clear/suppliers', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/categories
-router.post('/clear/categories', (req, res, next) => {
+router.post('/clear/categories', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
 
-    // Verificar dependências: produtos vinculados a categorias
-    const linkedProducts = db.prepare(
-      'SELECT COUNT(*) n FROM stock_products WHERE category_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)'
-    ).get(storeId).n;
+    const prodRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM stock_products WHERE category_id IS NOT NULL AND (store_id = ? OR store_id IS NULL)',
+      [storeId]
+    );
+    const linkedProducts = parseInt(prodRow?.n, 10) || 0;
 
     if (linkedProducts > 0) {
       return res.status(409).json({
@@ -703,17 +758,19 @@ router.post('/clear/categories', (req, res, next) => {
       });
     }
 
-    const totalCategories = db.prepare(
-      'SELECT COUNT(*) n FROM stock_categories WHERE store_id = ? OR store_id IS NULL'
-    ).get(storeId).n;
+    const totalCatRow = await db.queryOne(
+      'SELECT COUNT(*) AS n FROM stock_categories WHERE store_id = ? OR store_id IS NULL',
+      [storeId]
+    );
+    const totalCategories = parseInt(totalCatRow?.n, 10) || 0;
 
     if (totalCategories === 0) {
       return res.json({ success: true, count: 0, message: 'Nenhuma categoria cadastrada para excluir.' });
     }
 
-    const result = db.transaction(() => {
-      const del = db.prepare('DELETE FROM stock_categories WHERE store_id = ? OR store_id IS NULL').run(storeId);
-      logAction({
+    const result = await db.transaction(async (tx) => {
+      const del = await tx.execute('DELETE FROM stock_categories WHERE store_id = ? OR store_id IS NULL', [storeId]);
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_categories',
         recordType: 'danger_zone',
@@ -721,7 +778,7 @@ router.post('/clear/categories', (req, res, next) => {
         details: { count: del.changes, store_id: storeId },
       });
       return del.changes;
-    })();
+    });
 
     res.json({
       success: true,
@@ -734,7 +791,7 @@ router.post('/clear/categories', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/users
-router.post('/clear/users', (req, res, next) => {
+router.post('/clear/users', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const userIds = Array.isArray(req.body?.user_ids)
@@ -751,9 +808,10 @@ router.post('/clear/users', (req, res, next) => {
     }
 
     // 2. Verificar cada usuário selecionado
-    const selectedUsers = db.prepare(
-      `SELECT * FROM users WHERE id IN (${placeholders(userIds)}) AND (store_id = ? OR store_id IS NULL)`
-    ).all(...userIds, storeId);
+    const selectedUsers = await db.query(
+      `SELECT * FROM users WHERE id IN (${placeholders(userIds)}) AND (store_id = ? OR store_id IS NULL)`,
+      [...userIds, storeId]
+    );
 
     if (selectedUsers.length !== userIds.length) {
       return res.status(404).json({ error: 'Um ou mais usuários selecionados não pertencem a esta loja.' });
@@ -766,13 +824,15 @@ router.post('/clear/users', (req, res, next) => {
     }
 
     // 4. Proibição: Deixar a loja sem administrador ativo
-    const remainingAdmins = db.prepare(`
-      SELECT COUNT(*) n FROM users
+    const remainingAdminsRow = await db.queryOne(`
+      SELECT COUNT(*) AS n FROM users
       WHERE (store_id = ? OR store_id IS NULL)
         AND role = 'admin'
         AND active = 1
         AND id NOT IN (${placeholders(userIds)})
-    `).get(storeId, ...userIds).n;
+    `, [storeId, ...userIds]);
+
+    const remainingAdmins = parseInt(remainingAdminsRow?.n, 10) || 0;
 
     if (remainingAdmins <= 0) {
       return res.status(400).json({
@@ -781,38 +841,38 @@ router.post('/clear/users', (req, res, next) => {
     }
 
     // 5. Exclusão segura com preservação de snapshots de autoria
-    db.transaction(() => {
+    await db.transaction(async (tx) => {
       for (const target of selectedUsers) {
         const name = target.full_name;
 
         // Preservar autoria histórica em snapshots
-        db.prepare('UPDATE service_orders SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?').run(name, target.id);
-        db.prepare('UPDATE cash_withdrawals SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?').run(name, target.id);
-        db.prepare('UPDATE audit_log SET user_name = COALESCE(user_name, ?), user_id = NULL WHERE user_id = ?').run(name, target.id);
-        db.prepare('UPDATE device_sales SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?').run(name, target.id);
-        db.prepare('UPDATE stock_products SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?').run(name, target.id);
-        db.prepare('UPDATE stock_movements SET user_name = COALESCE(user_name, ?), user_id = NULL WHERE user_id = ?').run(name, target.id);
-        db.prepare('UPDATE store_sales SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?').run(name, target.id);
-        db.prepare('UPDATE store_sales SET canceled_by_name_snapshot = COALESCE(canceled_by_name_snapshot, ?), canceled_by = NULL WHERE canceled_by = ?').run(name, target.id);
-        db.prepare('UPDATE service_order_photos SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?').run(name, target.id);
+        await tx.execute('UPDATE service_orders SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?', [name, target.id]);
+        await tx.execute('UPDATE cash_withdrawals SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?', [name, target.id]);
+        await tx.execute('UPDATE audit_log SET user_name = COALESCE(user_name, ?), user_id = NULL WHERE user_id = ?', [name, target.id]);
+        await tx.execute('UPDATE device_sales SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?', [name, target.id]);
+        await tx.execute('UPDATE stock_products SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?', [name, target.id]);
+        await tx.execute('UPDATE stock_movements SET user_name = COALESCE(user_name, ?), user_id = NULL WHERE user_id = ?', [name, target.id]);
+        await tx.execute('UPDATE store_sales SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?', [name, target.id]);
+        await tx.execute('UPDATE store_sales SET canceled_by_name_snapshot = COALESCE(canceled_by_name_snapshot, ?), canceled_by = NULL WHERE canceled_by = ?', [name, target.id]);
+        await tx.execute('UPDATE service_order_photos SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?', [name, target.id]);
 
         try {
-          db.prepare('UPDATE screen_protector_groups SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?').run(name, target.id);
+          await tx.execute('UPDATE screen_protector_groups SET created_by_name_snapshot = COALESCE(created_by_name_snapshot, ?), created_by = NULL WHERE created_by = ?', [name, target.id]);
         } catch (_) {}
 
         // Limpar dados pessoais auxiliares do usuário
         try {
-          db.prepare('DELETE FROM notes WHERE user_id = ?').run(target.id);
-          db.prepare('DELETE FROM labels WHERE user_id = ?').run(target.id);
+          await tx.execute('DELETE FROM notes WHERE user_id = ?', [target.id]);
+          await tx.execute('DELETE FROM labels WHERE user_id = ?', [target.id]);
           for (const table of ['pagbank_calculator', 'piece_calculator', 'frontals_calculator', 'frontals_price_list', 'favorite_notes', 'pinned_notes']) {
-            db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(target.id);
+            await tx.execute(`DELETE FROM ${table} WHERE user_id = ?`, [target.id]);
           }
         } catch (_) {}
 
         // Excluir da tabela users
-        db.prepare('DELETE FROM users WHERE id = ? AND (store_id = ? OR store_id IS NULL)').run(target.id, storeId);
+        await tx.execute('DELETE FROM users WHERE id = ? AND (store_id = ? OR store_id IS NULL)', [target.id, storeId]);
 
-        logAction({
+        await logAction({
           user: req.user,
           action: 'danger_zone_delete_user',
           recordType: 'user',
@@ -820,7 +880,7 @@ router.post('/clear/users', (req, res, next) => {
           details: { username: target.username, full_name: target.full_name, store_id: storeId },
         });
       }
-    })();
+    });
 
     res.json({
       success: true,
@@ -833,16 +893,17 @@ router.post('/clear/users', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/parts-catalog (Entidade auxiliar)
-router.post('/clear/parts-catalog', (req, res, next) => {
+router.post('/clear/parts-catalog', async (req, res, next) => {
   try {
-    const totalModels = db.prepare('SELECT COUNT(*) n FROM parts_models').get().n;
+    const totalRow = await db.queryOne('SELECT COUNT(*) AS n FROM parts_models');
+    const totalModels = parseInt(totalRow?.n, 10) || 0;
     if (totalModels === 0) {
       return res.json({ success: true, count: 0, message: 'Nenhum modelo cadastrado para excluir.' });
     }
 
-    const result = db.transaction(() => {
-      const del = db.prepare('DELETE FROM parts_models').run();
-      logAction({
+    const result = await db.transaction(async (tx) => {
+      const del = await tx.execute('DELETE FROM parts_models');
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_parts_models',
         recordType: 'danger_zone',
@@ -850,7 +911,7 @@ router.post('/clear/parts-catalog', (req, res, next) => {
         details: { count: del.changes },
       });
       return del.changes;
-    })();
+    });
 
     res.json({
       success: true,
@@ -863,18 +924,19 @@ router.post('/clear/parts-catalog', (req, res, next) => {
 });
 
 // POST /api/danger-zone/clear/notes (Entidade auxiliar)
-router.post('/clear/notes', (req, res, next) => {
+router.post('/clear/notes', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
-    const totalNotes = db.prepare('SELECT COUNT(*) n FROM notes WHERE store_id = ? OR store_id IS NULL').get(storeId).n;
+    const totalRow = await db.queryOne('SELECT COUNT(*) AS n FROM notes WHERE store_id = ? OR store_id IS NULL', [storeId]);
+    const totalNotes = parseInt(totalRow?.n, 10) || 0;
 
     if (totalNotes === 0) {
       return res.json({ success: true, count: 0, message: 'Nenhuma anotação cadastrada para excluir.' });
     }
 
-    const result = db.transaction(() => {
-      const del = db.prepare('DELETE FROM notes WHERE store_id = ? OR store_id IS NULL').run(storeId);
-      logAction({
+    const result = await db.transaction(async (tx) => {
+      const del = await tx.execute('DELETE FROM notes WHERE store_id = ? OR store_id IS NULL', [storeId]);
+      await logAction({
         user: req.user,
         action: 'danger_zone_clear_notes',
         recordType: 'danger_zone',
@@ -882,7 +944,7 @@ router.post('/clear/notes', (req, res, next) => {
         details: { count: del.changes, store_id: storeId },
       });
       return del.changes;
-    })();
+    });
 
     res.json({
       success: true,

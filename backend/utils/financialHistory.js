@@ -1,3 +1,4 @@
+// utils/financialHistory.js
 const db = require('../db/database');
 const { getTrustedNowSqlite } = require('./time');
 const { calculateFinancialSummary } = require('../services/financialSummary');
@@ -10,8 +11,8 @@ function pad2(value) {
   return String(value).padStart(2, '0');
 }
 
-function parseYearMonth(nowSqlite) {
-  const [yearText, monthText] = String(nowSqlite || '').slice(0, 7).split('-');
+function parseYearMonth(nowStr) {
+  const [yearText, monthText] = String(nowStr || '').slice(0, 7).split('-');
   return {
     year: Number(yearText),
     month: Number(monthText),
@@ -56,8 +57,8 @@ function monthToComparableValue(period) {
   return period.year * 100 + period.month;
 }
 
-function getMonthDateRangeForSqlite(nowSqlite) {
-  const current = parseYearMonth(nowSqlite);
+function getMonthDateRangeForSqlite(nowStr) {
+  const current = parseYearMonth(nowStr);
   const next = getNextYearMonth(current.year, current.month);
 
   return {
@@ -81,63 +82,62 @@ function sumByPaymentBucket(rows) {
   }, { cash: 0, pix: 0, card: 0, other: 0 });
 }
 
-function computeMonthlySnapshot(year, month, storeId = 1) {
+async function computeMonthlySnapshot(year, month, storeId = 1) {
   const startDate = getMonthStartDate(year, month);
   const next = getNextYearMonth(year, month);
   const nextStartDate = getMonthStartDate(next.year, next.month);
 
-  const summary = calculateFinancialSummary(db, startDate, nextStartDate, { storeId });
+  const summary = await calculateFinancialSummary(db, startDate, nextStartDate, { storeId });
 
-  const serviceStats = db.prepare(`
-    SELECT
-      COUNT(*) AS total_services
+  const serviceStats = await db.queryOne(`
+    SELECT COUNT(*) AS total_services
     FROM service_orders
-    WHERE (store_id = ? OR store_id IS NULL)
-      AND date(COALESCE(NULLIF(delivery_date, ''), entry_date)) >= date(?)
-      AND date(COALESCE(NULLIF(delivery_date, ''), entry_date)) < date(?)
-  `).get(storeId, startDate, nextStartDate);
+    WHERE (store_id = $1 OR store_id IS NULL)
+      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date >= $2::date
+      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date < $3::date
+  `, [storeId, startDate, nextStartDate]);
 
-  const storeStats = db.prepare(`
+  const storeStats = await db.queryOne(`
     SELECT COUNT(*) AS total_sales
     FROM store_sales
-    WHERE (store_id = ? OR store_id IS NULL)
+    WHERE (store_id = $1 OR store_id IS NULL)
       AND COALESCE(is_canceled, 0) = 0
-      AND date(created_at) >= date(?)
-      AND date(created_at) < date(?)
-  `).get(storeId, startDate, nextStartDate);
+      AND created_at::date >= $2::date
+      AND created_at::date < $3::date
+  `, [storeId, startDate, nextStartDate]);
 
-  const expenses = db.prepare(`
+  const expenses = await db.queryOne(`
     SELECT COALESCE(SUM(CASE WHEN w.source_type = 'service_order_part'
         AND so.payment_status IN ('paid', 'credit_account')
-        AND date(COALESCE(NULLIF(so.delivery_date, ''), so.entry_date)) >= date(?)
-        AND date(COALESCE(NULLIF(so.delivery_date, ''), so.entry_date)) < date(?)
+        AND (COALESCE(NULLIF(so.delivery_date, ''), so.entry_date))::date >= $1::date
+        AND (COALESCE(NULLIF(so.delivery_date, ''), so.entry_date))::date < $2::date
         THEN w.amount ELSE 0 END), 0) AS already_in_service_profit
     FROM cash_withdrawals w
     LEFT JOIN service_orders so ON so.id = w.service_order_id AND (so.store_id = w.store_id OR w.store_id IS NULL OR so.store_id IS NULL)
-    WHERE (w.store_id = ? OR w.store_id IS NULL)
-      AND date(w.withdrawal_date) >= date(?)
-      AND date(w.withdrawal_date) < date(?)
-  `).get(startDate, nextStartDate, storeId, startDate, nextStartDate);
+    WHERE (w.store_id = $3 OR w.store_id IS NULL)
+      AND w.withdrawal_date::date >= $1::date
+      AND w.withdrawal_date::date < $2::date
+  `, [startDate, nextStartDate, storeId]);
 
-  const servicePayments = db.prepare(`
+  const servicePayments = await db.query(`
     SELECT payment_method, COALESCE(SUM(service_price), 0) AS total
     FROM service_orders
-    WHERE (store_id = ? OR store_id IS NULL)
+    WHERE (store_id = $1 OR store_id IS NULL)
       AND payment_status = 'paid'
-      AND date(COALESCE(NULLIF(delivery_date, ''), entry_date)) >= date(?)
-      AND date(COALESCE(NULLIF(delivery_date, ''), entry_date)) < date(?)
+      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date >= $2::date
+      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date < $3::date
     GROUP BY payment_method
-  `).all(storeId, startDate, nextStartDate);
+  `, [storeId, startDate, nextStartDate]);
 
-  const storePayments = db.prepare(`
+  const storePayments = await db.query(`
     SELECT payment_method, COALESCE(SUM(total_amount), 0) AS total
     FROM store_sales
-    WHERE (store_id = ? OR store_id IS NULL)
+    WHERE (store_id = $1 OR store_id IS NULL)
       AND COALESCE(is_canceled, 0) = 0
-      AND date(created_at) >= date(?)
-      AND date(created_at) < date(?)
+      AND created_at::date >= $2::date
+      AND created_at::date < $3::date
     GROUP BY payment_method
-  `).all(storeId, startDate, nextStartDate);
+  `, [storeId, startDate, nextStartDate]);
 
   const paymentBuckets = sumByPaymentBucket([...servicePayments, ...storePayments]);
 
@@ -145,11 +145,11 @@ function computeMonthlySnapshot(year, month, storeId = 1) {
   const pending = summary.pendingRevenue;
   const revenue = summary.totalRevenue;
   const profit = summary.totalProfit;
-  const totalServices = Number(serviceStats.total_services) || 0;
-  const totalSales = Number(storeStats.total_sales) || 0;
+  const totalServices = Number(serviceStats?.total_services) || 0;
+  const totalSales = Number(storeStats?.total_sales) || 0;
   const ordersCount = totalServices + totalSales;
   const averageTicket = ordersCount > 0 ? revenue / ordersCount : 0;
-  const netProfit = profit - (summary.cashWithdrawals - Number(expenses.already_in_service_profit));
+  const netProfit = profit - (summary.cashWithdrawals - Number(expenses?.already_in_service_profit || 0));
 
   return {
     store_id: storeId,
@@ -173,53 +173,58 @@ function computeMonthlySnapshot(year, month, storeId = 1) {
   };
 }
 
-function upsertSnapshot(snapshot) {
-  return db.prepare(`
+async function upsertSnapshot(snapshot) {
+  return await db.query(`
     INSERT INTO financial_history (
       store_id, month, year, revenue, received, pending, profit, net_profit,
       total_services, total_sales, average_ticket,
       cash_total, pix_total, card_total, other_total, expenses,
       opened_at, closed_at
     ) VALUES (
-      @store_id, @month, @year, @revenue, @received, @pending, @profit, @net_profit,
-      @total_services, @total_sales, @average_ticket,
-      @cash_total, @pix_total, @card_total, @other_total, @expenses,
-      @opened_at, @closed_at
+      $1, $2, $3, $4, $5, $6, $7, $8,
+      $9, $10, $11,
+      $12, $13, $14, $15, $16,
+      $17, $18
     )
-    ON CONFLICT(store_id, year, month) DO UPDATE SET
-      revenue = excluded.revenue,
-      received = excluded.received,
-      pending = excluded.pending,
-      profit = excluded.profit,
-      net_profit = excluded.net_profit,
-      total_services = excluded.total_services,
-      total_sales = excluded.total_sales,
-      average_ticket = excluded.average_ticket,
-      cash_total = excluded.cash_total,
-      pix_total = excluded.pix_total,
-      card_total = excluded.card_total,
-      other_total = excluded.other_total,
-      expenses = excluded.expenses,
-      opened_at = excluded.opened_at,
-      closed_at = excluded.closed_at
-  `).run(snapshot);
+    ON CONFLICT (store_id, year, month) DO UPDATE SET
+      revenue = EXCLUDED.revenue,
+      received = EXCLUDED.received,
+      pending = EXCLUDED.pending,
+      profit = EXCLUDED.profit,
+      net_profit = EXCLUDED.net_profit,
+      total_services = EXCLUDED.total_services,
+      total_sales = EXCLUDED.total_sales,
+      average_ticket = EXCLUDED.average_ticket,
+      cash_total = EXCLUDED.cash_total,
+      pix_total = EXCLUDED.pix_total,
+      card_total = EXCLUDED.card_total,
+      other_total = EXCLUDED.other_total,
+      expenses = EXCLUDED.expenses,
+      opened_at = EXCLUDED.opened_at,
+      closed_at = EXCLUDED.closed_at
+  `, [
+    snapshot.store_id, snapshot.month, snapshot.year, snapshot.revenue, snapshot.received, snapshot.pending, snapshot.profit, snapshot.net_profit,
+    snapshot.total_services, snapshot.total_sales, snapshot.average_ticket,
+    snapshot.cash_total, snapshot.pix_total, snapshot.card_total, snapshot.other_total, snapshot.expenses,
+    snapshot.opened_at, snapshot.closed_at
+  ]);
 }
 
-function getActivityMonthsBefore(current, storeId = 1) {
+async function getActivityMonthsBefore(current, storeId = 1) {
   const currentComparable = monthToComparableValue(current);
 
-  const rows = db.prepare(`
+  const rows = await db.query(`
     SELECT DISTINCT ym
     FROM (
-      SELECT strftime('%Y-%m', COALESCE(NULLIF(delivery_date, ''), entry_date)) AS ym FROM service_orders WHERE store_id = ?
+      SELECT TO_CHAR(COALESCE(NULLIF(delivery_date, ''), entry_date)::timestamp, 'YYYY-MM') AS ym FROM service_orders WHERE store_id = $1
       UNION ALL
-      SELECT strftime('%Y-%m', created_at) AS ym FROM store_sales WHERE store_id = ? AND COALESCE(is_canceled, 0) = 0
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS ym FROM store_sales WHERE store_id = $1 AND COALESCE(is_canceled, 0) = 0
       UNION ALL
-      SELECT strftime('%Y-%m', withdrawal_date) AS ym FROM cash_withdrawals WHERE store_id = ?
-    )
+      SELECT TO_CHAR(withdrawal_date::timestamp, 'YYYY-MM') AS ym FROM cash_withdrawals WHERE store_id = $1
+    ) t
     WHERE ym IS NOT NULL
     ORDER BY ym ASC
-  `).all(storeId, storeId, storeId);
+  `, [storeId]);
 
   return rows
     .map((row) => {
@@ -229,39 +234,39 @@ function getActivityMonthsBefore(current, storeId = 1) {
     .filter((period) => monthToComparableValue(period) <= currentComparable);
 }
 
-function closePendingMonths(current, storeId = 1) {
-  const monthsToProcess = getActivityMonthsBefore(current, storeId);
+async function closePendingMonths(current, storeId = 1) {
+  const monthsToProcess = await getActivityMonthsBefore(current, storeId);
   if (monthsToProcess.length === 0) return [];
 
-  const runInTransaction = db.transaction((months) => {
-    const processed = [];
+  const processed = [];
+  for (const monthCursor of monthsToProcess) {
+    const snapshot = await computeMonthlySnapshot(monthCursor.year, monthCursor.month, storeId);
+    await upsertSnapshot(snapshot);
+    processed.push({ year: monthCursor.year, month: monthCursor.month });
+  }
 
-    for (const monthCursor of months) {
-      const snapshot = computeMonthlySnapshot(monthCursor.year, monthCursor.month, storeId);
-      upsertSnapshot(snapshot);
-      processed.push({ year: monthCursor.year, month: monthCursor.month });
-    }
-
-    return processed;
-  });
-
-  return runInTransaction(monthsToProcess);
+  return processed;
 }
 
-async function ensureFinancialHistoryUpToDate(referenceNowSqlite = null, storeId = 1) {
+async function ensureFinancialHistoryUpToDate(referenceNowStr = null, storeId = 1) {
   if (closeProcessPromise) {
     return closeProcessPromise;
   }
 
   closeProcessPromise = (async () => {
-    const nowSqlite = referenceNowSqlite || await getTrustedNowSqlite();
-    const current = parseYearMonth(nowSqlite);
-    const createdMonths = closePendingMonths(current, storeId);
+    try {
+      const nowStr = referenceNowStr || await getTrustedNowSqlite();
+      const current = parseYearMonth(nowStr);
+      const createdMonths = await closePendingMonths(current, storeId);
 
-    return {
-      nowSqlite,
-      createdMonths,
-    };
+      return {
+        nowSqlite: nowStr,
+        createdMonths,
+      };
+    } catch (err) {
+      console.warn('[FINANCIAL_HISTORY] Erro ao sincronizar fechamento mensal:', err.message);
+      return { nowSqlite: new Date().toISOString(), createdMonths: [] };
+    }
   })();
 
   try {

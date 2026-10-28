@@ -1,6 +1,5 @@
 // services/multiTenantService.js
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
 const db = require('../db/database');
 
 const DEFAULT_SETTINGS_TEMPLATE = {
@@ -44,10 +43,10 @@ const DEFAULT_SETTINGS_TEMPLATE = {
 /**
  * Verifica o status de assinatura da loja e aplica suspensão automática se vencida além da tolerância.
  */
-function checkStoreSubscription(storeOrId) {
+async function checkStoreSubscription(storeOrId) {
   let store = storeOrId;
   if (typeof storeOrId === 'number' || (typeof storeOrId === 'string' && /^\d+$/.test(storeOrId))) {
-    store = db.prepare('SELECT * FROM stores WHERE id = ?').get(Number(storeOrId));
+    store = await db.queryOne('SELECT * FROM stores WHERE id = $1', [Number(storeOrId)]);
   }
 
   if (!store) {
@@ -55,7 +54,6 @@ function checkStoreSubscription(storeOrId) {
   }
 
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
 
   // Se a loja ainda está aguardando ativação
   if (store.status === 'pending_activation') {
@@ -87,46 +85,47 @@ function checkStoreSubscription(storeOrId) {
 
   // Se tem data de vencimento, verificar atraso e tolerância
   if (store.due_date) {
-    const dueDate = new Date(store.due_date + 'T23:59:59');
+    const dueDateStr = typeof store.due_date === 'string' ? store.due_date : store.due_date.toISOString().slice(0, 10);
+    const dueDate = new Date(dueDateStr + 'T23:59:59');
     const graceDays = store.grace_period_days !== undefined ? store.grace_period_days : 3;
     const graceLimitDate = new Date(dueDate.getTime() + graceDays * 24 * 60 * 60 * 1000);
 
     if (now > graceLimitDate) {
       // Ultrapassou a tolerância: suspender automaticamente no banco
-      db.prepare(`
+      await db.query(`
         UPDATE stores
-        SET status = 'suspended', updated_at = datetime('now')
-        WHERE id = ?
-      `).run(store.id);
+        SET status = 'suspended', updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+      `, [store.id]);
 
-      db.prepare(`
+      await db.query(`
         INSERT INTO store_subscription_history (store_id, action, previous_status, new_status, notes, performed_by_name)
-        VALUES (?, 'auto_suspended_overdue', ?, 'suspended', 'Suspensão automática após encerramento do prazo de tolerância', 'Sistema')
-      `).run(store.id, store.status);
+        VALUES ($1, 'auto_suspended_overdue', $2, 'suspended', 'Suspensão automática após encerramento do prazo de tolerância', 'Sistema')
+      `, [store.id, store.status]);
 
       return {
         isAccessible: false,
         canAccessErp: false,
         status: 'suspended',
         effectiveStatus: 'suspended',
-        reason: `Sua assinatura venceu em ${store.due_date} e o período de tolerância encerrou. Entre em contato para regularizar o acesso.`,
-        dueDate: store.due_date,
+        reason: `Sua assinatura venceu em ${dueDateStr} e o período de tolerância encerrou. Entre em contato para regularizar o acesso.`,
+        dueDate: dueDateStr,
         storeName: store.name,
         contact: getPlatformContactInfo()
       };
     } else if (now > dueDate) {
       // Venceu mas ainda está na tolerância: marca como 'overdue' se ainda não estiver
       if (store.status !== 'overdue') {
-        db.prepare(`
+        await db.query(`
           UPDATE stores
-          SET status = 'overdue', updated_at = datetime('now')
-          WHERE id = ?
-        `).run(store.id);
+          SET status = 'overdue', updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [store.id]);
 
-        db.prepare(`
+        await db.query(`
           INSERT INTO store_subscription_history (store_id, action, previous_status, new_status, notes, performed_by_name)
-          VALUES (?, 'status_overdue', ?, 'overdue', 'Assinatura em período de tolerância', 'Sistema')
-        `).run(store.id, store.status);
+          VALUES ($1, 'status_overdue', $2, 'overdue', 'Assinatura em período de tolerância', 'Sistema')
+        `, [store.id, store.status]);
       }
       return {
         isAccessible: true,
@@ -134,7 +133,7 @@ function checkStoreSubscription(storeOrId) {
         status: 'overdue',
         effectiveStatus: 'overdue',
         inGracePeriod: true,
-        dueDate: store.due_date,
+        dueDate: dueDateStr,
         storeName: store.name,
         contact: getPlatformContactInfo()
       };
@@ -166,18 +165,18 @@ function getPlatformContactInfo() {
 /**
  * Valida a disponibilidade de um nickname operacional de ERP
  */
-function isNicknameAvailable(nickname) {
+async function isNicknameAvailable(nickname) {
   if (!nickname || typeof nickname !== 'string') return false;
   const clean = nickname.trim().toLowerCase();
   if (!/^[\w.@-]{3,60}$/.test(clean)) return false;
-  const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = ?').get(clean);
+  const existing = await db.queryOne('SELECT id FROM users WHERE LOWER(username) = $1', [clean]);
   return !existing;
 }
 
 /**
  * Cadastra uma nova loja no sistema (Multi-tenant)
  */
-function createStoreWithInitialData({
+async function createStoreWithInitialData({
   storeName,
   ownerName,
   ownerEmail,
@@ -208,9 +207,9 @@ function createStoreWithInitialData({
   const cleanOwnerEmail = finalEmail.toLowerCase();
   const cleanNickname = nickname.trim();
 
-  return db.transaction(() => {
+  return db.transaction(async (tx) => {
     // 1. Verificar se o e-mail do proprietário já existe
-    const existingStore = db.prepare('SELECT id FROM stores WHERE LOWER(owner_email) = ?').get(cleanOwnerEmail);
+    const existingStore = await tx.queryOne('SELECT id FROM stores WHERE LOWER(owner_email) = $1', [cleanOwnerEmail]);
     if (existingStore) {
       const err = new Error('Já existe uma loja cadastrada com este e-mail de proprietário.');
       err.statusCode = 409;
@@ -219,7 +218,7 @@ function createStoreWithInitialData({
 
     // 1.1. Verificar se a conta Google já está vinculada
     if (googleId) {
-      const existingGoogle = db.prepare('SELECT id FROM stores WHERE google_id = ?').get(googleId);
+      const existingGoogle = await tx.queryOne('SELECT id FROM stores WHERE google_id = $1', [googleId]);
       if (existingGoogle) {
         const err = new Error('Esta conta Google já está vinculada a uma loja existente no sistema.');
         err.statusCode = 409;
@@ -228,7 +227,7 @@ function createStoreWithInitialData({
     }
 
     // 2. Verificar se o nickname operacional já existe
-    const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(username) = ?').get(cleanNickname.toLowerCase());
+    const existingUser = await tx.queryOne('SELECT id FROM users WHERE LOWER(username) = $1', [cleanNickname.toLowerCase()]);
     if (existingUser) {
       const err = new Error('Este nickname já está em uso por outro usuário. Escolha outro.');
       err.statusCode = 409;
@@ -243,20 +242,22 @@ function createStoreWithInitialData({
     const slugBase = storeName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 40);
     const slug = `${slugBase}-${Date.now().toString(36)}`;
 
-    const storeInsert = db.prepare(`
+    const storeInsert = await tx.queryOne(`
       INSERT INTO stores (name, slug, owner_name, owner_email, owner_password_hash, google_id, status, plan, grace_period_days, contact_phone)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending_activation', ?, 3, ?)
-    `).run(storeName.trim(), slug, ownerName.trim(), cleanOwnerEmail, ownerHash, googleId, plan, finalPhone || null);
+      VALUES ($1, $2, $3, $4, $5, $6, 'pending_activation', $7, 3, $8)
+      RETURNING id
+    `, [storeName.trim(), slug, ownerName.trim(), cleanOwnerEmail, ownerHash, googleId, plan, finalPhone || null]);
 
-    const storeId = storeInsert.lastInsertRowid;
+    const storeId = storeInsert.id;
 
     // 5. Inserir o usuário Administrador Master da nova loja
-    const userInsert = db.prepare(`
+    const userInsert = await tx.queryOne(`
       INSERT INTO users (store_id, full_name, username, password_hash, role, active, is_master, job_title)
-      VALUES (?, ?, ?, ?, 'admin', 1, 1, 'Proprietário')
-    `).run(storeId, ownerName.trim(), cleanNickname, erpHash);
+      VALUES ($1, $2, $3, $4, 'admin', 1, 1, 'Proprietário')
+      RETURNING id
+    `, [storeId, ownerName.trim(), cleanNickname, erpHash]);
 
-    const userId = userInsert.lastInsertRowid;
+    const userId = userInsert.id;
 
     // 6. Criar configurações iniciais do sistema para a loja
     const storeSettings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS_TEMPLATE));
@@ -264,24 +265,26 @@ function createStoreWithInitialData({
     storeSettings.store.trade_name = storeName.trim();
     storeSettings.store.email = cleanOwnerEmail;
 
-    db.prepare(`
-      INSERT INTO system_settings (store_id, value, version)
-      VALUES (?, ?, 1)
-    `).run(storeId, JSON.stringify(storeSettings));
+    await tx.query(`
+      INSERT INTO system_settings (store_id, key, value)
+      VALUES ($1, 'general', $2)
+      ON CONFLICT (store_id, key) DO UPDATE SET value = EXCLUDED.value
+    `, [storeId, JSON.stringify(storeSettings)]);
 
     // 7. Criar sequências de numeração inicial (começam em 1)
-    for (const kind of ['order', 'sale', 'device', 'report']) {
-      db.prepare(`
+    for (const kind of ['order', 'sale', 'device_sale', 'report']) {
+      await tx.query(`
         INSERT INTO document_sequences (store_id, kind, next_value)
-        VALUES (?, ?, 1)
-      `).run(storeId, kind);
+        VALUES ($1, $2, 1)
+        ON CONFLICT (store_id, kind) DO NOTHING
+      `, [storeId, kind]);
     }
 
     // 8. Registrar histórico de assinatura
-    db.prepare(`
+    await tx.query(`
       INSERT INTO store_subscription_history (store_id, action, new_status, notes, performed_by_name)
-      VALUES (?, 'registered', 'pending_activation', 'Cadastro inicial realizado pelo portal público. Aguardando ativação.', 'Cliente (Público)')
-    `).run(storeId);
+      VALUES ($1, 'registered', 'pending_activation', 'Cadastro inicial realizado pelo portal público. Aguardando ativação.', 'Cliente (Público)')
+    `, [storeId]);
 
     return {
       storeId,
@@ -292,7 +295,7 @@ function createStoreWithInitialData({
       nickname: cleanNickname,
       status: 'pending_activation'
     };
-  })();
+  });
 }
 
 module.exports = {

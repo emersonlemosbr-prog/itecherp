@@ -5,7 +5,7 @@ const { userView } = require('../services/settings');
 const { authorize } = require('./permissions');
 const { checkStoreSubscription } = require('../services/multiTenantService');
 
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   const header = req.headers.authorization || '';
   const headerToken = header.startsWith('Bearer ') ? header.slice(7) : null;
   const queryToken = typeof req.query?.token === 'string' ? req.query.token : null;
@@ -17,18 +17,18 @@ function authenticate(req, res, next) {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id);
+    const user = await db.queryOne('SELECT * FROM users WHERE id = $1', [payload.id]);
     if (!user) return res.status(401).json({ error: 'Usuário não encontrado.' });
     if (!user.active || (payload.session_version || 0) !== user.session_version) return res.status(401).json({ error: 'Sessão revogada. Entre novamente.' });
 
     // Verificação de isolamento e assinatura da loja (Multi-Tenant)
     if (user.store_id) {
-      const store = db.prepare('SELECT * FROM stores WHERE id = ?').get(user.store_id);
+      const store = await db.queryOne('SELECT * FROM stores WHERE id = $1', [user.store_id]);
       if (!store) {
         return res.status(403).json({ error: 'Loja associada não encontrada.', code: 'STORE_NOT_FOUND' });
       }
 
-      const subscription = checkStoreSubscription(store);
+      const subscription = await checkStoreSubscription(store);
       if (!subscription.isAccessible) {
         return res.status(403).json({
           error: subscription.reason,

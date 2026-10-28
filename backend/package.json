@@ -14,7 +14,7 @@
     "cleanup:test-data": "node scripts/cleanupKnownTestData.js",
     "cleanup:test-data:apply": "node scripts/cleanupKnownTestData.js --apply",
     "platform:create-admin": "node scripts/createPlatformAdmin.js",
-    "db:migrate-postgres": "node scripts/migrateToPostgres.js",
+    "db:bootstrap": "node scripts/bootstrapPostgres.js",
     "test": "node --test --test-concurrency=1 tests/*.test.js"
   },
   "dependencies": {
@@ -31,6 +31,7 @@
     "morgan": "^1.12.1",
     "multer": "^2.4.0",
     "nodemailer": "^10.0.16",
+    "pg": "^8.23.1",
     "sharp": "^0.35.5",
     "web-push": "^3.6.7"
   },
