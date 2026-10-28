@@ -164,8 +164,51 @@ async function runBootstrap() {
     // Inicializar sequências de numeração se não existirem
     await db.query(`
       INSERT INTO document_sequences (store_id, kind, next_value)
-      VALUES (1, 'order', 1), (1, 'sale', 1), (1, 'device_sale', 1)
+      VALUES (1, 'order', 1), (1, 'sale', 1), (1, 'device_sale', 1), (1, 'report', 1)
       ON CONFLICT (store_id, kind) DO NOTHING
+    `);
+
+    // Inicializar configurações padrão do sistema para a Loja 1 se não existirem
+    const defaultSettings = {
+      store: {
+        name: mainStore.name,
+        trade_name: 'iTech',
+        email: process.env.INITIAL_OWNER_EMAIL || 'contato@itechcelulareinformatica.com.br',
+        phone: '',
+        whatsapp: '',
+        address: { street: '', number: '', complement: '', district: '', city: '', state: '', zip: '' },
+        logo: '',
+      },
+      documents: {
+        receipt_terms: 'Agradecemos a preferência! Garantia legal de 90 dias.',
+        warranty_terms: 'Garantia legal de 90 dias para defeitos de fabricação e serviços executados.',
+        quote_terms: 'Orçamento válido por 10 dias.',
+        ticket_message: 'Obrigado pela preferência! Volte sempre.',
+        warranty_days: 90,
+      },
+      system: {
+        theme: 'dark',
+        home: '/',
+        auto_backup: false,
+        backup_frequency: 'daily',
+      },
+      finance: {
+        default_payment_method: 'pix',
+      },
+    };
+
+    await db.query(`
+      INSERT INTO system_settings (store_id, value, version, updated_at)
+      VALUES (1, $1, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT (store_id) DO NOTHING
+    `, [JSON.stringify(defaultSettings)]);
+
+    // Sincronizar explicitamente as sequências numéricas de tabelas que usam SERIAL
+    await db.query(`
+      SELECT setval('stores_id_seq', (SELECT COALESCE(MAX(id), 1) FROM stores), true);
+      SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM users), true);
+      SELECT setval('platform_users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM platform_users), true);
+      SELECT setval('system_settings_id_seq', (SELECT COALESCE(MAX(id), 1) FROM system_settings), true);
     `);
 
     // Resumo final

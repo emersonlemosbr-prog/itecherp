@@ -266,9 +266,9 @@ async function createStoreWithInitialData({
     storeSettings.store.email = cleanOwnerEmail;
 
     await tx.query(`
-      INSERT INTO system_settings (store_id, key, value)
-      VALUES ($1, 'general', $2)
-      ON CONFLICT (store_id, key) DO UPDATE SET value = EXCLUDED.value
+      INSERT INTO system_settings (store_id, value, version, updated_at)
+      VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT (store_id) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP
     `, [storeId, JSON.stringify(storeSettings)]);
 
     // 7. Criar sequências de numeração inicial (começam em 1)
