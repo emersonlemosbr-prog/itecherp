@@ -137,6 +137,13 @@ module.exports = function migrateMultiTenant(db) {
         if (!hasColumn(table, 'store_id')) {
           db.exec(`ALTER TABLE ${table} ADD COLUMN store_id INTEGER REFERENCES stores(id)`);
         }
+        // Para a tabela users, evitar violação da constraint de único master por loja ao migrar para a loja 1
+        if (table === 'users') {
+          const hasMasterInStore1 = db.prepare('SELECT id FROM users WHERE store_id = 1 AND is_master = 1').get();
+          if (hasMasterInStore1) {
+            db.exec('UPDATE users SET is_master = 0 WHERE store_id IS NULL AND is_master = 1');
+          }
+        }
         // Associar dados existentes para a Loja 1 (iTech)
         db.exec(`UPDATE ${table} SET store_id = 1 WHERE store_id IS NULL`);
         // Criar índice
