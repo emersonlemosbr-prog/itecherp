@@ -813,6 +813,74 @@ CREATE TABLE IF NOT EXISTS tracking_push (
 );
 CREATE INDEX IF NOT EXISTS idx_tracking_push_token ON tracking_push(token);
 
+-- ----------------------------------------------------------------------------
+-- 30. SEGURANÇA SUPABASE (Ativação de RLS e Bloqueio da Data API PostgREST)
+-- ----------------------------------------------------------------------------
+-- Revoga todos os privilégios das roles públicas e anônimas da Data API
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated, PUBLIC;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated, PUBLIC;
+REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM anon, authenticated, PUBLIC;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC, anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated, PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated, PUBLIC;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON ROUTINES FROM anon, authenticated, PUBLIC;
+
+-- Habilita Row Level Security em todas as 47 tabelas do sistema
+ALTER TABLE IF EXISTS public.stores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.platform_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.store_subscription_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.platform_audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.password_reset_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.system_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.document_sequences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.stock_suppliers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.stock_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.stock_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.stock_levels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.stock_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.service_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.service_order_status_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.service_order_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.warranties ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.credit_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.cash_withdrawals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.financial_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.financial_history_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.store_sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.store_sale_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.device_sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.screen_protector_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.screen_protector_models ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.parts_options ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.parts_models ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.frontals_price_list ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.frontals_calculator ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.piece_calculator ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.pagbank_calculator ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.note_colors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.labels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.note_labels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.note_checklists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.note_attachments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.note_reminders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.favorite_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.pinned_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.virus_threat_signatures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.virus_scans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.virus_scan_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.tracking_push ENABLE ROW LEVEL SECURITY;
+
+-- Garante que a role postgres do backend mantenha permissões totais
+GRANT ALL ON SCHEMA public TO postgres;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres;
+
 -- ============================================================================
 -- FIM DO ESQUEMA POSTGRESQL iTech ERP
 -- ============================================================================

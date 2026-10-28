@@ -16,6 +16,8 @@
     "platform:create-admin": "node scripts/createPlatformAdmin.js",
     "platform:setup-superadmin": "node scripts/setupSuperadmin.js",
     "db:bootstrap": "node scripts/bootstrapPostgres.js",
+    "db:audit-security": "node scripts/applySecurityMigration.js",
+    "db:migrate-security": "node scripts/applySecurityMigration.js --apply",
     "test": "node --test --test-concurrency=1 tests/*.test.js"
   },
   "dependencies": {
