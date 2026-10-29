@@ -232,14 +232,17 @@ router.post('/login', platformLoginRateLimit, async (req, res) => {
       { expiresIn: '12h' }
     );
 
+    const adminPayload = {
+      id: admin.id,
+      name: admin.name,
+      email: admin.email,
+      role: admin.role
+    };
+
     res.json({
       token,
-      admin: {
-        id: admin.id,
-        name: admin.name,
-        email: admin.email,
-        role: admin.role
-      }
+      user: adminPayload,
+      admin: adminPayload
     });
   } catch (err) {
     console.error('[PLATFORM_LOGIN_ERROR]', err);

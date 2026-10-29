@@ -74,12 +74,37 @@ export default function PlatformAdmin() {
         email: loginEmail.trim(),
         password: loginPassword,
       })
+      const adminData = data.admin || data.user || {}
       localStorage.setItem('itech_platform_token', data.token)
-      localStorage.setItem('itech_platform_user', JSON.stringify(data.user))
+      localStorage.setItem('itech_platform_user', JSON.stringify(adminData))
       setPlatformToken(data.token)
-      setAdminUser(data.user)
+      setAdminUser(adminData)
     } catch (err) {
-      setLoginError(err.response?.data?.error || 'Erro ao realizar login de administrador.')
+      console.error('[PLATFORM_LOGIN_ERROR]', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+        code: err.code,
+      })
+      let message = err.response?.data?.error || err.response?.data?.message
+      if (!message) {
+        if (err.message === 'Network Error' || err.code === 'ERR_NETWORK') {
+          message = 'Não foi possível conectar ao servidor backend (Render). Verifique a conexão com a internet ou tente novamente em alguns instantes se o servidor estiver acordando.'
+        } else if (err.response?.status === 404) {
+          message = 'Endpoint de autenticação da plataforma não encontrado (404). Verifique a URL-base da API.'
+        } else if (err.response?.status === 429) {
+          message = 'Muitas tentativas consecutivas de login. Aguarde um minuto e tente novamente.'
+        } else if (err.response?.status === 401) {
+          message = 'E-mail ou senha de administrador da plataforma inválidos.'
+        } else if (err.response?.status === 403) {
+          message = 'Acesso negado. Esta conta não possui permissões de Administrador da Plataforma.'
+        } else if (err.response?.status >= 500) {
+          message = 'Erro interno do servidor backend (500). Tente novamente mais tarde.'
+        } else {
+          message = err.message || 'Erro ao realizar login de administrador.'
+        }
+      }
+      setLoginError(message)
     } finally {
       setLoginLoading(false)
     }

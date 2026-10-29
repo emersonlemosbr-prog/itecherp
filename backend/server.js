@@ -23,25 +23,64 @@ app.use((req, res, next) => {
   next();
 });
 
-// Suporte flexível a CORS para Cloudflare Pages e desenvolvimento
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(s => s.trim().replace(/\/$/, ''))
-  : null;
+// Configuração robusta e segura de CORS
+const rawCorsOrigins = process.env.CORS_ORIGIN || '';
+const configuredOrigins = rawCorsOrigins
+  ? rawCorsOrigins.split(',').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean)
+  : [];
 
-app.use(cors({
+function isOriginAllowed(origin) {
+  if (!origin) return true; // Requisições same-origin, curl, mobile ou server-to-server
+  const normalized = origin.trim().replace(/\/+$/, '').toLowerCase();
+
+  // 1. Origens explicitamente configuradas no ambiente (ou wildcard '*')
+  if (configuredOrigins.some(cfg => cfg === '*' || cfg.toLowerCase() === normalized)) {
+    return true;
+  }
+
+  // 2. Subdomínios do Cloudflare Pages (*.pages.dev)
+  if (normalized.endsWith('.pages.dev')) {
+    return true;
+  }
+
+  // 3. Subdomínios do Render (*.onrender.com)
+  if (normalized.endsWith('.onrender.com')) {
+    return true;
+  }
+
+  // 4. Domínios oficiais de produção da iTech
+  if (
+    normalized === 'https://acompanhar.itechcelulareinformatica.com.br' ||
+    normalized === 'https://itechcelulareinformatica.com.br' ||
+    normalized === 'https://www.itechcelulareinformatica.com.br'
+  ) {
+    return true;
+  }
+
+  // 5. Ambientes de desenvolvimento local
+  if (/^http:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(normalized)) {
+    return true;
+  }
+
+  return false;
+}
+
+const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (!corsOrigins || corsOrigins.includes('*')) return callback(null, true);
-    const normalized = origin.replace(/\/$/, '');
-    if (corsOrigins.includes(normalized)) return callback(null, true);
-    // Permite subdomínios do pages.dev caso configurado
-    if (normalized.endsWith('.pages.dev')) return callback(null, true);
-    return callback(null, true);
+    if (isOriginAllowed(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Retry-After'],
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(express.json({ limit: '4mb' }));
 app.use(morgan('dev'));
