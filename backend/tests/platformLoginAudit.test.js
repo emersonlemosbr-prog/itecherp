@@ -10,7 +10,7 @@ const http = require('node:http');
 test('Frontend API URL Resolution: resolveApiBaseUrl logic', () => {
   function testResolve(envUrl, windowMock) {
     const raw = (envUrl || '').trim();
-    if (raw) {
+    if (raw && !raw.includes('itecherp-backend.onrender.com')) {
       const clean = raw.replace(/\/+$/, '');
       return clean.endsWith('/api') ? clean : `${clean}/api`;
     }
@@ -19,36 +19,42 @@ test('Frontend API URL Resolution: resolveApiBaseUrl logic', () => {
       const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
       const isRender = host.endsWith('.onrender.com');
       if (!isLocalhost && !isRender) {
-        return 'https://itecherp-backend.onrender.com/api';
+        return 'https://itech-project-z1ez.onrender.com/api';
       }
     }
     return '/api';
   }
 
   // Cenário 1: VITE_API_URL fornecida com /api
-  assert.equal(testResolve('https://itecherp-backend.onrender.com/api'), 'https://itecherp-backend.onrender.com/api');
+  assert.equal(testResolve('https://itech-project-z1ez.onrender.com/api'), 'https://itech-project-z1ez.onrender.com/api');
 
   // Cenário 2: VITE_API_URL fornecida SEM /api (deve normalizar e acrescentar /api)
-  assert.equal(testResolve('https://itecherp-backend.onrender.com'), 'https://itecherp-backend.onrender.com/api');
+  assert.equal(testResolve('https://itech-project-z1ez.onrender.com'), 'https://itech-project-z1ez.onrender.com/api');
 
   // Cenário 3: VITE_API_URL fornecida com barra final
-  assert.equal(testResolve('https://itecherp-backend.onrender.com/api/'), 'https://itecherp-backend.onrender.com/api');
+  assert.equal(testResolve('https://itech-project-z1ez.onrender.com/api/'), 'https://itech-project-z1ez.onrender.com/api');
 
   // Cenário 4: VITE_API_URL ausente rodando no Cloudflare Pages (*.pages.dev)
   assert.equal(
     testResolve(undefined, { location: { hostname: 'itecherp.pages.dev' } }),
-    'https://itecherp-backend.onrender.com/api'
+    'https://itech-project-z1ez.onrender.com/api'
   );
 
   // Cenário 5: VITE_API_URL ausente rodando em preview do Cloudflare Pages
   assert.equal(
     testResolve('', { location: { hostname: 'feat-superadmin.itecherp.pages.dev' } }),
-    'https://itecherp-backend.onrender.com/api'
+    'https://itech-project-z1ez.onrender.com/api'
   );
 
-  // Cenário 6: VITE_API_URL ausente rodando diretamente no Render (*.onrender.com)
+  // Cenário 6: VITE_API_URL antiga/legada (deve auto-corrigir para o backend real ativo)
   assert.equal(
-    testResolve('', { location: { hostname: 'itecherp-backend.onrender.com' } }),
+    testResolve('https://itecherp-backend.onrender.com/api', { location: { hostname: 'itecherp.pages.dev' } }),
+    'https://itech-project-z1ez.onrender.com/api'
+  );
+
+  // Cenário 7: VITE_API_URL ausente rodando diretamente no Render (*.onrender.com)
+  assert.equal(
+    testResolve('', { location: { hostname: 'itech-project-z1ez.onrender.com' } }),
     '/api'
   );
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Store, User, Mail, Lock, Phone, CheckCircle2, XCircle, AlertCircle, ArrowRight, ShieldCheck, KeyRound } from 'lucide-react'
 import api from '../api/client'
@@ -43,7 +43,7 @@ export default function RegisterStore() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '43080907809-1ddca943lpqqgbnivdlf3qa40h42u8kk.apps.googleusercontent.com'
 
   // Inicialização oficial do Google Identity Services (GSI)
   useEffect(() => {
@@ -90,7 +90,43 @@ export default function RegisterStore() {
     }
   }, [googleClientId])
 
-  // Verificação de disponibilidade de nickname com debounce
+  // Verificação de disponibilidade de nickname com debounce e retry sob demanda
+  const checkNicknameAvailability = useCallback(async (targetNickname) => {
+    const raw = targetNickname !== undefined ? targetNickname : nickname
+    const trimmed = String(raw || '').trim().toLowerCase()
+    if (!trimmed) {
+      setNicknameStatus({ checking: false, available: null, message: '' })
+      return
+    }
+
+    if (trimmed.length < 3) {
+      setNicknameStatus({ checking: false, available: false, message: 'Mínimo de 3 caracteres.' })
+      return
+    }
+
+    if (!/^[a-z0-9_.-]+$/.test(trimmed)) {
+      setNicknameStatus({ checking: false, available: false, message: 'Use apenas letras, números, ponto ou traço.' })
+      return
+    }
+
+    setNicknameStatus({ checking: true, available: null, message: 'Verificando...' })
+    try {
+      const { data } = await api.get(`/auth/check-nickname?nickname=${encodeURIComponent(trimmed)}`)
+      setNicknameStatus({
+        checking: false,
+        available: data.available,
+        message: data.available ? 'Nickname disponível!' : (data.error || 'Nickname já está em uso.')
+      })
+    } catch (err) {
+      console.warn('[CHECK_NICKNAME_WARN]', err?.message)
+      setNicknameStatus({
+        checking: false,
+        available: null,
+        message: 'Não foi possível verificar a disponibilidade no momento.'
+      })
+    }
+  }, [nickname])
+
   useEffect(() => {
     const trimmed = nickname.trim().toLowerCase()
     if (!trimmed) {
@@ -109,25 +145,12 @@ export default function RegisterStore() {
     }
 
     setNicknameStatus({ checking: true, available: null, message: 'Verificando...' })
-    const timer = setTimeout(async () => {
-      try {
-        const { data } = await api.get(`/auth/check-nickname?nickname=${encodeURIComponent(trimmed)}`)
-        setNicknameStatus({
-          checking: false,
-          available: data.available,
-          message: data.available ? 'Nickname disponível!' : (data.error || 'Nickname já está em uso.')
-        })
-      } catch (err) {
-        setNicknameStatus({
-          checking: false,
-          available: null,
-          message: 'Não foi possível verificar a disponibilidade no momento.'
-        })
-      }
+    const timer = setTimeout(() => {
+      checkNicknameAvailability(trimmed)
     }, 450)
 
     return () => clearTimeout(timer)
-  }, [nickname])
+  }, [nickname, checkNicknameAvailability])
 
   // Processa a resposta oficial com o token JWT retornado pelo Google Identity Services
   async function handleGoogleCredentialResponse(response) {
@@ -611,11 +634,22 @@ export default function RegisterStore() {
                   </div>
                 </div>
                 {nicknameStatus.message && (
-                  <p className={`text-[11px] mt-1 font-medium ${
-                    nicknameStatus.available ? 'text-emerald-400' : 'text-rose-400'
-                  }`}>
-                    {nicknameStatus.message}
-                  </p>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className={`text-[11px] font-medium ${
+                      nicknameStatus.available ? 'text-emerald-400' : 'text-rose-400'
+                    }`}>
+                      {nicknameStatus.message}
+                    </p>
+                    {nicknameStatus.available === null && !nicknameStatus.checking && nickname.trim().length >= 3 && (
+                      <button
+                        type="button"
+                        onClick={() => checkNicknameAvailability(nickname)}
+                        className="text-[11px] text-amber-400 hover:text-amber-300 underline font-medium cursor-pointer ml-2"
+                      >
+                        Tentar novamente
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
 

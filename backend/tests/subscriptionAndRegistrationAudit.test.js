@@ -361,3 +361,4 @@ test('Full Multi-Tenant Subscription & Registration Audit: Pending -> Active -> 
   assert.equal(loginRenewedRes.status, 200, 'Loja renovada deve conseguir logar imediatamente');
   assert.equal(loginRenewedRes.body.store.status, 'active');
 });
+

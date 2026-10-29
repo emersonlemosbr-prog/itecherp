@@ -62,20 +62,32 @@ router.get('/branding', async (req, res) => {
  * Validação de disponibilidade de nickname em tempo real
  */
 router.get('/check-nickname', async (req, res) => {
-  const { nickname } = req.query;
-  if (!nickname) {
-    return res.status(400).json({ available: false, error: 'Informe um nickname.' });
+  try {
+    const { nickname } = req.query;
+    if (!nickname) {
+      return res.status(200).json({ available: false, error: 'Informe um nickname.' });
+    }
+    const clean = String(nickname).trim();
+    if (!/^[\w.@-]{3,60}$/.test(clean)) {
+      return res.status(200).json({
+        available: false,
+        error: 'Nickname deve ter entre 3 e 60 caracteres (letras, números, ponto, hífen ou sublinhado).'
+      });
+    }
+    const available = await isNicknameAvailable(clean);
+    return res.status(200).json({
+      available,
+      nickname: clean,
+      message: available ? 'Nickname disponível!' : 'Este nickname já está em uso por outra conta.'
+    });
+  } catch (err) {
+    console.error('[CHECK_NICKNAME_ERROR]', err);
+    return res.status(500).json({
+      available: null,
+      error: 'Não foi possível verificar a disponibilidade no momento. Tente novamente.',
+      message: 'Não foi possível verificar a disponibilidade no momento. Tente novamente.'
+    });
   }
-  const clean = String(nickname).trim();
-  if (!/^[\w.@-]{3,60}$/.test(clean)) {
-    return res.json({ available: false, error: 'Nickname deve ter entre 3 e 60 caracteres (letras, números, ponto, hífen ou sublinhado).' });
-  }
-  const available = await isNicknameAvailable(clean);
-  res.json({
-    available,
-    nickname: clean,
-    message: available ? 'Nickname disponível!' : 'Este nickname já está em uso por outra conta.'
-  });
 });
 
 /**

@@ -3,15 +3,18 @@ import axios from 'axios'
 /**
  * Resolve a URL-base da API com resiliência para todos os ambientes:
  * 1. Se VITE_API_URL estiver definida: normaliza garantindo que termine em /api (sem barras duplicadas).
+ *    Caso contenha a URL legada 'itecherp-backend.onrender.com' (inválida), redireciona automaticamente para o backend ativo.
  * 2. Se estiver em produção no Cloudflare Pages (*.pages.dev ou domínio customizado diferente do Render):
- *    utiliza como fallback a URL pública oficial do backend no Render (https://itecherp-backend.onrender.com/api).
+ *    utiliza como fallback a URL pública oficial e ativa do backend no Render (https://itech-project-z1ez.onrender.com/api).
  * 3. Se estiver acessando diretamente pelo Render (*.onrender.com) ou em desenvolvimento local (localhost/127.0.0.1):
  *    utiliza '/api' relativo (mesma origem ou proxy do Vite).
  */
+export const DEFAULT_RENDER_API_URL = 'https://itech-project-z1ez.onrender.com/api'
+
 export function resolveApiBaseUrl() {
   const envUrl = (import.meta.env.VITE_API_URL || '').trim()
 
-  if (envUrl) {
+  if (envUrl && !envUrl.includes('itecherp-backend.onrender.com')) {
     const clean = envUrl.replace(/\/+$/, '')
     return clean.endsWith('/api') ? clean : `${clean}/api`
   }
@@ -21,9 +24,9 @@ export function resolveApiBaseUrl() {
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0'
     const isRender = hostname.endsWith('.onrender.com')
 
-    // Se estiver no Cloudflare Pages ou domínio externo sem backend local, apontar para o Render
+    // Se estiver no Cloudflare Pages ou domínio externo sem backend local, apontar para o Render ativo
     if (!isLocalhost && !isRender) {
-      return 'https://itecherp-backend.onrender.com/api'
+      return DEFAULT_RENDER_API_URL
     }
   }
 
