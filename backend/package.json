@@ -15,6 +15,7 @@
     "cleanup:test-data:apply": "node scripts/cleanupKnownTestData.js --apply",
     "platform:create-admin": "node scripts/createPlatformAdmin.js",
     "platform:setup-superadmin": "node scripts/setupSuperadmin.js",
+    "admin:manage": "node scripts/manageStoreAdmin.js",
     "db:bootstrap": "node scripts/bootstrapPostgres.js",
     "db:audit-security": "node scripts/applySecurityMigration.js",
     "db:migrate-security": "node scripts/applySecurityMigration.js --apply",

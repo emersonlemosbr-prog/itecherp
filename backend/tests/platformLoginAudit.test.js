@@ -103,6 +103,7 @@ test('CORS Policy: Preflight OPTIONS and Origin authorization', async (t) => {
     if (normalized.endsWith('.pages.dev')) return true;
     if (normalized.endsWith('.onrender.com')) return true;
     if (
+      normalized === 'https://erp.itechcelulareinformatica.com.br' ||
       normalized === 'https://acompanhar.itechcelulareinformatica.com.br' ||
       normalized === 'https://itechcelulareinformatica.com.br' ||
       normalized === 'https://www.itechcelulareinformatica.com.br'
@@ -150,6 +151,14 @@ test('CORS Policy: Preflight OPTIONS and Origin authorization', async (t) => {
   });
   assert.equal(cfPostRes.status, 200);
   assert.equal(cfPostRes.headers['access-control-allow-origin'], 'https://preview-123.itecherp.pages.dev');
+
+  // Teste de Origem Autorizada Domínio Personalizado de Produção (ERP)
+  const erpPostRes = await requestHttp(server, 'POST', '/api/platform/login', {
+    'Origin': 'https://erp.itechcelulareinformatica.com.br',
+    'Content-Type': 'application/json'
+  });
+  assert.equal(erpPostRes.status, 200);
+  assert.equal(erpPostRes.headers['access-control-allow-origin'], 'https://erp.itechcelulareinformatica.com.br');
 
   // Teste de Origem NÃO Autorizada (deve NÃO receber cabeçalho Access-Control-Allow-Origin)
   const unauthRes = await requestHttp(server, 'POST', '/api/platform/login', {
