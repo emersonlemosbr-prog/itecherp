@@ -351,8 +351,8 @@ router.get('/stores', async (req, res) => {
     const rawStores = await db.query(queryStr, ...params);
 
     // Atualiza status dinamicamente se necessário (ex: vencimento + tolerância)
-    const stores = rawStores.map(store => {
-      const sub = checkStoreSubscription(store);
+    const stores = await Promise.all(rawStores.map(async (store) => {
+      const sub = await checkStoreSubscription(store);
       return {
         ...store,
         owner_password_hash: undefined,
@@ -365,7 +365,7 @@ router.get('/stores', async (req, res) => {
         email: store.owner_email,
         phone: store.contact_phone
       };
-    });
+    }));
 
     res.json({ stores, data: stores });
   } catch (err) {
@@ -384,7 +384,7 @@ router.get('/stores/:id', async (req, res) => {
       return res.status(404).json({ error: 'Loja não encontrada.' });
     }
 
-    const sub = checkStoreSubscription(store);
+    const sub = await checkStoreSubscription(store);
     const history = await db.query(`
       SELECT * FROM store_subscription_history
       WHERE store_id = $1
@@ -614,7 +614,7 @@ const handleUpdateDueDate = async (req, res) => {
 
     const today = new Date().toISOString().slice(0, 10);
     let newStatus = store.status;
-    if (store.status === 'overdue' && dueDate >= today) {
+    if ((store.status === 'overdue' || store.status === 'suspended') && dueDate >= today) {
       newStatus = 'active';
     }
 
@@ -645,7 +645,7 @@ const handleUpdateDueDate = async (req, res) => {
 
     const updated = await db.queryOne('SELECT * FROM stores WHERE id = $1', [store.id]);
     delete updated.owner_password_hash;
-    const sub = checkStoreSubscription(updated);
+    const sub = await checkStoreSubscription(updated);
     updated.subscription_due_date = updated.due_date;
     updated.effective_status = sub.effectiveStatus || sub.status || updated.status;
     updated.current_status = sub.status;
@@ -968,18 +968,22 @@ router.post('/stores/:id/payment', async (req, res) => {
     const store = await db.queryOne('SELECT * FROM stores WHERE id = $1', [req.params.id]);
     if (!store) return res.status(404).json({ error: 'Loja não encontrada.' });
 
-    const { amount, paymentMethod, extendMonths, newDueDate, notes } = req.body;
-    const amountVal = parseFloat(amount) || 0;
-    const method = (paymentMethod || 'PIX').trim();
+    const amountVal = parseFloat(req.body.amount) || 0;
+    const method = (req.body.paymentMethod || req.body.payment_method || 'PIX').trim();
+    const months = Number(req.body.extendMonths !== undefined ? req.body.extendMonths : req.body.months_to_add);
+    const customDueDate = req.body.newDueDate || req.body.new_due_date || req.body.dueDate || req.body.due_date;
+    const notes = req.body.notes;
 
     let nextDueDate = store.due_date;
-    if (newDueDate && /^\d{4}-\d{2}-\d{2}$/.test(newDueDate)) {
-      nextDueDate = newDueDate;
-    } else if (extendMonths && Number(extendMonths) > 0) {
-      const baseDate = (store.due_date && store.due_date >= new Date().toISOString().slice(0, 10))
-        ? new Date(store.due_date + 'T12:00:00')
+    if (customDueDate && /^\d{4}-\d{2}-\d{2}$/.test(String(customDueDate).trim())) {
+      nextDueDate = String(customDueDate).trim();
+    } else if (Number.isInteger(months) && months > 0) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const currentDueStr = store.due_date ? String(store.due_date).slice(0, 10) : null;
+      const baseDate = (currentDueStr && currentDueStr >= todayStr)
+        ? new Date(currentDueStr + 'T12:00:00')
         : new Date();
-      baseDate.setMonth(baseDate.getMonth() + Number(extendMonths));
+      baseDate.setMonth(baseDate.getMonth() + months);
       nextDueDate = baseDate.toISOString().slice(0, 10);
     }
 

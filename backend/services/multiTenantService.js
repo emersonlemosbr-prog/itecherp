@@ -41,6 +41,24 @@ const DEFAULT_SETTINGS_TEMPLATE = {
 };
 
 /**
+ * Extrai com segurança a parte da data no formato YYYY-MM-DD, imune a fuso horário ou tipo Date/string
+ */
+function extractDateOnlyString(val) {
+  if (!val) return null;
+  if (typeof val === 'string') {
+    const match = val.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : val.slice(0, 10);
+  }
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(val).slice(0, 10);
+}
+
+/**
  * Verifica o status de assinatura da loja e aplica suspensão automática se vencida além da tolerância.
  */
 async function checkStoreSubscription(storeOrId) {
@@ -54,8 +72,10 @@ async function checkStoreSubscription(storeOrId) {
   }
 
   const now = new Date();
+  const todayStr = extractDateOnlyString(now);
+  const dueDateStr = extractDateOnlyString(store.due_date);
 
-  // Se a loja ainda está aguardando ativação
+  // Se a loja está aguardando ativação inicial pelo Superadmin
   if (store.status === 'pending_activation') {
     return {
       isAccessible: false,
@@ -63,13 +83,30 @@ async function checkStoreSubscription(storeOrId) {
       status: 'pending_activation',
       effectiveStatus: 'pending_activation',
       reason: 'Sua loja está aguardando ativação pela nossa equipe.',
-      dueDate: store.due_date,
+      dueDate: dueDateStr,
       storeName: store.name,
       contact: getPlatformContactInfo()
     };
   }
 
-  // Se a loja já está suspensa manualmente ou por inadimplência
+  // Se a loja estava marcada como 'suspended' ou 'overdue', mas possui vencimento vigente (hoje ou no futuro),
+  // reativa automaticamente no banco garantindo coerência imediata após liberação pelo administrador
+  if ((store.status === 'suspended' || store.status === 'overdue') && dueDateStr && dueDateStr >= todayStr) {
+    const prevStatus = store.status;
+    store.status = 'active';
+    await db.query(`
+      UPDATE stores
+      SET status = 'active', updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [store.id]);
+
+    await db.query(`
+      INSERT INTO store_subscription_history (store_id, action, previous_status, new_status, notes, performed_by_name)
+      VALUES ($1, 'auto_reactivated_valid_due_date', $2, 'active', 'Reativação automática por vencimento vigente', 'Sistema')
+    `, [store.id, prevStatus]);
+  }
+
+  // Se a loja continua suspensa manualmente ou sem vencimento vigente
   if (store.status === 'suspended') {
     return {
       isAccessible: false,
@@ -77,31 +114,34 @@ async function checkStoreSubscription(storeOrId) {
       status: 'suspended',
       effectiveStatus: 'suspended',
       reason: 'Acesso suspenso por assinatura vencida ou pendente.',
-      dueDate: store.due_date,
+      dueDate: dueDateStr,
       storeName: store.name,
       contact: getPlatformContactInfo()
     };
   }
 
   // Se tem data de vencimento, verificar atraso e tolerância
-  if (store.due_date) {
-    const dueDateStr = typeof store.due_date === 'string' ? store.due_date : store.due_date.toISOString().slice(0, 10);
-    const dueDate = new Date(dueDateStr + 'T23:59:59');
-    const graceDays = store.grace_period_days !== undefined ? store.grace_period_days : 3;
+  if (dueDateStr) {
+    const dueDate = new Date(`${dueDateStr}T23:59:59`);
+    const graceDays = Number.isInteger(Number(store.grace_period_days)) && Number(store.grace_period_days) >= 0
+      ? Number(store.grace_period_days)
+      : 3;
     const graceLimitDate = new Date(dueDate.getTime() + graceDays * 24 * 60 * 60 * 1000);
 
     if (now > graceLimitDate) {
       // Ultrapassou a tolerância: suspender automaticamente no banco
-      await db.query(`
-        UPDATE stores
-        SET status = 'suspended', updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1
-      `, [store.id]);
+      if (store.status !== 'suspended') {
+        await db.query(`
+          UPDATE stores
+          SET status = 'suspended', updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `, [store.id]);
 
-      await db.query(`
-        INSERT INTO store_subscription_history (store_id, action, previous_status, new_status, notes, performed_by_name)
-        VALUES ($1, 'auto_suspended_overdue', $2, 'suspended', 'Suspensão automática após encerramento do prazo de tolerância', 'Sistema')
-      `, [store.id, store.status]);
+        await db.query(`
+          INSERT INTO store_subscription_history (store_id, action, previous_status, new_status, notes, performed_by_name)
+          VALUES ($1, 'auto_suspended_overdue', $2, 'suspended', 'Suspensão automática após encerramento do prazo de tolerância', 'Sistema')
+        `, [store.id, store.status]);
+      }
 
       return {
         isAccessible: false,
@@ -145,7 +185,7 @@ async function checkStoreSubscription(storeOrId) {
     canAccessErp: true,
     status: store.status,
     effectiveStatus: store.status,
-    dueDate: store.due_date,
+    dueDate: dueDateStr,
     storeName: store.name
   };
 }

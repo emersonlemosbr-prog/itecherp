@@ -277,3 +277,4 @@ test('Platform Login Route: credentials validation and payload compatibility', a
   });
   assert.equal(forbiddenRes.status, 403, 'Token de loja não pode acessar rotas da plataforma');
 });
+

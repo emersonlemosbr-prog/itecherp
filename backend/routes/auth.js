@@ -200,7 +200,18 @@ router.post('/google', async (req, res) => {
         { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
       );
 
-      const subStatus = checkStoreSubscription(storeByGoogle);
+      const subStatus = await checkStoreSubscription(storeByGoogle);
+      if (!subStatus.isAccessible) {
+        const isPending = subStatus.status === 'pending_activation';
+        return res.status(403).json({
+          error: subStatus.reason,
+          code: isPending ? 'STORE_PENDING' : 'STORE_SUSPENDED',
+          reason: subStatus.reason,
+          dueDate: subStatus.dueDate,
+          storeName: storeByGoogle.name,
+          contact: subStatus.contact || getPlatformContactInfo()
+        });
+      }
 
       return res.json({
         status: 'authenticated',
@@ -276,7 +287,18 @@ router.post('/google', async (req, res) => {
         { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
       );
 
-      const subStatus = checkStoreSubscription(storeByEmail);
+      const subStatus = await checkStoreSubscription(storeByEmail);
+      if (!subStatus.isAccessible) {
+        const isPending = subStatus.status === 'pending_activation';
+        return res.status(403).json({
+          error: subStatus.reason,
+          code: isPending ? 'STORE_PENDING' : 'STORE_SUSPENDED',
+          reason: subStatus.reason,
+          dueDate: subStatus.dueDate,
+          storeName: storeByEmail.name,
+          contact: subStatus.contact || getPlatformContactInfo()
+        });
+      }
 
       return res.json({
         status: 'authenticated',
@@ -448,7 +470,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
         return res.status(403).json({ error: 'Loja associada a este usuário não foi encontrada.' });
       }
 
-      const subscription = checkStoreSubscription(store);
+      const subscription = await checkStoreSubscription(store);
       if (!subscription.isAccessible) {
         const isPending = subscription.status === 'pending_activation';
         return res.status(403).json({

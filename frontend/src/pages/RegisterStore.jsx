@@ -120,8 +120,8 @@ export default function RegisterStore() {
       } catch (err) {
         setNicknameStatus({
           checking: false,
-          available: false,
-          message: 'Erro ao verificar disponibilidade.'
+          available: null,
+          message: 'Não foi possível verificar a disponibilidade no momento.'
         })
       }
     }, 450)
@@ -299,7 +299,24 @@ export default function RegisterStore() {
 
       navigate('/aguardando-ativacao')
     } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao realizar cadastro da loja. Tente novamente.')
+      console.error('[REGISTER_STORE_ERROR]', {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+      })
+      let msg = err.response?.data?.error || err.response?.data?.message
+      if (!msg) {
+        if (err.message === 'Network Error' || err.code === 'ERR_NETWORK') {
+          msg = 'Não foi possível conectar ao servidor. Verifique a conexão com a internet ou tente novamente em instantes.'
+        } else if (err.response?.status === 409) {
+          msg = 'Já existe uma loja com este e-mail ou nickname cadastrado.'
+        } else if (err.response?.status === 404) {
+          msg = 'Endpoint de cadastro não encontrado (404). Verifique a URL da API.'
+        } else {
+          msg = err.message || 'Erro ao realizar cadastro da loja. Tente novamente.'
+        }
+      }
+      setError(msg)
     } finally {
       setLoading(false)
     }
