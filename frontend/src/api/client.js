@@ -12,6 +12,19 @@ import axios from 'axios'
 export const DEFAULT_RENDER_API_URL = 'https://itech-project-z1ez.onrender.com/api'
 
 export function resolveApiBaseUrl() {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname.toLowerCase()
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0'
+    const isRender = hostname.endsWith('.onrender.com')
+
+    // 1. Em desenvolvimento local (localhost) ou hospedagem com mesma origem no Render:
+    // Sempre utilizar '/api' relativo para consumir o backend local via proxy do Vite ou Express.
+    if (isLocalhost || isRender) {
+      return '/api'
+    }
+  }
+
+  // 2. Em ambientes remotos (Cloudflare Pages, domínio customizado, etc.):
   const envUrl = (import.meta.env.VITE_API_URL || '').trim()
 
   if (envUrl && !envUrl.includes('itecherp-backend.onrender.com')) {
@@ -19,18 +32,8 @@ export function resolveApiBaseUrl() {
     return clean.endsWith('/api') ? clean : `${clean}/api`
   }
 
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname.toLowerCase()
-    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0'
-    const isRender = hostname.endsWith('.onrender.com')
-
-    // Se estiver no Cloudflare Pages ou domínio externo sem backend local, apontar para o Render ativo
-    if (!isLocalhost && !isRender) {
-      return DEFAULT_RENDER_API_URL
-    }
-  }
-
-  return '/api'
+  // 3. Fallback oficial para o backend ativo no Render
+  return DEFAULT_RENDER_API_URL
 }
 
 const api = axios.create({

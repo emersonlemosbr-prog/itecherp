@@ -229,3 +229,4 @@ test('Store Admin Authentication & Production Domain Suite', async (t) => {
   assert.equal(empAccess.status, 403);
   assert.match(empAccess.body.error, /exclusivo para administradores/i);
 });
+

@@ -9,30 +9,31 @@ const http = require('node:http');
 // 1. Simulação e Teste de Resolução de URL da API do Frontend
 test('Frontend API URL Resolution: resolveApiBaseUrl logic', () => {
   function testResolve(envUrl, windowMock) {
+    if (windowMock) {
+      const host = windowMock.location.hostname.toLowerCase();
+      const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+      const isRender = host.endsWith('.onrender.com');
+      // Em ambiente local ou same-origin no Render, usa sempre '/api' relativo (proxy do Vite)
+      if (isLocalhost || isRender) {
+        return '/api';
+      }
+    }
     const raw = (envUrl || '').trim();
     if (raw && !raw.includes('itecherp-backend.onrender.com')) {
       const clean = raw.replace(/\/+$/, '');
       return clean.endsWith('/api') ? clean : `${clean}/api`;
     }
-    if (windowMock) {
-      const host = windowMock.location.hostname.toLowerCase();
-      const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
-      const isRender = host.endsWith('.onrender.com');
-      if (!isLocalhost && !isRender) {
-        return 'https://itech-project-z1ez.onrender.com/api';
-      }
-    }
-    return '/api';
+    return 'https://itech-project-z1ez.onrender.com/api';
   }
 
-  // Cenário 1: VITE_API_URL fornecida com /api
-  assert.equal(testResolve('https://itech-project-z1ez.onrender.com/api'), 'https://itech-project-z1ez.onrender.com/api');
+  // Cenário 1: VITE_API_URL fornecida com /api em ambiente remoto
+  assert.equal(testResolve('https://itech-project-z1ez.onrender.com/api', { location: { hostname: 'erp.itechcelulareinformatica.com.br' } }), 'https://itech-project-z1ez.onrender.com/api');
 
-  // Cenário 2: VITE_API_URL fornecida SEM /api (deve normalizar e acrescentar /api)
-  assert.equal(testResolve('https://itech-project-z1ez.onrender.com'), 'https://itech-project-z1ez.onrender.com/api');
+  // Cenário 2: VITE_API_URL fornecida SEM /api (deve normalizar e acrescentar /api) em ambiente remoto
+  assert.equal(testResolve('https://itech-project-z1ez.onrender.com', { location: { hostname: 'erp.itechcelulareinformatica.com.br' } }), 'https://itech-project-z1ez.onrender.com/api');
 
-  // Cenário 3: VITE_API_URL fornecida com barra final
-  assert.equal(testResolve('https://itech-project-z1ez.onrender.com/api/'), 'https://itech-project-z1ez.onrender.com/api');
+  // Cenário 3: VITE_API_URL fornecida com barra final em ambiente remoto
+  assert.equal(testResolve('https://itech-project-z1ez.onrender.com/api/', { location: { hostname: 'erp.itechcelulareinformatica.com.br' } }), 'https://itech-project-z1ez.onrender.com/api');
 
   // Cenário 4: VITE_API_URL ausente rodando no Cloudflare Pages (*.pages.dev)
   assert.equal(
@@ -52,13 +53,21 @@ test('Frontend API URL Resolution: resolveApiBaseUrl logic', () => {
     'https://itech-project-z1ez.onrender.com/api'
   );
 
-  // Cenário 7: VITE_API_URL ausente rodando diretamente no Render (*.onrender.com)
+  // Cenário 7: Rodando diretamente no Render (*.onrender.com)
   assert.equal(
     testResolve('', { location: { hostname: 'itech-project-z1ez.onrender.com' } }),
     '/api'
   );
 
-  // Cenário 7: VITE_API_URL ausente em desenvolvimento local (localhost)
+  // Cenário 8: Em desenvolvimento local (localhost) - SEMPRE deve retornar '/api' mesmo com .env apontando para o Render
+  assert.equal(
+    testResolve('https://itech-project-z1ez.onrender.com/api', { location: { hostname: 'localhost' } }),
+    '/api'
+  );
+  assert.equal(
+    testResolve('https://itech-project-z1ez.onrender.com/api', { location: { hostname: '127.0.0.1' } }),
+    '/api'
+  );
   assert.equal(
     testResolve('', { location: { hostname: 'localhost' } }),
     '/api'
