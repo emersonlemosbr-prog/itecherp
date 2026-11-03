@@ -17,9 +17,12 @@ export function resolveApiBaseUrl() {
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0'
     const isRender = hostname.endsWith('.onrender.com')
 
-    // 1. Em desenvolvimento local (localhost) ou hospedagem com mesma origem no Render:
-    // Sempre utilizar '/api' relativo para consumir o backend local via proxy do Vite ou Express.
-    if (isLocalhost || isRender) {
+    // IPs privados locais (Wi-Fi/LAN para celulares ou computadores na mesma rede: 192.168.x.x, 10.x.x.x, 172.16-31.x.x, 26.x.x.x VPN)
+    const isPrivateIp = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|26\.)/.test(hostname) || hostname.endsWith('.internal') || hostname.endsWith('.local')
+
+    // 1. Em desenvolvimento local (localhost), rede local LAN (Wi-Fi no celular) ou mesma origem:
+    // Sempre utilizar '/api' relativo para consumir o backend servidor pela mesma origem.
+    if (isLocalhost || isRender || isPrivateIp) {
       return '/api'
     }
   }

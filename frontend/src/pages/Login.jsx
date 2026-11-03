@@ -32,7 +32,15 @@ export default function Login() {
         navigate('/loja-suspensa')
         return
       }
-      setError(err.response?.data?.error || 'Não foi possível entrar. Tente novamente.')
+      let msg = err.response?.data?.error
+      if (!msg) {
+        if (err.message === 'Network Error' || err.code === 'ERR_NETWORK') {
+          msg = 'Não foi possível conectar ao servidor. Verifique a conexão Wi-Fi do celular ou se o servidor está ativo.'
+        } else {
+          msg = 'Não foi possível entrar. Tente novamente.'
+        }
+      }
+      setError(msg)
     } finally {
       setLoading(false)
     }

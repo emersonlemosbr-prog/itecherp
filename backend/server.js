@@ -58,8 +58,12 @@ function isOriginAllowed(origin) {
     return true;
   }
 
-  // 5. Ambientes de desenvolvimento local
-  if (/^http:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(normalized)) {
+  // 5. Ambientes de desenvolvimento local e rede local privada (Wi-Fi / LAN / VPN)
+  if (
+    /^http:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(normalized) ||
+    /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|26\.\d+\.\d+\.\d+)(:\d+)?$/.test(normalized) ||
+    /^https?:\/\/([a-z0-9-]+\.)*(internal|local)(:\d+)?$/.test(normalized)
+  ) {
     return true;
   }
 
