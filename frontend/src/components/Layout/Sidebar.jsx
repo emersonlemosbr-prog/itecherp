@@ -75,12 +75,12 @@ export default function Sidebar({ open, onClose }) {
       )}
       <aside className={`
         mobile-sidebar fixed md:static z-40 top-0 left-0 h-screen w-[82vw] max-w-[300px] md:w-72 shrink-0 no-print
-        bg-white/80 border-r border-slate-200 backdrop-blur-xl overflow-hidden
-        dark:bg-[var(--bg-secondary)] dark:border-[var(--border-soft)] dark:text-[var(--text-main)]
+        bg-white/90 border-r border-slate-200 backdrop-blur-xl overflow-hidden
+        dark:bg-[#18181B] dark:border-[rgba(255,255,255,0.08)] dark:text-[#FAFAFA]
         transform transition-transform duration-300 flex flex-col
         ${open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-[var(--border-soft)]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-[rgba(255,255,255,0.08)]">
           <div className="flex items-center gap-3 overflow-hidden">
             <img src={settings.store.logo || undefined} alt={settings.store.name} className="h-[110px] md:h-[130px] w-auto object-contain drop-shadow-[0_16px_20px_rgba(79,125,255,0.28)]" />
           </div>

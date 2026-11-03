@@ -64,7 +64,7 @@ export default function Header({ onMenuClick }) {
   }, [q])
 
   return (
-    <header className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/75 backdrop-blur-xl dark:border-[#333333] dark:bg-[var(--bg-primary)]">
+    <header className="no-print sticky top-0 z-20 border-b border-slate-200 bg-white/80 backdrop-blur-xl dark:border-[rgba(255,255,255,0.08)] dark:bg-[#18181B]/95">
       <div className="flex items-center gap-1.5 sm:gap-3 px-2 sm:px-4 md:px-6 py-3.5">
         <button className="btn-ghost md:hidden !px-2.5 !py-2 text-slate-600 dark:text-zinc-300" onClick={onMenuClick} aria-label="Abrir menu"><Menu size={22} /></button>
 
@@ -126,18 +126,18 @@ export default function Header({ onMenuClick }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2 ml-auto">
-          <div className="hidden sm:flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100/80 p-1 dark:border-white/10 dark:bg-white/5">
+          <div className="hidden sm:flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100/80 p-1 dark:border-white/10 dark:bg-zinc-800/80">
             <button
               type="button"
               onClick={setLight}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${!dark ? 'bg-white text-slate-900 shadow-sm dark:bg-[#2A2A2A] dark:text-white' : 'text-slate-500 dark:text-slate-300'}`}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${!dark ? 'bg-white text-slate-900 shadow-sm ' : 'text-slate-500 dark:text-zinc-400 dark:hover:text-zinc-200'}`}
             >
               Claro
             </button>
             <button
               type="button"
               onClick={setDarkTheme}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${dark ? 'bg-white text-slate-900 shadow-sm dark:bg-[#2A2A2A] dark:text-white' : 'text-slate-500 dark:text-slate-300'}`}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${dark ? 'bg-[#FFC806] text-[#1C1C1C] font-semibold shadow-sm' : 'text-slate-500 dark:text-zinc-400'}`}
             >
               Escuro
             </button>

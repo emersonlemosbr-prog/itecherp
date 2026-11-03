@@ -1,0 +1,1 @@
+import"./vendor-BZWwEm0I.js";import{c as i}from"./index-BV3A-ZQg.js";function u({permission:t,children:o}){var n;const{user:s,isAdmin:c}=i();return c||t&&((n=s==null?void 0:s.permissions)!=null&&n[t])?o:null}export{u as A};
