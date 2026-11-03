@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 export default function Login() {
   const { login } = useAuth()
   const [branding, setBranding] = useState(null)
-  useEffect(() => { api.get('/auth/branding').then(r => setBranding(r.data)).catch(() => {}) }, [])
+  useEffect(() => { api.get('/auth/branding').then(r => setBranding(r.data)).catch(() => { }) }, [])
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -95,7 +95,7 @@ export default function Login() {
               className="inline-flex items-center justify-center gap-1.5 text-xs text-amber-500 hover:text-amber-400 font-semibold transition-colors"
             >
               <Store size={14} />
-              Quero cadastrar minha loja no ERP
+              Quero cadastrar minha loja
             </Link>
           </div>
         </form>

@@ -80,7 +80,7 @@ export default function ScreenProtectorModal({ group, knownModels, onClose, onSa
   return (
     <ModalFrame
       busy={saving}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-[#262626]/70 p-3"
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3"
       onClick={onClose}
       aria-label={group ? 'Editar grupo de película' : 'Adicionar grupo de película'}
     >

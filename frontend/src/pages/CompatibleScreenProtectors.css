@@ -259,15 +259,15 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem 1.1rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
 }
 .csp-modal-header h3 { margin: 0.12rem 0 0; color: var(--text-main); font-size: 1.05rem; font-weight: 750; }
 .csp-modal-eyebrow { margin: 0; color: var(--text-muted); font-size: 0.63rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
 .csp-modal-body { display: flex; flex-direction: column; gap: 1rem; padding: 1rem 1.1rem; overflow-y: auto; }
 .csp-modal-body > p { margin: 0; color: var(--text-muted); font-size: 0.85rem; line-height: 1.55; }
 .csp-modal-body > p strong { color: var(--text-main); }
-.csp-modal-actions { display: flex; justify-content: flex-end; gap: 0.55rem; padding: 0.85rem 1.1rem; border-top: 1px solid var(--border); }
-.csp-model-editor { position: relative; padding: 0.45rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; }
+.csp-modal-actions { display: flex; justify-content: flex-end; gap: 0.55rem; padding: 0.85rem 1.1rem; border-top: 1px solid var(--border-soft); }
+.csp-model-editor { position: relative; padding: 0.45rem; background: var(--bg-card); border: 1px solid var(--border-soft); border-radius: 10px; }
 .csp-model-editor:focus-within { border-color: var(--csp-accent); box-shadow: 0 0 0 3px rgba(255, 190, 11, 0.1); }
 .csp-editor-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .csp-editor-chip {

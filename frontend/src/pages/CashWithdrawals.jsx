@@ -95,11 +95,11 @@ function WithdrawalFormModal({ onClose, onSaved }) {
   }
 
   return (
-    <ModalFrame busy={saving} className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="modal-panel p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
+    <ModalFrame busy={saving} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
+      <div className="modal-panel w-full max-w-md p-5 sm:p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200/70 dark:border-white/10">
           <h3 className="font-display font-bold text-lg">Nova Retirada de Caixa</h3>
-          <button onClick={onClose} className="text-slate-400"><X size={20} /></button>
+          <button type="button" onClick={onClose} className="btn-ghost !px-2 !py-1.5" aria-label="Fechar modal"><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           {error && <p className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-500/10 rounded-lg p-2">{error}</p>}

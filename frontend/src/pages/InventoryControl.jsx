@@ -511,11 +511,11 @@ function ProductFormModal({ onClose, editingProduct, categories, suppliers, onSa
   }
 
   return (
-    <ModalFrame busy={saving} className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="card w-full max-w-3xl max-h-[calc(100dvh-2rem)] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
+    <ModalFrame busy={saving} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
+      <div className="card w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200/70 dark:border-white/10">
           <h3 className="font-display font-bold text-lg">{editingProduct ? 'Editar Produto' : 'Cadastrar Produto'}</h3>
-          <button className="btn-secondary" onClick={onClose}>Fechar</button>
+          <button type="button" className="btn-ghost !px-2 !py-1.5" onClick={onClose} aria-label="Fechar modal"><X size={18} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">

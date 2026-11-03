@@ -139,13 +139,13 @@ export default function NoteEditor({
   }
 
   return (
-    <ModalFrame busy={saving} className="fixed inset-0 z-50 bg-[#262626]/70 p-3 md:p-6 overflow-y-auto" onClick={() => { if (!saving) onClose() }}>
+    <ModalFrame busy={saving} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-3 md:p-6 overflow-y-auto" onClick={() => { if (!saving) onClose() }}>
       <div
-        className="mx-auto flex w-full max-w-3xl max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[22px] border border-white/10 bg-[#343434]/96 shadow-2xl backdrop-blur-sm dark:border-white/10 dark:bg-[#343434]/96"
+        className="mx-auto flex w-full max-w-3xl max-h-[calc(100vh-1.5rem)] flex-col overflow-hidden rounded-[22px] border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#222225] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-2 border-b border-slate-200/70 px-4 py-3 dark:border-white/10">
-          <h3 className="font-display font-bold text-lg">{isNew ? 'Nova anotação' : 'Editar anotação'}</h3>
+          <h3 className="font-display font-bold text-lg text-slate-900 dark:text-zinc-100">{isNew ? 'Nova anotação' : 'Editar anotação'}</h3>
           <button type="button" className="btn-ghost !px-2 !py-1.5" aria-label="Fechar anotação" onClick={() => { if (!saving) onClose() }}><X size={18} /></button>
         </div>
 
