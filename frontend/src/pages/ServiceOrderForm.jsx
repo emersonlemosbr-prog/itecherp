@@ -279,8 +279,8 @@ export default function ServiceOrderForm() {
   if (isMobile) {
     return (
       <>
-      <ModalFrame busy={saving} className="fixed inset-0 z-50 bg-[#262626]/70 p-3 flex items-center justify-center" onClick={() => { if (!saving) navigate(isEdit ? `/ordens/${id}` : '/ordens') }}>
-        <div className="mx-auto flex max-h-[calc(100vh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[22px] border border-white/10 bg-[#343434]/96 shadow-2xl dark:border-white/10 dark:bg-[#343434]/96" onClick={(e) => e.stopPropagation()}>
+      <ModalFrame busy={saving} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-3 flex items-center justify-center" onClick={() => { if (!saving) navigate(isEdit ? `/ordens/${id}` : '/ordens') }}>
+        <div className="mx-auto flex max-h-[calc(100vh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white dark:bg-[#222225] shadow-2xl dark:border-white/10 dark:bg-[#222225]" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 px-4 py-3 dark:border-white/10">
             <div>
               <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">{isEdit ? 'Editar' : 'Nova'}</p>

@@ -153,8 +153,8 @@ function CreditFormModal({ onClose, onSaved }) {
 
   if (isMobile) {
     return (
-      <ModalFrame busy={saving} className="fixed inset-0 z-50 bg-[#262626]/70 p-3 flex items-center justify-center" onClick={() => { if (!saving) onClose() }}>
-        <div className="mx-auto flex max-h-[calc(100vh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-[22px] border border-white/10 bg-[#343434]/96 shadow-2xl dark:border-white/10 dark:bg-[#343434]/96" onClick={e => e.stopPropagation()}>
+      <ModalFrame busy={saving} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-3 flex items-center justify-center" onClick={() => { if (!saving) onClose() }}>
+        <div className="mx-auto flex max-h-[calc(100vh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-[22px] border border-white/10 bg-white dark:bg-[#222225] shadow-2xl dark:border-white/10 dark:bg-[#222225]" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-between gap-3 border-b border-slate-200/70 px-4 py-3 dark:border-white/10">
             <h3 className="font-display font-bold text-lg">Novo Fiado</h3>
             <button type="button" onClick={() => { if (!saving) onClose() }} className="btn-ghost !px-2 !py-1.5" aria-label="Fechar modal">

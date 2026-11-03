@@ -854,8 +854,8 @@ export default function PlatformAdmin() {
 
         {/* Tabela de Lojas */}
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          <div className="overflow-x-auto table-scroll">
+            <table className="w-full text-left text-xs min-w-[750px]">
               <thead className="bg-slate-950/70 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="py-3 px-4 w-12 text-center">
@@ -1053,7 +1053,7 @@ export default function PlatformAdmin() {
       {/* MODAL: REGISTRAR PAGAMENTO MANUAL */}
       {modalType === 'payment' && selectedStore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <DollarSign size={20} className="text-amber-400" />
@@ -1150,7 +1150,7 @@ export default function PlatformAdmin() {
       {/* MODAL: ATIVAR LOJA */}
       {modalType === 'activate' && selectedStore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-emerald-900/40 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-emerald-900/40 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={20} className="text-emerald-400" />
@@ -1236,7 +1236,7 @@ export default function PlatformAdmin() {
       {/* MODAL: AJUSTAR VENCIMENTO E TOLERÂNCIA */}
       {modalType === 'due_date' && selectedStore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Calendar size={20} className="text-indigo-400" />
@@ -1318,7 +1318,7 @@ export default function PlatformAdmin() {
       {/* MODAL: SUSPENDER LOJA */}
       {modalType === 'suspend' && selectedStore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-rose-900/50 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-rose-900/50 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <AlertOctagon size={20} className="text-rose-400" />
@@ -1375,7 +1375,7 @@ export default function PlatformAdmin() {
       {/* MODAL: EXCLUIR CADASTRO DA LOJA */}
       {modalType === 'delete_store' && selectedStore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-rose-900/60 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-rose-900/60 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Trash2 size={20} className="text-rose-400" />
@@ -1648,7 +1648,7 @@ export default function PlatformAdmin() {
       {/* MODAL: ATIVAÇÃO EM MASSA */}
       {modalType === 'bulk_activate' && selectedIds.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-emerald-900/60 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-emerald-900/60 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={20} className="text-emerald-400" />
@@ -1730,7 +1730,7 @@ export default function PlatformAdmin() {
       {/* MODAL: SUSPENSÃO EM MASSA */}
       {modalType === 'bulk_suspend' && selectedIds.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-amber-900/60 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-amber-900/60 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <AlertOctagon size={20} className="text-amber-400" />
@@ -1792,7 +1792,7 @@ export default function PlatformAdmin() {
       {/* MODAL: EXCLUSÃO EM MASSA COM CONFIRMAÇÃO RIGOROSA */}
       {modalType === 'bulk_delete' && selectedIds.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-rose-900/70 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5">
+          <div className="bg-slate-900 border border-rose-900/70 rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-2xl space-y-5 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Trash2 size={20} className="text-rose-400" />
