@@ -106,7 +106,7 @@ export default function PagbankCalculator() {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <h2 className="font-display font-bold text-xl">Taxa de Juros PagBank</h2>
+        <h2 className="font-display font-bold text-xl">Calculadora Maquininha</h2>
         <p className="text-sm text-slate-400">Simule parcelas com juros de Visa/Master.</p>
       </div>
 
@@ -141,7 +141,7 @@ export default function PagbankCalculator() {
               <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">1 a 12x</p>
             </div>
             <div className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600 dark:bg-[#232323] dark:text-slate-300">
-              Juros baseados em PagBank
+              Juros baseados na Maquininha
             </div>
           </div>
           <div className="h-72">

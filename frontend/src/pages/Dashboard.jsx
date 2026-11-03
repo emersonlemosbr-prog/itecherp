@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   Wallet, Clock, TrendingUp, Banknote, HandCoins, Wrench,
   CheckCircle2, PackageCheck, XCircle, Eye, EyeOff, Pencil, Printer,
-  ArrowUpRight, ShoppingCart
+  ArrowUpRight, ShoppingCart, AlertCircle, RefreshCw
 } from 'lucide-react'
 import { Line, Bar, Doughnut } from 'react-chartjs-2'
 import {
@@ -54,21 +54,32 @@ export default function Dashboard() {
   const [monthly, setMonthly] = useState([])
   const [statusDist, setStatusDist] = useState([])
   const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   async function loadDashboardData() {
-    const [statsRes, dailyRes, monthlyRes, statusRes, ordersRes] = await Promise.all([
-      api.get('/dashboard/stats'),
-      api.get('/dashboard/charts/daily-revenue'),
-      api.get('/dashboard/charts/monthly-revenue'),
-      api.get('/dashboard/charts/status-distribution'),
-      api.get('/service-orders'),
-    ])
+    setLoading(true)
+    setError(null)
+    try {
+      const [statsRes, dailyRes, monthlyRes, statusRes, ordersRes] = await Promise.all([
+        api.get('/dashboard/stats'),
+        api.get('/dashboard/charts/daily-revenue'),
+        api.get('/dashboard/charts/monthly-revenue'),
+        api.get('/dashboard/charts/status-distribution'),
+        api.get('/service-orders'),
+      ])
 
-    setStats(statsRes.data)
-    setDaily(dailyRes.data)
-    setMonthly(monthlyRes.data)
-    setStatusDist(statusRes.data)
-    setOrders(ordersRes.data.slice(0, 15))
+      setStats(statsRes.data)
+      setDaily(dailyRes.data)
+      setMonthly(monthlyRes.data)
+      setStatusDist(statusRes.data)
+      setOrders(ordersRes.data.slice(0, 15))
+    } catch (err) {
+      console.error('Erro ao carregar dados do painel:', err)
+      setError(err?.response?.data?.message || err.message || 'Falha ao carregar informações do painel.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -95,7 +106,38 @@ export default function Dashboard() {
     }
   }, [])
 
-  if (!stats) return <div className="text-slate-400 text-sm">Carregando painel...</div>
+  if (loading && !stats) {
+    return (
+      <div className="card p-8 flex flex-col items-center justify-center gap-3 text-center">
+        <RefreshCw size={24} className="animate-spin text-[var(--accent-blue)]" />
+        <p className="text-slate-400 text-sm">Carregando painel...</p>
+      </div>
+    )
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="card p-8 flex flex-col items-center justify-center gap-4 text-center max-w-lg mx-auto mt-8 border border-red-500/20">
+        <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-400">
+          <AlertCircle size={24} />
+        </div>
+        <div>
+          <h3 className="text-base font-semibold text-[var(--text-main)]">Não foi possível carregar o painel</h3>
+          <p className="text-sm text-slate-400 mt-1">{error}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadDashboardData()}
+          className="btn-primary inline-flex items-center gap-2"
+        >
+          <RefreshCw size={16} />
+          Tentar novamente
+        </button>
+      </div>
+    )
+  }
+
+  if (!stats) return null
 
   const lineData = {
     labels: daily.map(d => formatDate(d.day)),
@@ -223,7 +265,7 @@ export default function Dashboard() {
 
         <div className="dashboard-mini-card">
           <div className="flex items-center justify-between gap-3">
-            <span className="dashboard-label">Fiados em aberto</span>
+            <span className="dashboard-label">Pendentes em aberto</span>
             <span className="dashboard-icon dashboard-tone-red"><HandCoins size={18} /></span>
           </div>
           <strong className="text-2xl font-bold text-[var(--text-main)]">{displayCurrency(stats.credit_accounts_open)}</strong>

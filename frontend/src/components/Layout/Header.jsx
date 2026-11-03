@@ -9,16 +9,16 @@ import api from '../../api/client'
 
 const menuItems = [
   { to: '/configuracoes', label: 'Configurações' },
-  { to: '/', label: 'Painel' },
+  { to: '/', label: 'Dashboard' },
   { to: '/clientes', label: 'Clientes' },
   { to: '/ordens', label: 'Ordens de Serviço' },
   { to: '/garantias', label: 'Garantias' },
-  { to: '/fiados', label: 'Fiados' },
-  { to: '/pagbank-calculadora', label: 'Calculadora PagBank' },
-  { to: '/valor-frontais', label: 'Valor de Peças' },
+  { to: '/fiados', label: 'Pendentes' },
+  { to: '/pagbank-calculadora', label: 'Calculadora Maquininha' },
+  { to: '/valor-frontais', label: 'Peças' },
   { to: '/peliculas-compativeis', label: 'Películas Compatíveis' },
   { to: '/venda-aparelho', label: 'Venda de Aparelho' },
-  { to: '/vendas', label: 'Venda' },
+  { to: '/vendas', label: 'Venda de Caixa' },
   { to: '/estoque', label: 'Controle de Estoque' },
   { to: '/anotacoes', label: 'Anotações' },
 ]
@@ -34,7 +34,7 @@ export default function Header({ onMenuClick }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const boxRef = useRef(null)
 
-  const currentPage = menuItems.find(item => item.to === location.pathname)?.label || 'Painel'
+  const currentPage = menuItems.find(item => item.to === location.pathname)?.label || 'Dashboard'
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -112,7 +112,7 @@ export default function Header({ onMenuClick }) {
               )}
               {results.credits.length > 0 && (
                 <div>
-                  <p className="px-2 text-[11px] font-semibold text-zinc-400 uppercase">Fiados</p>
+                  <p className="px-2 text-[11px] font-semibold text-zinc-400 uppercase">Pendentes</p>
                   {results.credits.map(c => (
                     <div key={c.id} className="px-2 py-1.5 text-zinc-300">{c.first_name} {c.last_name}</div>
                   ))}

@@ -213,7 +213,7 @@ export default function Sales() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-display font-bold text-xl">Venda</h2>
+        <h2 className="font-display font-bold text-xl">Venda de Caixa</h2>
         <p className="text-sm text-slate-400">Busque produtos, monte o carrinho e conclua a venda com baixa automática de estoque.</p>
       </div>
 

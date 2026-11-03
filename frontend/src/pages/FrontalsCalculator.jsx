@@ -58,7 +58,7 @@ export default function FrontalsCalculator() {
   const groups = [...new Set(filtered.map(p => p.category_id))].map(id => ({ id, name: categories.find(c => c.id === id)?.name || 'Frontais', rows: filtered.filter(p => p.category_id === id) }))
   return <div className="parts-page space-y-5">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="font-display font-bold text-xl">Valor de Peças</h2><p className="text-sm text-slate-400 mt-1">Consulte preços e organize as peças por categoria.</p></div>
+      <div><h2 className="font-display font-bold text-xl">Peças</h2><p className="text-sm text-slate-400 mt-1">Consulte preços e organize as peças por categoria.</p></div>
       <div className="flex flex-wrap gap-2"><button className="btn-secondary" onClick={() => { setError(''); setManager('category') }}><Settings2 size={16}/>Gerenciar</button><button className="btn-primary" disabled={loading} onClick={begin}><Plus size={16}/>Adicionar peça</button></div>
     </header>
     {error && !editing && !manager && !removing && <p role="alert" className="text-rose-500">{error} <button className="underline" onClick={() => { setError(''); load().catch(e=>setError(errorText(e))) }}>Recarregar</button></p>}

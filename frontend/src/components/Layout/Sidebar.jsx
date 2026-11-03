@@ -1,20 +1,20 @@
 import { useSettings } from '../../context/SettingsContext'
 import { canAccess } from '../../utils/access'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Wrench, ShieldCheck, HandCoins, X, Smartphone, NotebookPen,
-  ReceiptText, ShoppingCart, Boxes, FolderArchive, ChevronDown, Banknote, Shield, Settings
+  ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBodyScrollLock } from '../UI/ModalFrame'
-
 
 const sidebarSections = [
   {
     title: 'Principal',
     items: [
-      { to: '/', label: 'Painel', icon: LayoutDashboard, end: true },
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/valor-frontais', label: 'Peças', icon: Smartphone },
       { to: '/ordens', label: 'Ordens de Serviço', icon: Wrench },
       { to: '/clientes', label: 'Clientes', icon: Users },
     ],
@@ -22,8 +22,9 @@ const sidebarSections = [
   {
     title: 'Financeiro',
     items: [
+      { to: '/pagbank-calculadora', label: 'Calculadora Maquininha', icon: Smartphone },
       { to: '/garantias', label: 'Garantias', icon: ShieldCheck },
-      { to: '/fiados', label: 'Fiados', icon: HandCoins },
+      { to: '/fiados', label: 'Pendentes', icon: HandCoins },
       { to: '/historico-financeiro', label: 'Histórico Financeiro', icon: FolderArchive },
     ],
   },
@@ -31,25 +32,25 @@ const sidebarSections = [
     title: 'Estoque e Vendas',
     items: [
       { to: '/estoque', label: 'Controle de Estoque', icon: Boxes },
-      { to: '/vendas', label: 'Venda', icon: ShoppingCart },
+      { to: '/vendas', label: 'Venda de Caixa', icon: ShoppingCart },
       { to: '/venda-aparelho', label: 'Venda de Aparelho', icon: ReceiptText },
     ],
   },
-]
-
-const toolsItems = [
-  { to: '/pagbank-calculadora', label: 'Calculadora PagBank', icon: Smartphone },
-  { to: '/valor-frontais', label: 'Valor de Peças', icon: Smartphone },
-  { to: '/peliculas-compativeis', label: 'Películas Compatíveis', icon: Smartphone },
-  { to: '/anotacoes', label: 'Anotações', icon: NotebookPen },
-  { to: '/removedor-virus', label: 'Removedor de Vírus', icon: Shield },
+  {
+    title: 'Ferramentas',
+    items: [
+      { to: '/peliculas-compativeis', label: 'Películas Compatíveis', icon: Smartphone },
+      { to: '/anotacoes', label: 'Anotações', icon: NotebookPen },
+      { to: '/removedor-virus', label: 'Removedor de Vírus', icon: Shield },
+    ],
+  },
 ]
 
 export default function Sidebar({ open, onClose }) {
   useBodyScrollLock(open)
   const { isAdmin, user } = useAuth()
   const { settings } = useSettings()
-  const [toolsOpen, setToolsOpen] = useState(false)
+
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 768px)')
     const closeOnDesktop = () => { if (desktop.matches) onClose() }
@@ -107,32 +108,18 @@ export default function Sidebar({ open, onClose }) {
             </div>
           ))}
 
-          <div className="space-y-2">
-            <button
-              type="button"
-              className="sidebar-collapse-button"
-              onClick={() => setToolsOpen(!toolsOpen)}
-              aria-expanded={toolsOpen}
-            >
-              <span className="sidebar-section-title !mb-0">Ferramentas</span>
-              <ChevronDown size={14} className={`transition-transform duration-200 ${toolsOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            <div className={`space-y-1.5 overflow-hidden transition-all duration-200 ${toolsOpen ? 'max-h-none opacity-100' : 'max-h-0 opacity-0'}`}>
-              {toolsItems.filter(item => canAccess(user, item.to)).map(({ to, label, icon: Icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  onClick={onClose}
-                  className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`}
-                >
-                  <Icon size={18} />
-                  <span>{label}</span>
-                </NavLink>
-              ))}
+          {isAdmin && (
+            <div className="pt-2">
+              <NavLink
+                to="/configuracoes"
+                onClick={onClose}
+                className={({ isActive }) => `sidebar-link ${isActive ? "sidebar-link-active" : ""}`}
+              >
+                <Settings size={18} />
+                <span>Configurações</span>
+              </NavLink>
             </div>
-          </div>
-        {isAdmin && <NavLink to="/configuracoes" onClick={onClose} className={({ isActive }) => `sidebar-link ${isActive ? "sidebar-link-active" : ""}`}><Settings size={18} /><span>Configurações</span></NavLink>}
+          )}
         </nav>
       </aside>
     </>

@@ -93,8 +93,8 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
     SELECT COUNT(*) AS total_services
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date >= $2::date
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date < $3::date
+      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
+      AND (COALESCE(delivery_date, entry_date))::date < $3::date
   `, [storeId, startDate, nextStartDate]);
 
   const storeStats = await db.queryOne(`
@@ -109,8 +109,8 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
   const expenses = await db.queryOne(`
     SELECT COALESCE(SUM(CASE WHEN w.source_type = 'service_order_part'
         AND so.payment_status IN ('paid', 'credit_account')
-        AND (COALESCE(NULLIF(so.delivery_date, ''), so.entry_date))::date >= $1::date
-        AND (COALESCE(NULLIF(so.delivery_date, ''), so.entry_date))::date < $2::date
+        AND (COALESCE(so.delivery_date, so.entry_date))::date >= $1::date
+        AND (COALESCE(so.delivery_date, so.entry_date))::date < $2::date
         THEN w.amount ELSE 0 END), 0) AS already_in_service_profit
     FROM cash_withdrawals w
     LEFT JOIN service_orders so ON so.id = w.service_order_id AND (so.store_id = w.store_id OR w.store_id IS NULL OR so.store_id IS NULL)
@@ -124,8 +124,8 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
       AND payment_status = 'paid'
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date >= $2::date
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date < $3::date
+      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
+      AND (COALESCE(delivery_date, entry_date))::date < $3::date
     GROUP BY payment_method
   `, [storeId, startDate, nextStartDate]);
 

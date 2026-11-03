@@ -5,8 +5,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
       AND payment_status IN ('paid', 'credit_account')
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date >= $2::date
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date < $3::date
+      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
+      AND (COALESCE(delivery_date, entry_date))::date < $3::date
   `, [storeId, startDate, nextStartDate]);
   const serviceRevenue = Number(serviceRevenueRow?.total || 0);
 
@@ -25,8 +25,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
       AND payment_status IN ('pending', 'credit_account')
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date >= $2::date
-      AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date < $3::date
+      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
+      AND (COALESCE(delivery_date, entry_date))::date < $3::date
   `, [storeId, startDate, nextStartDate]);
   const pendingRevenue = Number(pendingRevenueRow?.total || 0);
 
@@ -37,8 +37,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
       FROM service_orders
       WHERE (store_id = $1 OR store_id IS NULL)
         AND payment_status IN ('paid', 'credit_account')
-        AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date >= $2::date
-        AND (COALESCE(NULLIF(delivery_date, ''), entry_date))::date < $3::date
+        AND (COALESCE(delivery_date, entry_date))::date >= $2::date
+        AND (COALESCE(delivery_date, entry_date))::date < $3::date
     `, [storeId, startDate, nextStartDate]);
     serviceProfit = Number(profitRow?.total || 0);
   }

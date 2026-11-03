@@ -35,7 +35,7 @@ export default function CreditAccounts() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="font-display font-bold text-xl">Fiados</h2>
+          <h2 className="font-display font-bold text-xl">Pendentes</h2>
           <p className="text-sm text-slate-400">Contas a receber dos clientes</p>
         </div>
         <button className="btn-primary" onClick={() => setShowForm(true)}><Plus size={16} /> Novo Fiado</button>
