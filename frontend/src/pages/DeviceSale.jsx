@@ -520,7 +520,7 @@ export default function DeviceSale() {
                   </div>
                   <div>
                     <label className="label">Forma de pagamento</label>
-                    <select className="input" value={form.payment_method} onChange={e=>updateField("payment_method",e.target.value)}><option value="">Selecione</option>{Object.entries({pix:"PIX",cash:"Dinheiro",credit_card:"Cartão de Crédito",debit_card:"Cartão de Débito",credit_account:"Fiado / A Prazo"}).filter(([key])=>settings.finance?.payments[key] !== false).map(([key,label])=><option key={key} value={key}>{label}</option>)}{form.payment_method && !["pix","cash","credit_card","debit_card","credit_account"].includes(form.payment_method) && <option value={form.payment_method}>{form.payment_method}</option>}</select>
+                    <select className="input" value={form.payment_method} onChange={e=>updateField("payment_method",e.target.value)}><option value="">Selecione</option>{Object.entries({pix:"PIX",cash:"Dinheiro",credit_card:"Cartão de Crédito",debit_card:"Cartão de Débito",credit_account:"Fiado / A Prazo"}).filter(([key])=>settings?.finance?.payments?.[key] !== false).map(([key,label])=><option key={key} value={key}>{label}</option>)}{form.payment_method && !["pix","cash","credit_card","debit_card","credit_account"].includes(form.payment_method) && <option value={form.payment_method}>{form.payment_method}</option>}</select>
                   </div>
                   <div className="col-span-2">
                     <label className="label">Nome do vendedor</label>

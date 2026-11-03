@@ -14,7 +14,7 @@ const menuItems = [
   { to: '/ordens', label: 'Ordens de Serviço' },
   { to: '/garantias', label: 'Garantias' },
   { to: '/fiados', label: 'Pendentes' },
-  { to: '/pagbank-calculadora', label: 'Calculadora Maquininha' },
+  { to: '/calculadora-maquininha', label: 'Calculadora Maquininha' },
   { to: '/valor-frontais', label: 'Peças' },
   { to: '/peliculas-compativeis', label: 'Películas Compatíveis' },
   { to: '/venda-aparelho', label: 'Venda de Aparelho' },

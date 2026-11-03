@@ -22,7 +22,7 @@ const sidebarSections = [
   {
     title: 'Financeiro',
     items: [
-      { to: '/pagbank-calculadora', label: 'Calculadora Maquininha', icon: Smartphone },
+      { to: '/calculadora-maquininha', label: 'Calculadora Maquininha', icon: Smartphone },
       { to: '/garantias', label: 'Garantias', icon: ShieldCheck },
       { to: '/fiados', label: 'Pendentes', icon: HandCoins },
       { to: '/historico-financeiro', label: 'Histórico Financeiro', icon: FolderArchive },

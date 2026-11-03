@@ -216,7 +216,7 @@ async function getActivityMonthsBefore(current, storeId = 1) {
   const rows = await db.query(`
     SELECT DISTINCT ym
     FROM (
-      SELECT TO_CHAR(COALESCE(NULLIF(delivery_date, ''), entry_date)::timestamp, 'YYYY-MM') AS ym FROM service_orders WHERE store_id = $1
+      SELECT TO_CHAR(COALESCE(delivery_date, entry_date)::timestamp, 'YYYY-MM') AS ym FROM service_orders WHERE store_id = $1
       UNION ALL
       SELECT TO_CHAR(created_at, 'YYYY-MM') AS ym FROM store_sales WHERE store_id = $1 AND COALESCE(is_canceled, 0) = 0
       UNION ALL

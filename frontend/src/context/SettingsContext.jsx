@@ -32,4 +32,4 @@ export function SettingsProvider({ children }) {
   return <Context.Provider value={{ ...data, reload, setData }}>{children}</Context.Provider>
 }
 export const useSettings = () => useContext(Context)
-export function calculatePrice(amount, finance, withFrame = true) { return amount * (1 + finance.margin / 100) * (1 + finance.risk / 100) + finance.labor + (withFrame ? finance.supplies_frame : finance.supplies_glue) + finance.protector }
+export function calculatePrice(amount, finance = {}, withFrame = true) { const f = finance || {}; const margin = Number(f.margin ?? 100); const risk = Number(f.risk ?? 9.97); const labor = Number(f.labor ?? 80); const supplies_frame = Number(f.supplies_frame ?? 0); const supplies_glue = Number(f.supplies_glue ?? 0.5); const protector = Number(f.protector ?? 2); return amount * (1 + margin / 100) * (1 + risk / 100) + labor + (withFrame ? supplies_frame : supplies_glue) + protector }

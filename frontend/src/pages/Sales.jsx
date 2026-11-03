@@ -389,10 +389,10 @@ export default function Sales() {
           <div>
             <label className="label">Forma de pagamento</label>
             <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-              {settings.finance?.payments.cash !== false && <option value="cash">Dinheiro</option>}
-              {settings.finance?.payments.pix !== false && <option value="pix">PIX</option>}
-              {settings.finance?.payments.debit_card !== false && <option value="debit_card">Cartão de Débito</option>}
-              {settings.finance?.payments.credit_card !== false && <option value="credit_card">Cartão de Crédito</option>}
+              {(settings?.finance?.payments?.cash ?? true) && <option value="cash">Dinheiro</option>}
+              {(settings?.finance?.payments?.pix ?? true) && <option value="pix">PIX</option>}
+              {(settings?.finance?.payments?.debit_card ?? true) && <option value="debit_card">Cartão de Débito</option>}
+              {(settings?.finance?.payments?.credit_card ?? true) && <option value="credit_card">Cartão de Crédito</option>}
             </select>
           </div>
 

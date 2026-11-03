@@ -16,9 +16,13 @@ import api from '../api/client'
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend)
 
 
+const DEFAULT_RATES = [3.19, 4.59, 5.99, 7.39, 8.79, 10.19, 11.59, 12.99, 14.39, 15.79, 17.19, 18.59]
+
 export default function PagbankCalculator() {
-  const { settings: { finance } } = useSettings()
-  const rates = useMemo(() => finance.rates.map((rate, index) => ({ installment: index + 1, rate: rate / 100 })), [finance.rates])
+  const { settings } = useSettings()
+  const finance = settings?.finance || {}
+  const rawRates = Array.isArray(finance.rates) && finance.rates.length > 0 ? finance.rates : DEFAULT_RATES
+  const rates = useMemo(() => rawRates.map((rate, index) => ({ installment: index + 1, rate: Number(rate || 0) / 100 })), [rawRates])
   const [value, setValue] = useState(100)
   const isLoadedRef = useRef(false)
 

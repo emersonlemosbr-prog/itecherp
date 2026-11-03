@@ -29,40 +29,84 @@ async function row(storeId = 1) {
   return await db.queryOne('SELECT * FROM system_settings WHERE store_id = $1 LIMIT 1', [storeId]);
 }
 
+const DEFAULT_SETTINGS = {
+  store: {
+    name: 'iTech Celular e Informática',
+    trade_name: 'iTech',
+    email: 'contato@itechcelulareinformatica.com.br',
+    phone: '',
+    whatsapp: '',
+    address: { street: '', number: '', complement: '', district: '', city: '', state: '', zip: '' },
+    logo: '',
+  },
+  documents: {
+    receipt_terms: 'Agradecemos a preferência! Garantia legal de 90 dias.',
+    warranty_terms: 'Garantia legal de 90 dias para defeitos de fabricação e serviços executados.',
+    quote_terms: 'Orçamento válido por 10 dias.',
+    ticket_message: 'Obrigado pela preferência! Volte sempre.',
+    warranty_days: 90,
+  },
+  system: {
+    theme: 'dark',
+    color: '#ffbe0b',
+    home: '/',
+    page_size: 20,
+    notifications: true,
+    sounds: false,
+    confirm_delete: true,
+    edit_order_number: false,
+    dashboard_refresh: true,
+    financial_refresh: true,
+    auto_backup: false,
+    backup_frequency: 'daily',
+  },
+  finance: {
+    rates: [3.19, 4.59, 5.99, 7.39, 8.79, 10.19, 11.59, 12.99, 14.39, 15.79, 17.19, 18.59],
+    margin: 100,
+    risk: 9.97,
+    labor: 80,
+    supplies_frame: 0,
+    supplies_glue: 0.5,
+    protector: 2,
+    default_payment_method: 'pix',
+    payments: {
+      pix: true,
+      cash: true,
+      credit_card: true,
+      debit_card: true,
+      credit_account: true,
+    },
+  },
+};
+
+function mergeSettingsWithDefaults(raw) {
+  const merged = {
+    ...DEFAULT_SETTINGS,
+    ...(raw || {}),
+    store: { ...DEFAULT_SETTINGS.store, ...(raw?.store || {}) },
+    documents: { ...DEFAULT_SETTINGS.documents, ...(raw?.documents || {}) },
+    system: { ...DEFAULT_SETTINGS.system, ...(raw?.system || {}) },
+    finance: {
+      ...DEFAULT_SETTINGS.finance,
+      ...(raw?.finance || {}),
+      payments: { ...DEFAULT_SETTINGS.finance.payments, ...(raw?.finance?.payments || {}) },
+      rates: Array.isArray(raw?.finance?.rates) && raw.finance.rates.length > 0
+        ? raw.finance.rates
+        : DEFAULT_SETTINGS.finance.rates,
+    },
+  };
+  return merged;
+}
+
 async function readSettings(storeId = 1) {
   const current = await row(storeId);
   if (!current || !current.value) {
-    return {
-      store: {
-        name: 'iTech Celular e Informática',
-        trade_name: 'iTech',
-        email: 'contato@itechcelulareinformatica.com.br',
-        phone: '',
-        whatsapp: '',
-        address: { street: '', number: '', complement: '', district: '', city: '', state: '', zip: '' },
-        logo: '',
-      },
-      documents: {
-        receipt_terms: 'Agradecemos a preferência! Garantia legal de 90 dias.',
-        warranty_terms: 'Garantia legal de 90 dias para defeitos de fabricação e serviços executados.',
-        quote_terms: 'Orçamento válido por 10 dias.',
-        ticket_message: 'Obrigado pela preferência! Volte sempre.',
-        warranty_days: 90,
-      },
-      system: {
-        theme: 'dark',
-        home: '/',
-        auto_backup: false,
-        backup_frequency: 'daily',
-      },
-      finance: {
-        default_payment_method: 'pix',
-      },
-    };
+    return DEFAULT_SETTINGS;
   }
-  return typeof current.value === 'object' && current.value !== null
+  const parsed = typeof current.value === 'object' && current.value !== null
     ? current.value
     : JSON.parse(current.value);
+  return mergeSettingsWithDefaults(parsed);
 }
 
 async function sequences(storeId = 1) {

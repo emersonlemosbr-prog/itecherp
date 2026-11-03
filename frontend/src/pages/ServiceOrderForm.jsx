@@ -241,7 +241,7 @@ export default function ServiceOrderForm() {
         <div>
           <label className="label">Forma de Pagamento</label>
           <select className="input" value={form.payment_method} onChange={e => setForm(f => ({ ...f, payment_method: e.target.value }))}>
-            {Object.entries(PAYMENT_METHOD_LABELS).filter(([k]) => settings.finance?.payments[k] !== false || k === form.payment_method).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries(PAYMENT_METHOD_LABELS).filter(([k]) => settings?.finance?.payments?.[k] !== false || k === form.payment_method).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </div>
         <div>

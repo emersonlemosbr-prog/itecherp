@@ -138,7 +138,8 @@ export default function App() {
                   <Route path="/ordens/:id/editar" element={<ServiceOrderForm />} />
                   <Route path="/garantias" element={<Warranties />} />
                   <Route path="/fiados" element={<CreditAccounts />} />
-                  <Route path="/pagbank-calculadora" element={<PagbankCalculator />} />
+                  <Route path="/calculadora-maquininha" element={<PagbankCalculator />} />
+                  <Route path="/pagbank-calculadora" element={<Navigate to="/calculadora-maquininha" replace />} />
                   <Route path="/calculo-peca" element={<Navigate to="/valor-frontais" replace />} />
                   <Route path="/valor-frontais" element={<FrontalsCalculator />} />
                   <Route path="/peliculas-compativeis" element={<CompatibleScreenProtectors />} />
