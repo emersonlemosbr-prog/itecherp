@@ -270,6 +270,7 @@ CREATE TABLE IF NOT EXISTS service_orders (
     status VARCHAR(64) NOT NULL DEFAULT 'received' CHECK (status IN ('received', 'diagnosis', 'waiting_parts', 'repairing', 'ready', 'delivered', 'not_performed')),
     warranty_days INT DEFAULT 90,
     supplier_id INT REFERENCES stock_suppliers(id) ON DELETE SET NULL,
+    supplier_name_snapshot VARCHAR(255),
     public_token_hash VARCHAR(128) UNIQUE,
     unlock_type VARCHAR(32) DEFAULT 'none',
     unlock_password TEXT,

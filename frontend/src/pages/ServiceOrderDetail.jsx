@@ -24,6 +24,8 @@ export default function ServiceOrderDetail() {
   const [selectedPhoto, setSelectedPhoto] = useState(null)
   const [virusHistory, setVirusHistory] = useState([])
   const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
   const parsedChecklist = useMemo(() => {
     if (!order?.checklist_json) return {}
@@ -53,14 +55,29 @@ export default function ServiceOrderDetail() {
   }, [order?.device_condition])
 
   const loadOrder = async () => {
-    const orderData = await api.get(`/service-orders/${id}`)
-    setOrder(orderData.data)
-    setPhotos(orderData.data.photos || [])
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const orderData = await api.get(`/service-orders/${id}`)
+      setOrder(orderData.data)
+      setPhotos(orderData.data.photos || [])
+    } catch (err) {
+      const status = err.response?.status
+      const msg = err.response?.data?.error || (status === 404 ? 'Ordem de serviço não encontrada.' : 'Não foi possível carregar a ordem de serviço.')
+      setLoadError({ status, message: msg })
+      setOrder(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
     loadOrder()
-    if (isAdmin || user.permissions?.android) api.get('/virus-agent/history', { params: { service_order_id: id } }).then((r) => setVirusHistory(r.data?.scans || [])).catch(() => setVirusHistory([]))
+    if (isAdmin || user?.permissions?.android) {
+      api.get('/virus-agent/history', { params: { service_order_id: id } })
+        .then((r) => setVirusHistory(r.data?.scans || []))
+        .catch(() => setVirusHistory([]))
+    }
   }, [id])
 
   async function handleDeletePhoto(photoId) {
@@ -74,7 +91,42 @@ export default function ServiceOrderDetail() {
     }
   }
 
-  if (!order) return <div className="text-slate-400 text-sm">Carregando...</div>
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[40vh] p-8 text-slate-400 gap-3">
+        <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm">Carregando Ordem de Serviço...</span>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4 max-w-xl mx-auto py-8 text-center">
+        <div className="card p-6 space-y-4">
+          <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto text-xl font-bold">
+            !
+          </div>
+          <h3 className="text-lg font-bold text-slate-900 dark:text-zinc-100">
+            {loadError.status === 404 ? 'Ordem de Serviço Não Encontrada' : 'Erro ao Carregar Ordem de Serviço'}
+          </h3>
+          <p className="text-sm text-slate-500 dark:text-zinc-400">
+            {loadError.message}
+          </p>
+          <div className="flex justify-center gap-3 pt-2">
+            <button type="button" onClick={loadOrder} className="btn-primary">
+              Tentar Novamente
+            </button>
+            <Link to="/ordens" className="btn-secondary">
+              Voltar para Ordens de Serviço
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!order) return null
 
   function whatsappLink() {
     if (!order.phone) return null

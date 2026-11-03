@@ -408,7 +408,6 @@ router.post('/', async (req, res, next) => {
     const profit = service_price - parts_cost - additional_costs;
     const payment_method = b.payment_method || 'pending';
     const payment_status = computePaymentStatus(payment_method);
-    const order_number = await nextOrderNumber(storeId);
     const settings = await readSettings(storeId);
 
     const unlock_type = ['none', 'pin', 'password', 'pattern'].includes(b.unlock_type) ? b.unlock_type : 'none';
@@ -433,6 +432,7 @@ router.post('/', async (req, res, next) => {
       : null;
 
     const { order, withdrawalId } = await db.transaction(async (tx) => {
+      const order_number = await nextOrderNumber(storeId, tx);
       const info = await tx.execute(`
         INSERT INTO service_orders (
           store_id, order_number, customer_id, brand, model, imei1, imei2, entry_date, expected_delivery_date,
@@ -492,9 +492,12 @@ router.put('/:id', async (req, res, next) => {
     const profit = service_price - parts_cost - additional_costs;
     const payment_method = b.payment_method || existing.payment_method;
     const payment_status = computePaymentStatus(payment_method);
-    const requestedDeliveryDate = b.delivery_date !== undefined ? (b.delivery_date || null) : existing.delivery_date;
+    const requestedDeliveryDate = b.delivery_date !== undefined ? (b.delivery_date ? b.delivery_date : null) : existing.delivery_date;
     const deliveryDate = nextStatus === 'delivered' && existing.status !== 'delivered' && !requestedDeliveryDate
-      ? trustedNow.slice(0, 10) : requestedDeliveryDate;
+      ? trustedNow.slice(0, 10) : (requestedDeliveryDate || null);
+    const expectedDeliveryDate = b.expected_delivery_date !== undefined
+      ? (b.expected_delivery_date ? b.expected_delivery_date : null)
+      : existing.expected_delivery_date;
 
     let unlock_type = existing.unlock_type || 'none';
     let unlock_password = existing.unlock_password || null;
@@ -552,7 +555,7 @@ router.put('/:id', async (req, res, next) => {
         WHERE id=$28 AND (store_id=$29 OR store_id IS NULL)
       `, [
         b.brand ?? existing.brand, b.model ?? existing.model, b.imei1 ?? existing.imei1, b.imei2 ?? existing.imei2,
-        b.entry_date ?? existing.entry_date, b.expected_delivery_date ?? existing.expected_delivery_date,
+        b.entry_date ?? existing.entry_date, expectedDeliveryDate,
         deliveryDate, b.description ?? existing.description, b.notes ?? existing.notes,
         service_price, parts_cost, supplier_id, additional_costs, profit, payment_method, payment_status,
         nextStatus, b.warranty_days ?? existing.warranty_days,
