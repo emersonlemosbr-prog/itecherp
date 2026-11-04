@@ -17,6 +17,7 @@ import {
   STATUS_LABELS, STATUS_BADGE, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_BADGE,
   formatCurrency, formatDate
 } from '../utils/format'
+import DashboardDetailModal from '../components/Dashboard/DashboardDetailModal'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler)
 
@@ -56,6 +57,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [selectedIndicator, setSelectedIndicator] = useState(null)
 
   async function loadDashboardData() {
     setLoading(true)
@@ -197,20 +199,20 @@ export default function Dashboard() {
   }
 
   const compactStats = [
-    { label: 'Em andamento', value: stats.repairs_in_progress, icon: Wrench, tone: 'blue' },
-    { label: 'Prontos', value: stats.repairs_ready, icon: PackageCheck, tone: 'green' },
-    { label: 'Concluídos', value: stats.repairs_completed, icon: CheckCircle2, tone: 'slate' },
-    { label: 'Não realizados', value: stats.repairs_not_performed, icon: XCircle, tone: 'red' },
-    { label: 'Vendas', value: stats.sales_count, icon: ShoppingCart, tone: 'violet' },
-    { label: 'Produtos', value: stats.products_sold, icon: PackageCheck, tone: 'blue' },
-    { label: 'Ticket médio', value: displayCurrency(stats.sales_avg_ticket), icon: TrendingUp, tone: 'green' },
+    { id: 'repairs-in-progress', label: 'Em andamento', value: stats.repairs_in_progress, icon: Wrench, tone: 'blue' },
+    { id: 'repairs-ready', label: 'Prontos', value: stats.repairs_ready, icon: PackageCheck, tone: 'green' },
+    { id: 'repairs-completed', label: 'Concluídos', value: stats.repairs_completed, icon: CheckCircle2, tone: 'slate' },
+    { id: 'repairs-not-performed', label: 'Não realizados', value: stats.repairs_not_performed, icon: XCircle, tone: 'red' },
+    { id: 'sales', label: 'Vendas', value: stats.sales_count, icon: ShoppingCart, tone: 'violet' },
+    { id: 'products', label: 'Produtos', value: stats.products_sold, icon: PackageCheck, tone: 'blue' },
+    { id: 'sales', label: 'Ticket médio', value: displayCurrency(stats.sales_avg_ticket), icon: TrendingUp, tone: 'green' },
   ]
 
   return (
     <div className="space-y-6">
       <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-[var(--text-muted)]">A dashboard exibe somente os indicadores do mês atual.</p>
+          <p className="text-sm text-[var(--text-muted)]">A dashboard exibe somente os indicadores do mês atual. Clique em qualquer bloco para ver seus registros detalhados.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -228,10 +230,20 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr_1fr]">
-        <div className="dashboard-feature-card">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setSelectedIndicator('revenue')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedIndicator('revenue'); } }}
+          className="dashboard-feature-card dashboard-clickable"
+          title="Clique para ver todas as entradas financeiras que compõem a receita"
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="dashboard-label">Receita total</p>
+              <div className="flex items-center gap-1.5">
+                <p className="dashboard-label">Receita total</p>
+                <span className="dashboard-interactive-hint">Ver detalhes <ArrowUpRight size={12} /></span>
+              </div>
               <h2 className="mt-2 text-3xl font-black tracking-tight text-[var(--text-main)] sm:text-4xl">
                 {displayCurrency(stats.total_revenue)}
               </h2>
@@ -254,33 +266,64 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="dashboard-mini-card">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setSelectedIndicator('pending-revenue')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedIndicator('pending-revenue'); } }}
+          className="dashboard-mini-card dashboard-clickable"
+          title="Clique para ver os valores que ainda precisam ser recebidos"
+        >
           <div className="flex items-center justify-between gap-3">
             <span className="dashboard-label">Receita pendente</span>
             <span className="dashboard-icon dashboard-tone-amber"><Clock size={18} /></span>
           </div>
-          <strong className="text-2xl font-bold text-[var(--text-main)]">{displayCurrency(stats.pending_revenue)}</strong>
-          <p className="text-xs text-[var(--text-muted)]">Valores ainda não quitados</p>
+          <div>
+            <strong className="text-2xl font-bold text-[var(--text-main)]">{displayCurrency(stats.pending_revenue)}</strong>
+            <p className="text-xs text-[var(--text-muted)] mt-1">Valores ainda não quitados</p>
+          </div>
+          <span className="dashboard-interactive-hint">Ver registros pendentes <ArrowUpRight size={12} /></span>
         </div>
 
-        <div className="dashboard-mini-card">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setSelectedIndicator('open-credits')}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedIndicator('open-credits'); } }}
+          className="dashboard-mini-card dashboard-clickable"
+          title="Clique para ver as pendências e saldos de clientes com prazo"
+        >
           <div className="flex items-center justify-between gap-3">
             <span className="dashboard-label">Pendentes em aberto</span>
             <span className="dashboard-icon dashboard-tone-red"><HandCoins size={18} /></span>
           </div>
-          <strong className="text-2xl font-bold text-[var(--text-main)]">{displayCurrency(stats.credit_accounts_open)}</strong>
-          <p className="text-xs text-[var(--text-muted)]">Saldo de clientes com prazo</p>
+          <div>
+            <strong className="text-2xl font-bold text-[var(--text-main)]">{displayCurrency(stats.credit_accounts_open)}</strong>
+            <p className="text-xs text-[var(--text-muted)] mt-1">Saldo de clientes com prazo</p>
+          </div>
+          <span className="dashboard-interactive-hint">Ver pendentes em aberto <ArrowUpRight size={12} /></span>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-        {compactStats.map(({ label, value, icon: Icon, tone }) => (
-          <div key={label} className="dashboard-compact-card">
+        {compactStats.map(({ id, label, value, icon: Icon, tone }) => (
+          <div
+            key={label}
+            role="button"
+            tabIndex={0}
+            onClick={() => id && setSelectedIndicator(id)}
+            onKeyDown={(e) => { if (id && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelectedIndicator(id); } }}
+            className={`dashboard-compact-card ${id ? 'dashboard-clickable' : ''}`}
+            title={id ? `Clique para detalhar os registros de ${label}` : undefined}
+          >
             <div className="flex items-center justify-between gap-3">
               <span className={`dashboard-icon ${toneStyles[tone]}`}><Icon size={16} /></span>
               <strong className="text-base font-bold text-[var(--text-main)]">{value}</strong>
             </div>
-            <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
+            <div className="mt-3 flex items-center justify-between gap-1">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--text-muted)]">{label}</p>
+              {id && <ArrowUpRight size={12} className="text-[var(--text-muted)] opacity-60" />}
+            </div>
           </div>
         ))}
       </div>
@@ -346,6 +389,18 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
+
+      {selectedIndicator && (
+        <DashboardDetailModal
+          indicator={selectedIndicator}
+          onClose={() => setSelectedIndicator(null)}
+          isAdmin={isAdmin}
+          valuesVisible={valuesVisible}
+          onRecordDeleted={() => {
+            loadDashboardData()
+          }}
+        />
+      )}
     </div>
   )
 }
