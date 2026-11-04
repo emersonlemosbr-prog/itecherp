@@ -51,6 +51,7 @@ function isOriginAllowed(origin) {
   // 4. Domínios oficiais de produção da iTech
   if (
     normalized === 'https://erp.itechcelulareinformatica.com.br' ||
+    normalized === 'https://api.itechcelulareinformatica.com.br' ||
     normalized === 'https://acompanhar.itechcelulareinformatica.com.br' ||
     normalized === 'https://itechcelulareinformatica.com.br' ||
     normalized === 'https://www.itechcelulareinformatica.com.br'

@@ -9,7 +9,8 @@ import axios from 'axios'
  * 3. Se estiver acessando diretamente pelo Render (*.onrender.com) ou em desenvolvimento local (localhost/127.0.0.1):
  *    utiliza '/api' relativo (mesma origem ou proxy do Vite).
  */
-export const DEFAULT_RENDER_API_URL = 'https://itech-project-z1ez.onrender.com/api'
+export const DEFAULT_API_URL = 'https://api.itechcelulareinformatica.com.br/api'
+export const DEFAULT_RENDER_API_URL = DEFAULT_API_URL
 
 export function resolveApiBaseUrl() {
   if (typeof window !== 'undefined') {
@@ -20,23 +21,26 @@ export function resolveApiBaseUrl() {
     // IPs privados locais (Wi-Fi/LAN para celulares ou computadores na mesma rede: 192.168.x.x, 10.x.x.x, 172.16-31.x.x, 26.x.x.x VPN)
     const isPrivateIp = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|26\.)/.test(hostname) || hostname.endsWith('.internal') || hostname.endsWith('.local')
 
-    // 1. Em desenvolvimento local (localhost), rede local LAN (Wi-Fi no celular) ou mesma origem:
-    // Sempre utilizar '/api' relativo para consumir o backend servidor pela mesma origem.
-    if (isLocalhost || isRender || isPrivateIp) {
+    // Domínio oficial de produção da API da iTech acessado diretamente pelo navegador
+    const isApiDomain = hostname === 'api.itechcelulareinformatica.com.br'
+
+    // 1. Quando o frontend estiver rodando na mesma origem do backend (localhost, rede local, render ou diretamente no domínio api):
+    // Sempre utilizar '/api' relativo.
+    if (isLocalhost || isRender || isPrivateIp || isApiDomain) {
       return '/api'
     }
   }
 
-  // 2. Em ambientes remotos (Cloudflare Pages, domínio customizado, etc.):
+  // 2. Em ambientes remotos ou domínios separados (Cloudflare Pages, erp.*, etc.):
   const envUrl = (import.meta.env.VITE_API_URL || '').trim()
 
-  if (envUrl && !envUrl.includes('itecherp-backend.onrender.com')) {
+  if (envUrl && !envUrl.includes('itecherp-backend.onrender.com') && !envUrl.includes('itech-project-z1ez.onrender.com')) {
     const clean = envUrl.replace(/\/+$/, '')
     return clean.endsWith('/api') ? clean : `${clean}/api`
   }
 
-  // 3. Fallback oficial para o backend ativo no Render
-  return DEFAULT_RENDER_API_URL
+  // 3. Fallback oficial ativo: Cloudflare Tunnel da iTech
+  return DEFAULT_API_URL
 }
 
 const api = axios.create({
