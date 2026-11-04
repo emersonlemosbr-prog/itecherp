@@ -22,20 +22,22 @@ function queryNtpTime() {
     const packet = Buffer.alloc(48);
     packet[0] = 0x1b;
 
+    let closed = false;
+    const safeClose = () => { if (!closed) { closed = true; try { socket.close(); } catch (_) {} } };
     const timeout = setTimeout(() => {
-      socket.close();
+      safeClose();
       reject(new Error(`NTP timeout (${NTP_TIMEOUT_MS}ms) para ${NTP_HOST}`));
     }, NTP_TIMEOUT_MS);
 
     socket.once('error', (err) => {
       clearTimeout(timeout);
-      socket.close();
+      safeClose();
       reject(err);
     });
 
     socket.once('message', (msg) => {
       clearTimeout(timeout);
-      socket.close();
+      safeClose();
 
       if (!msg || msg.length < 48) {
         reject(new Error('Resposta NTP inválida.'));
@@ -51,7 +53,7 @@ function queryNtpTime() {
     socket.send(packet, 0, packet.length, NTP_PORT, NTP_HOST, (err) => {
       if (err) {
         clearTimeout(timeout);
-        socket.close();
+        safeClose();
         reject(err);
       }
     });
