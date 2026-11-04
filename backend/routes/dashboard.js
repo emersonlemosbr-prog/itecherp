@@ -284,7 +284,26 @@ router.get('/charts/cash-flow', async (req, res, next) => {
 router.get('/details/:indicator', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
-    const { indicator } = req.params;
+    let indicator = req.params.indicator;
+    // Mapeamento de alias para total compatibilidade entre identificadores legados e novos
+    const indicatorAliases = {
+      'monthly-revenue': 'revenue',
+      'revenue': 'revenue',
+      'pending-revenue': 'pending-revenue',
+      'open-credits': 'open-credits',
+      'repairs-in-progress': 'repairs-in-progress',
+      'repairs-ready': 'repairs-ready',
+      'repairs-completed': 'repairs-completed',
+      'repairs-canceled': 'repairs-not-performed',
+      'repairs-not-performed': 'repairs-not-performed',
+      'sales-volume': 'sales',
+      'sales': 'sales',
+      'products-volume': 'products',
+      'products': 'products',
+    };
+    if (indicatorAliases[indicator]) {
+      indicator = indicatorAliases[indicator];
+    }
     const trustedNow = await getTrustedNowSqlite();
     const { startDate, nextStartDate } = getMonthDateRangeForSqlite(trustedNow);
 
@@ -593,7 +612,7 @@ router.get('/details/:indicator', async (req, res, next) => {
                 'product_name', i.product_name,
                 'quantity', i.quantity,
                 'unit_price', i.unit_price,
-                'total_price', i.total_price
+                'total_price', COALESCE(i.subtotal, (i.unit_price * i.quantity))
               ))
               FROM store_sale_items i
               WHERE i.sale_id = s.id AND COALESCE(i.is_canceled, 0) = 0
