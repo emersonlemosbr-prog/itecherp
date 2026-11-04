@@ -459,7 +459,7 @@ router.post('/', async (req, res, next) => {
 
     await ensureFinancialHistoryUpToDate(trustedNow, storeId);
 
-    await logAction({ user: req.user, action: 'create_service_order', recordType: 'service_order', recordId: order.id, details: { order_number } });
+    await logAction({ user: req.user, action: 'create_service_order', recordType: 'service_order', recordId: order.id, details: { order_number: order.order_number } });
     if (withdrawalId) await logAction({ user: req.user, action: 'sync_cash_withdrawal_from_service_order', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { service_order_id: order.id } });
     emitDashboardRefresh({ source: 'service_order_create', orderId: order.id, orderNumber: order.order_number });
     res.status(201).json({
