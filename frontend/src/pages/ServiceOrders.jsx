@@ -28,8 +28,12 @@ export default function ServiceOrders() {
 
   async function handleDelete(id) {
     if (settings.system.confirm_delete && !confirm('Excluir esta ordem de serviço?')) return
-    await api.delete(`/service-orders/${id}`)
-    load()
+    try {
+      await api.delete(`/service-orders/${id}`)
+      load()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Erro ao excluir ordem de serviço.')
+    }
   }
 
   return (

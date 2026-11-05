@@ -592,11 +592,6 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
     const existing = await db.queryOne('SELECT id, order_number FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
     if (!existing) return res.status(404).json({ error: 'Ordem de serviço não encontrada nesta loja.' });
 
-    const hasWithdrawal = await db.queryOne("SELECT id FROM cash_withdrawals WHERE service_order_id = $1 AND source_type = 'service_order_part' AND store_id = $2", [req.params.id, storeId]);
-    if (hasWithdrawal) {
-      return res.status(409).json({ error: 'Esta OS possui uma retirada automática de peça e não pode ser excluída.' });
-    }
-
     const photos = await db.query('SELECT * FROM service_order_photos WHERE service_order_id = $1', [req.params.id]);
     const storage = getStorageService();
     for (const photo of photos) {
@@ -608,9 +603,16 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
       }
     }
 
-    await db.execute('DELETE FROM warranties WHERE service_order_id = $1 AND store_id = $2', [req.params.id, storeId]);
-    await db.execute('DELETE FROM credit_accounts WHERE service_order_id = $1 AND store_id = $2', [req.params.id, storeId]);
-    await db.execute('DELETE FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    await db.transaction(async (tx) => {
+      // Exclui a retirada automática de peça vinculada à OS
+      await tx.execute("DELETE FROM cash_withdrawals WHERE service_order_id = $1 AND source_type = 'service_order_part' AND store_id = $2", [req.params.id, storeId]);
+      // Se houver qualquer outra retirada vinculada, desvincula a referência
+      await tx.execute("UPDATE cash_withdrawals SET service_order_id = NULL WHERE service_order_id = $1 AND store_id = $2", [req.params.id, storeId]);
+
+      await tx.execute('DELETE FROM warranties WHERE service_order_id = $1 AND store_id = $2', [req.params.id, storeId]);
+      await tx.execute('DELETE FROM credit_accounts WHERE service_order_id = $1 AND store_id = $2', [req.params.id, storeId]);
+      await tx.execute('DELETE FROM service_orders WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    });
 
     const trustedNow = await getTrustedNowSqlite();
     await ensureFinancialHistoryUpToDate(trustedNow, storeId);
