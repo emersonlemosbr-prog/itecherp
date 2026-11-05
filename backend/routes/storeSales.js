@@ -74,8 +74,12 @@ async function cancelSaleWithReversal({ saleId, trustedNow, cancelReason, user }
     if (!items.length) throw new Error('SALE_ITEMS_NOT_FOUND');
 
     for (const item of items) {
-      const stockLevel = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [item.product_id]);
-      if (!stockLevel) throw new Error(`STOCK_LEVEL_NOT_FOUND:${item.product_id}`);
+      let stockLevel = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [item.product_id]);
+      if (!stockLevel) {
+        // Se o produto existir mas não tiver registro em stock_levels, inicializa com 0
+        await tx.execute('INSERT INTO stock_levels (product_id, quantity, updated_at) VALUES ($1, 0, $2)', [item.product_id, trustedNow]);
+        stockLevel = { quantity: 0 };
+      }
 
       const previousQuantity = sanitizeInt(stockLevel.quantity, 0);
       const restoreQty = Math.max(0, sanitizeInt(item.quantity, 0));
