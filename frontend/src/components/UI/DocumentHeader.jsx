@@ -26,24 +26,25 @@ export default function DocumentHeader({ number, orderNumber, emittedAt }) {
 
   return (
     <header className="service-order-print-header">
-      {d.logo && s.logo && (
+      {Boolean(d.logo) && s.logo && (
         <div className="service-order-print-brand">
           <img src={s.logo} alt={s.name} className="service-order-print-logo" />
         </div>
       )}
 
       <div className="service-order-print-company">
-        {d.name && <h1>{s.name}</h1>}
-        {d.cnpj && s.cnpj && <p className="company-cnpj">CNPJ: {s.cnpj}</p>}
-        {d.address && (
+        {Boolean(d.name) && <h1>{s.name}</h1>}
+        {Boolean(d.cnpj) && s.cnpj && <p className="company-cnpj">CNPJ: {s.cnpj}</p>}
+        {Boolean(d.address) && (
           <>
             {streetLine && <p>{streetLine}</p>}
             {cityLine && <p>{cityLine}</p>}
           </>
         )}
-        {d.phone && phoneText && <p className="company-phones">{phoneText}</p>}
-        {d.whatsapp && s.whatsapp && <p>WhatsApp: {formatPhoneDisplay(s.whatsapp)}</p>}
-        {d.email && s.email && <p>{s.email}</p>}
+        {Boolean(d.phone) && phoneText && <p className="company-phones">{phoneText}</p>}
+        {Boolean(d.whatsapp) && s.whatsapp && <p>WhatsApp: {formatPhoneDisplay(s.whatsapp)}</p>}
+        {Boolean(d.email) && s.email && <p>{s.email}</p>}
+        {Boolean(d.website) && s.website && <p>{s.website}</p>}
       </div>
 
       {docNumber && (
