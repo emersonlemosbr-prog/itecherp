@@ -14,13 +14,14 @@ export default function ServiceOrderPrint() {
   const d = settings.documents
   const { id } = useParams()
   const [order, setOrder] = useState(null)
+  const [emissionDate] = useState(() => new Date())
 
   useEffect(() => {
     document.title = `Ordem de Serviço ${order?.order_number || ''}`.trim() || 'Ordem de Serviço'
     return () => {
       document.title = `${settings.store.name} — Painel`
     }
-  }, [order?.order_number])
+  }, [order?.order_number, settings.store.name])
 
   useEffect(() => { api.get(`/service-orders/${id}`).then(r => setOrder(r.data)) }, [id])
 
@@ -52,7 +53,22 @@ export default function ServiceOrderPrint() {
 
   const hasEntryConditions = checklistSummaryList.length > 0 || accessoriesList.length > 0 || conditionLabel || order?.battery_health || order?.checklist_notes
 
-  if (!order) return <div className="text-slate-400 text-sm">Carregando...</div>
+  if (!order) return <div className="text-slate-400 text-sm p-6">Carregando...</div>
+
+  // Formatação data e hora de emissão (Brasília / pt-BR)
+  const formattedEmissionDate = emissionDate.toLocaleDateString('pt-BR')
+  const formattedEmissionTime = emissionDate.toLocaleTimeString('pt-BR')
+
+  // Identificação do cliente
+  const customerName = [order.first_name, order.last_name].filter(Boolean).join(' ').trim() || order.customer_name_snapshot || '—'
+  const customerPhone = order.phone || order.customer_phone_snapshot || ''
+  const customerAddress = order.address || order.customer_address_snapshot || ''
+
+  // Garantia e condições de retirada
+  const defaultTerms = "Entrega e garantia somente mediante apresentação da Ordem de Serviço. Prazo para retirada do aparelho: até 10 dias úteis após a conclusão do serviço. Após a conclusão do serviço, o cliente será informado via WhatsApp. O prazo de retirada passa a contar a partir dessa comunicação. Após esse prazo, será cobrada taxa de armazenamento/guarda no valor de R$ 5,00 por dia. Após 90 dias sem retirada, o cliente autoriza o descarte do aparelho para cobrir custos de armazenamento e manutenção da loja."
+  const customTerms = [d.terms, d.pickup_terms, d.storage_terms, d.disposal_terms].filter(Boolean).join(' ')
+  const mainTerms = customTerms.trim() || defaultTerms
+  const warrantyDays = order.warranty_days ?? d.warranty_days ?? 90
 
   return (
     <div>
@@ -63,100 +79,135 @@ export default function ServiceOrderPrint() {
         <button className="btn-primary" onClick={() => window.print()}><Printer size={16} /> Imprimir</button>
       </div>
 
-      <div className="print-preview-scroll"><div id="print-area" className={`service-order-print-area ${d.paper === "thermal" ? "thermal-document" : ""}`}>
-        <DocumentHeader number={order.order_number} />
+      <div className="print-preview-scroll">
+        <div id="print-area" className={`service-order-print-area ${d.paper === "thermal" ? "thermal-document" : ""}`}>
+          
+          {/* Cabeçalho */}
+          <DocumentHeader number={order.order_number} />
 
-        <div className="service-order-print-divider" />
+          {/* Divisor superior */}
+          <div className="service-order-print-divider" />
 
-        <div className="service-order-print-main-grid">
-          <div>
-            <p className="service-order-print-section-label">CLIENTE</p>
-            <p className="service-order-print-client-name">{order.first_name} {order.last_name}</p>
-            <p className="service-order-print-small">{order.phone}</p>
-            <p className="service-order-print-small">{order.address}</p>
-          </div>
+          {/* Identificação do Cliente e Aparelho em duas colunas */}
+          <div className="service-order-print-main-grid">
+            <div className="service-order-print-col">
+              <p className="service-order-print-section-label">CLIENTE</p>
+              <p className="service-order-print-client-name">{customerName}</p>
+              {customerPhone && <p className="service-order-print-small">{customerPhone}</p>}
+              {customerAddress && <p className="service-order-print-small">{customerAddress}</p>}
+            </div>
 
-          <div>
-            <p className="service-order-print-section-label">APARELHO</p>
-            <p className="service-order-print-device-name">{order.brand} {order.model}</p>
-            <p className="service-order-print-small">IMEI 1: {order.imei1 || '—'}</p>
-            <p className="service-order-print-small">IMEI 2: {order.imei2 || '—'}</p>
-          </div>
-        </div>
-
-        {d.date && <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
-          <div><p className="text-xs font-semibold text-slate-400 uppercase">Entrada</p><p>{formatDate(order.entry_date)}</p></div>
-          <div><p className="text-xs font-semibold text-slate-400 uppercase">Previsão de Entrega</p><p>{formatDate(order.expected_delivery_date)}</p></div>
-          <div><p className="text-xs font-semibold text-slate-400 uppercase">Status</p><p>{STATUS_LABELS[order.status]}</p></div>
-        </div>}
-
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Descrição do Reparo</p>
-            <p className="text-sm border border-slate-400 rounded-lg p-3 min-h-[60px]">{order.description || '—'}</p>
-          </div>
-        </div>
-
-        {hasEntryConditions && (
-          <div className="mb-6">
-            <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Condições do Aparelho na Entrada</p>
-            <div className="text-xs border border-slate-400 rounded-lg p-3 bg-slate-50/40 space-y-1.5 leading-relaxed">
-              {conditionLabel && (
-                <p className="font-semibold text-slate-800">
-                  Estado Geral: <span className="font-medium text-slate-700">{conditionLabel}</span>
-                  {order.battery_health ? ` • Saúde da bateria: ${order.battery_health}%` : ''}
-                </p>
-              )}
-              {checklistSummaryList.length > 0 && (
-                <p className="text-slate-800">
-                  {checklistSummaryList.join(' • ')}
-                </p>
-              )}
-              {accessoriesList.length > 0 && (
-                <p className="text-slate-700">
-                  <span className="font-semibold">Acessórios entregues:</span> {accessoriesList.join(', ')}
-                </p>
-              )}
-              {order.checklist_notes && (
-                <p className="text-slate-600 italic">
-                  Obs. checklist: {order.checklist_notes}
-                </p>
-              )}
+            <div className="service-order-print-col">
+              <p className="service-order-print-section-label">APARELHO</p>
+              <p className="service-order-print-device-name">{[order.brand, order.model].filter(Boolean).join(' ') || '—'}</p>
+              <p className="service-order-print-small">IMEI 1: {order.imei1 || '—'}</p>
+              <p className="service-order-print-small">IMEI 2: {order.imei2 || '—'}</p>
             </div>
           </div>
-        )}
 
-        {d.notes && <div className="mb-6">
-          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Observações Técnicas</p>
-          <p className="text-sm border border-slate-400 rounded-lg p-3 min-h-[50px]">{order.notes || '—'}</p>
-        </div>}
-
-        <Access><div className="mb-6">
-          <p className="text-xs font-semibold text-slate-400 uppercase mb-1">Valor do Serviço</p>
-          <div className="border border-slate-400 rounded-lg p-3 bg-slate-50">
-            <p className="text-lg font-bold text-slate-800">{formatCurrency(order.service_price)}</p>
-          </div>
-        </div></Access>
-
-        {d.time && <p className="text-xs">Emitido às {new Date().toLocaleTimeString('pt-BR')}</p>}
-        <div className="service-order-print-footer w-full mt-16 text-sm">
-          <div className="service-order-print-footer-signatures grid grid-cols-2 gap-10 mb-6">
-            {d.customer_signature && <div className="text-center"><div className="border-t border-ink-900 pt-2">Assinatura do Cliente</div></div>}
-            {d.staff_signature && <div className="text-center"><div className="border-t border-ink-900 pt-2">{settings.store.name}</div></div>}
+          {/* Acompanhamento da OS: Entrada, Previsão de Entrega e Status */}
+          <div className="service-order-print-meta-grid">
+            <div className="service-order-print-meta-item">
+              <p className="service-order-print-meta-label">ENTRADA</p>
+              <p className="service-order-print-meta-value">{formatDate(order.entry_date)}</p>
+            </div>
+            <div className="service-order-print-meta-item">
+              <p className="service-order-print-meta-label">PREVISÃO DE ENTREGA</p>
+              <p className="service-order-print-meta-value">{formatDate(order.expected_delivery_date)}</p>
+            </div>
+            <div className="service-order-print-meta-item">
+              <p className="service-order-print-meta-label">STATUS</p>
+              <p className="service-order-print-meta-value font-semibold text-slate-900">{STATUS_LABELS[order.status] || order.status || '—'}</p>
+            </div>
           </div>
 
-          <div className="service-order-print-footer-row flex items-start justify-between gap-6">
-            <div className="service-order-print-warranty-block w-full text-left">
-              <p className="text-[10px] font-semibold text-slate-700 mb-1 tracking-wide">GARANTIA</p>
-              <p className="text-[10px] leading-relaxed text-slate-500">
-                {[d.terms, d.warranty_terms, d.pickup_terms, d.storage_terms, d.disposal_terms].filter(Boolean).join(' ')} Garantia: {order.warranty_days ?? d.warranty_days} dias.
+          {/* Descrição do Reparo */}
+          <div className="service-order-print-section">
+            <p className="service-order-print-section-title">DESCRIÇÃO DO REPARO</p>
+            <div className="service-order-print-box">
+              <p className="text-sm text-slate-800 whitespace-pre-wrap">{order.description || '—'}</p>
+            </div>
+          </div>
+
+          {/* Condições do Aparelho na Entrada (Preservado do modelo novo) */}
+          {hasEntryConditions && (
+            <div className="service-order-print-section">
+              <p className="service-order-print-section-title">CONDIÇÕES DO APARELHO NA ENTRADA</p>
+              <div className="service-order-print-box bg-slate-50/60 space-y-1.5 leading-relaxed text-xs">
+                {conditionLabel && (
+                  <p className="font-semibold text-slate-800">
+                    Estado Geral: <span className="font-medium text-slate-700">{conditionLabel}</span>
+                    {order.battery_health ? ` • Saúde da bateria: ${order.battery_health}%` : ''}
+                  </p>
+                )}
+                {checklistSummaryList.length > 0 && (
+                  <p className="text-slate-800">
+                    {checklistSummaryList.join(' • ')}
+                  </p>
+                )}
+                {accessoriesList.length > 0 && (
+                  <p className="text-slate-700">
+                    <span className="font-semibold">Acessórios entregues:</span> {accessoriesList.join(', ')}
+                  </p>
+                )}
+                {order.checklist_notes && (
+                  <p className="text-slate-600 italic">
+                    Obs. checklist: {order.checklist_notes}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Observações Técnicas */}
+          <div className="service-order-print-section">
+            <p className="service-order-print-section-title">OBSERVAÇÕES TÉCNICAS</p>
+            <div className="service-order-print-box">
+              <p className="text-sm text-slate-800 whitespace-pre-wrap">{order.notes ? order.notes : '—'}</p>
+            </div>
+          </div>
+
+          {/* Valor do Serviço */}
+          <Access>
+            <div className="service-order-print-section">
+              <p className="service-order-print-section-title">VALOR DO SERVIÇO</p>
+              <div className="service-order-print-box bg-slate-50/80 flex items-center justify-between">
+                <p className="text-lg font-bold text-slate-900 tracking-tight">{formatCurrency(order.service_price)}</p>
+                {order.payment_method && (
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    {PAYMENT_METHOD_LABELS[order.payment_method] || order.payment_method}
+                  </span>
+                )}
+              </div>
+            </div>
+          </Access>
+
+          {/* Data e Horário de Emissão */}
+          <div className="service-order-print-emission-time">
+            <p>Emitido em: {formattedEmissionDate} às {formattedEmissionTime}</p>
+          </div>
+
+          {/* Rodapé com Assinaturas e Garantia */}
+          <div className="service-order-print-footer">
+            <div className="service-order-print-footer-signatures">
+              <div className="service-order-print-sign-item">
+                <div className="service-order-print-sign-line">Assinatura do Cliente</div>
+              </div>
+              <div className="service-order-print-sign-item">
+                <div className="service-order-print-sign-line">{settings.store.name || 'iTech Celular e Informática'}</div>
+              </div>
+            </div>
+
+            <div className="service-order-print-warranty-box">
+              <p className="service-order-print-warranty-title">GARANTIA</p>
+              <p className="service-order-print-warranty-text">
+                {mainTerms} Garantia: {warrantyDays} dias.
               </p>
             </div>
-
-
           </div>
+
         </div>
-      </div></div>
+      </div>
     </div>
   )
 }

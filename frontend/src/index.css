@@ -889,20 +889,20 @@ html.dark .order-edit-link { color: #fcd34d; }
 .service-order-print-area {
   background: #fff;
   color: #0f172a;
-  max-width: 1120px;
+  max-width: 820px;
   margin: 0 auto;
-  padding: 0;
+  padding: 1.5rem;
   font-family: 'Segoe UI', Arial, sans-serif;
 }
 
 .service-order-print-header {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr) 190px;
+  grid-template-columns: 160px minmax(0, 1fr) 180px;
   align-items: center;
-  column-gap: 28px;
+  column-gap: 20px;
   width: 100%;
-  min-height: 150px;
-  padding: 10px 0 18px;
+  min-height: 110px;
+  padding: 4px 0 14px;
 }
 
 .service-order-print-brand {
@@ -914,91 +914,40 @@ html.dark .order-edit-link { color: #fcd34d; }
 .service-order-print-logo {
   display: block;
   width: 100%;
-  max-width: 170px;
-  height: auto;
+  max-width: 150px;
+  max-height: 85px;
   object-fit: contain;
 }
 
 .service-order-print-company {
   min-width: 0;
-}
-
-.service-order-print-footer {
-  width: 100%;
-}
-
-.service-order-print-footer-signatures {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.service-order-print-footer-row {
-  width: 100%;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.5rem;
-}
-
-.service-order-print-warranty-block {
-  flex: 1 1 100%;
-  width: 100%;
-  min-width: 0;
-  max-width: none;
-  padding: 0.75rem 0.875rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.75rem;
-  background: #f8fafc;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-.service-order-print-qr-block {
-  flex-shrink: 0;
-  margin-left: auto;
+  text-align: center;
 }
 
 .service-order-print-company h1 {
-  margin: 0 0 12px;
-  font-size: 24px;
-  line-height: 1.1;
+  margin: 0 0 4px;
+  font-size: 15px;
+  line-height: 1.2;
   font-weight: 800;
-  color: #1e293b;
-  letter-spacing: -0.04em;
-}
-
-.service-order-print-company p,
-.service-order-print-order-label,
-.service-order-print-order-value,
-.service-order-print-section-label,
-.service-order-print-client-name,
-.service-order-print-device-name,
-.service-order-print-small {
-  margin: 0;
-  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #0f172a;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
 }
 
 .service-order-print-company p {
-  margin: 3px 0;
-  font-size: 12px;
-  line-height: 1.4;
+  margin: 1.5px 0;
+  font-size: 10.5px;
+  line-height: 1.35;
   color: #334155;
 }
 
 .service-order-print-company .company-cnpj {
-  margin-bottom: 8px;
+  font-weight: 600;
+  color: #1e293b;
 }
 
 .service-order-print-company .company-phones {
-  margin-top: 10px;
-  white-space: nowrap;
-}
-
-.service-order-print-company .company-phones span {
-  margin: 0 8px;
+  font-weight: 500;
 }
 
 .service-order-print-order-number {
@@ -1007,56 +956,172 @@ html.dark .order-edit-link { color: #fcd34d; }
 }
 
 .service-order-print-order-label {
-  margin: 0 0 5px;
-  font-size: 12px;
+  margin: 0 0 2px;
+  font-size: 10.5px;
+  font-weight: 600;
   color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .service-order-print-order-value {
   margin: 0;
-  font-size: 30px;
+  font-size: 26px;
   line-height: 1;
-  font-weight: 800;
-  color: #1e293b;
+  font-weight: 900;
+  color: #0f172a;
 }
 
 .service-order-print-divider {
   width: 100%;
   height: 2px;
-  background: #1e293b;
-  margin: 0 0 24px;
+  background: #0f172a;
+  margin: 6px 0 16px;
 }
 
 .service-order-print-main-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2rem 3rem;
-  margin-bottom: 2rem;
+  gap: 1rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.service-order-print-col {
+  min-width: 0;
 }
 
 .service-order-print-section-label {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #475569;
-  letter-spacing: 0.14em;
+  font-size: 10px;
+  font-weight: 800;
+  color: #64748b;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin-bottom: 0.45rem;
+  margin-bottom: 3px;
 }
 
 .service-order-print-client-name,
 .service-order-print-device-name {
-  font-size: clamp(1.7rem, 2vw, 3rem);
+  font-size: 14px;
   font-weight: 700;
-  line-height: 1.18;
-  letter-spacing: -0.05em;
-  display: block;
-  color: #101826;
+  line-height: 1.25;
+  color: #0f172a;
+  margin-bottom: 2px;
 }
 
 .service-order-print-small {
-  font-size: 1.15rem;
-  line-height: 1.55;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #475569;
+  margin: 1px 0;
+}
+
+/* Faixa horizontal de Acompanhamento (Entrada, Previsão, Status) */
+.service-order-print-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.service-order-print-meta-item {
+  min-width: 0;
+}
+
+.service-order-print-meta-label {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+
+.service-order-print-meta-value {
+  font-size: 12px;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+/* Seções e Caixas com bordas discretas */
+.service-order-print-section {
+  margin-bottom: 0.85rem;
+}
+
+.service-order-print-section-title {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 3px;
+}
+
+.service-order-print-box {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 7px 10px;
+  min-height: 38px;
+  background: #fff;
+}
+
+.service-order-print-emission-time {
+  font-size: 10px;
+  color: #64748b;
+  margin: 6px 0 14px;
+  text-align: right;
+}
+
+/* Rodapé: Assinaturas e Garantia */
+.service-order-print-footer {
+  width: 100%;
+  margin-top: 1.25rem;
+}
+
+.service-order-print-footer-signatures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.service-order-print-sign-item {
+  text-align: center;
+}
+
+.service-order-print-sign-line {
+  border-top: 1px solid #0f172a;
+  padding-top: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.service-order-print-warranty-box {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.service-order-print-warranty-title {
+  font-size: 9.5px;
+  font-weight: 800;
   color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 3px;
+}
+
+.service-order-print-warranty-text {
+  font-size: 9px;
+  line-height: 1.4;
+  color: #475569;
+  text-align: justify;
 }
 
 @media print {
@@ -1093,85 +1158,70 @@ html.dark .order-edit-link { color: #fcd34d; }
 
   .service-order-print-footer {
     width: 100% !important;
+    margin-top: 1.5rem !important;
   }
 
   .service-order-print-footer-signatures {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 2.5rem !important;
-    margin-bottom: 1.5rem !important;
-  }
-
-  .service-order-print-footer-row {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: flex-start !important;
-    width: 100% !important;
-    gap: 1.5rem !important;
-  }
-
-  .service-order-print-warranty-block {
-    flex: 1 1 100% !important;
-    width: 100% !important;
-    max-width: none !important;
-    min-width: 0 !important;
-    padding: 0.75rem 0.875rem !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 0.75rem !important;
-    background: #f8fafc !important;
-    word-break: break-word !important;
-    overflow-wrap: anywhere !important;
-  }
-
-  .service-order-print-qr-block {
-    flex-shrink: 0 !important;
-    margin-left: auto !important;
+    margin-bottom: 1.25rem !important;
   }
 
   .service-order-print-header {
-    grid-template-columns: 150px minmax(0, 1fr) 170px;
-    column-gap: 18px;
-    min-height: 120px;
-    padding: 8px 0 12px;
+    grid-template-columns: 140px minmax(0, 1fr) 160px;
+    column-gap: 16px;
+    min-height: 90px;
+    padding: 0 0 10px;
   }
 
   .service-order-print-logo {
-    max-width: 140px;
+    max-width: 130px;
+    max-height: 75px;
   }
 
   .service-order-print-company h1 {
-    font-size: 18px;
-    margin-bottom: 8px;
+    font-size: 13px;
+    margin-bottom: 3px;
   }
 
   .service-order-print-company p {
-    font-size: 10px;
+    font-size: 9.5px;
+    line-height: 1.3;
   }
 
   .service-order-print-order-label {
-    font-size: 10px;
+    font-size: 9.5px;
   }
 
   .service-order-print-order-value {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .service-order-print-divider {
-    margin-bottom: 18px;
+    margin-bottom: 12px;
   }
 
   .service-order-print-section-label {
-    font-size: 9pt;
+    font-size: 9px;
   }
 
   .service-order-print-client-name,
   .service-order-print-device-name {
-    font-size: 18pt;
-    letter-spacing: -0.04em;
+    font-size: 13px;
   }
 
   .service-order-print-small {
-    font-size: 11pt;
+    font-size: 10.5px;
+  }
+
+  .service-order-print-meta-grid {
+    padding: 6px 10px;
+    margin-bottom: 0.75rem;
+  }
+
+  .service-order-print-box {
+    padding: 6px 8px;
   }
 }
 
