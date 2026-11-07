@@ -18,6 +18,7 @@ export default function RegisterStore() {
   const [nickname, setNickname] = useState('')
   const [erpPassword, setErpPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false)
 
   // Integração Google
   const [googleId, setGoogleId] = useState(null)
@@ -296,6 +297,11 @@ export default function RegisterStore() {
 
     if (erpPassword !== confirmPassword) {
       setError('A confirmação de senha do ERP não confere.')
+      return
+    }
+
+    if (!acceptPrivacy) {
+      setError('Você precisa ler e aceitar a Política de Privacidade (LGPD) para prosseguir.')
       return
     }
 
@@ -685,10 +691,36 @@ export default function RegisterStore() {
               </div>
             </div>
 
+            {/* Termos de Privacidade e Consentimento LGPD */}
+            <div className="pt-2">
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  required
+                  checked={acceptPrivacy}
+                  onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500/30 shrink-0 cursor-pointer accent-amber-500"
+                />
+                <span className="text-xs text-slate-300 leading-snug">
+                  Li e concordo com a{' '}
+                  <Link
+                    to="/politica-privacidade"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-400 hover:text-amber-300 underline font-medium"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Política de Privacidade (LGPD)
+                  </Link>
+                  {' '}do iTech ERP, autorizando o tratamento técnico dos dados cadastrais necessários à operação da plataforma.
+                </span>
+              </label>
+            </div>
+
             <div className="pt-4">
               <button
                 type="submit"
-                disabled={loading || nicknameStatus.checking || nicknameStatus.available === false}
+                disabled={loading || !acceptPrivacy || nicknameStatus.checking || nicknameStatus.available === false}
                 className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {loading ? (
@@ -720,6 +752,11 @@ export default function RegisterStore() {
                 Recuperar acesso
               </Link>
             </p>
+            <div className="pt-2 text-[11px] text-slate-500">
+              <Link to="/politica-privacidade" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400 underline">
+                Política de Privacidade e Proteção de Dados (LGPD)
+              </Link>
+            </div>
           </div>
         </div>
       </div>

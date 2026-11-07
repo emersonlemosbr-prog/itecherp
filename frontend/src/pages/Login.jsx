@@ -97,6 +97,14 @@ export default function Login() {
               <Store size={14} />
               Quero cadastrar minha loja
             </Link>
+            <div>
+              <Link
+                to="/politica-privacidade"
+                className="text-[11px] text-slate-400 hover:text-slate-300 transition-colors"
+              >
+                Política de Privacidade (LGPD)
+              </Link>
+            </div>
           </div>
         </form>
       </div>

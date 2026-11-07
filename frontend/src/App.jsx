@@ -15,6 +15,7 @@ const SuspendedStore = lazy(() => import('./pages/SuspendedStore'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const PlatformAdmin = lazy(() => import('./pages/PlatformAdmin'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 
 // Telas secundárias carregadas sob demanda para máxima velocidade inicial
 const FinancialHistory = lazy(() => import('./pages/FinancialHistory'))
@@ -114,6 +115,7 @@ export default function App() {
         <Route path="/recuperar-senha" element={<ForgotPassword />} />
         <Route path="/redefinir-senha" element={<ResetPassword />} />
         <Route path="/admin-plataforma" element={<PlatformAdmin />} />
+        <Route path="/politica-privacidade" element={<PrivacyPolicy />} />
 
         <Route path="/ordens/:id/imprimir" element={
           <Protected><div className="min-h-screen bg-slate-100 dark:bg-[var(--bg-primary)] p-6"><ServiceOrderPrint /></div></Protected>
