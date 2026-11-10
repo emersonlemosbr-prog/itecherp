@@ -29,38 +29,82 @@ function updateCompanyFooter(order) {
   }
 }
 const token = location.pathname.split('/')[2];
-const source = new EventSource(`/api/public/service-order/${encodeURIComponent(token)}/events`);
-source.addEventListener('order', event => {
-  const order = JSON.parse(event.data);
-  element('connection').textContent = 'Atualização automática conectada';
-  element('connection').dataset.state = 'connected';
-  element('order').hidden = false;
-  updateCompanyFooter(order);
-  element('number').textContent = formatOrderNumber(order.order_number);
-  element('device').textContent = [order.brand, order.model].filter(Boolean).join(' ') || 'Aparelho';
-  element('customer').textContent = order.customer_name || '—';
-  element('updated').textContent = date(order.updated_at);
-  element('status-card').dataset.status = order.status;
-  element('status').textContent = labels[order.status] || 'Em atendimento';
-  element('details').replaceChildren();
-  for (const [label, value] of [['Data de entrada', date(order.entry_date)], ...(order.expected_delivery_date ? [['Previsão de conclusão', date(order.expected_delivery_date)]] : [])]) {
-    const dt = document.createElement('dt'); dt.textContent = label;
-    const dd = document.createElement('dd'); dd.textContent = value || '—';
-    const group = document.createElement('div'); group.append(dt, dd);
-    element('details').append(group);
-  }
-  element('history').replaceChildren(...order.history.map((item, index) => {
-    const li = document.createElement('li');
-    const title = document.createElement('strong'); title.textContent = labels[item.status] || 'Em atendimento';
-    const time = document.createElement('time'); time.textContent = date(item.created_at);
-    li.append(title, time);
-    if (index === order.history.length - 1) {
-      li.setAttribute('aria-current', 'step');
-      const badge = document.createElement('span'); badge.className = 'current-label'; badge.textContent = 'Status atual'; li.append(badge);
+if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
+  element('connection').dataset.state = 'unavailable';
+  element('connection').textContent = 'Link de acompanhamento inválido ou incorreto.';
+} else {
+  let hasConnected = false;
+  let connectionFailedCount = 0;
+  const source = new EventSource(`/api/public/service-order/${encodeURIComponent(token)}/events`);
+
+  const initialConnectionTimeout = setTimeout(() => {
+    if (!hasConnected) {
+      element('connection').dataset.state = 'unavailable';
+      element('connection').textContent = 'Não foi possível carregar o acompanhamento. Tente recarregar a página.';
     }
-    return li;
-  }));
-});
-source.addEventListener('unavailable', () => { source.close(); element('order').hidden = true; element('connection').dataset.state = 'unavailable'; element('connection').textContent = 'Este link não está mais disponível.'; });
-source.onerror = () => { element('connection').dataset.state = 'connecting'; element('connection').textContent = 'Conexão interrompida. Tentando reconectar…'; };
-window.addEventListener('pagehide', () => source.close());
+  }, 10000);
+
+  source.addEventListener('order', event => {
+    hasConnected = true;
+    clearTimeout(initialConnectionTimeout);
+    try {
+      const order = JSON.parse(event.data);
+      element('connection').textContent = 'Atualização automática conectada';
+      element('connection').dataset.state = 'connected';
+      element('order').hidden = false;
+      updateCompanyFooter(order);
+      element('number').textContent = formatOrderNumber(order.order_number);
+      element('device').textContent = [order.brand, order.model].filter(Boolean).join(' ') || 'Aparelho';
+      element('customer').textContent = order.customer_name || '—';
+      element('updated').textContent = date(order.updated_at);
+      element('status-card').dataset.status = order.status;
+      element('status').textContent = labels[order.status] || 'Em atendimento';
+      element('details').replaceChildren();
+      for (const [label, value] of [['Data de entrada', date(order.entry_date)], ...(order.expected_delivery_date ? [['Previsão de conclusão', date(order.expected_delivery_date)]] : [])]) {
+        const dt = document.createElement('dt'); dt.textContent = label;
+        const dd = document.createElement('dd'); dd.textContent = value || '—';
+        const group = document.createElement('div'); group.append(dt, dd);
+        element('details').append(group);
+      }
+      element('history').replaceChildren(...order.history.map((item, index) => {
+        const li = document.createElement('li');
+        const title = document.createElement('strong'); title.textContent = labels[item.status] || 'Em atendimento';
+        const time = document.createElement('time'); time.textContent = date(item.created_at);
+        li.append(title, time);
+        if (index === order.history.length - 1) {
+          li.setAttribute('aria-current', 'step');
+          const badge = document.createElement('span'); badge.className = 'current-label'; badge.textContent = 'Status atual'; li.append(badge);
+        }
+        return li;
+      }));
+    } catch (parseErr) {
+      console.error('[TRACKING] Falha ao processar dados da OS:', parseErr);
+    }
+  });
+
+  source.addEventListener('unavailable', () => {
+    hasConnected = true;
+    clearTimeout(initialConnectionTimeout);
+    source.close();
+    element('order').hidden = true;
+    element('connection').dataset.state = 'unavailable';
+    element('connection').textContent = 'Este link não está mais disponível.';
+  });
+
+  source.onerror = () => {
+    connectionFailedCount++;
+    if (!hasConnected && connectionFailedCount >= 3) {
+      source.close();
+      element('connection').dataset.state = 'unavailable';
+      element('connection').textContent = 'Acompanhamento não encontrado ou temporariamente indisponível.';
+    } else if (hasConnected) {
+      element('connection').dataset.state = 'connecting';
+      element('connection').textContent = 'Conexão interrompida. Tentando reconectar…';
+    }
+  };
+
+  window.addEventListener('pagehide', () => {
+    clearTimeout(initialConnectionTimeout);
+    source.close();
+  });
+}
