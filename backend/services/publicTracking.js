@@ -21,7 +21,7 @@ function cleanPublicText(value) {
 
 function extractPublicCompanyInfo(rawSettings) {
   if (!rawSettings) {
-    return { company_name: null, company_cnpj: null };
+    return { company_name: null, company_cnpj: null, company_logo: null };
   }
   let parsed = null;
   if (typeof rawSettings === 'object') {
@@ -39,6 +39,7 @@ function extractPublicCompanyInfo(rawSettings) {
   return {
     company_name: cleanPublicText(store?.name),
     company_cnpj: cleanPublicText(store?.cnpj),
+    company_logo: cleanPublicText(store?.logo),
   };
 }
 
@@ -61,6 +62,7 @@ async function getPublicOrder(db, token) {
   const company = extractPublicCompanyInfo(store_settings_raw);
   order.company_name = company.company_name;
   order.company_cnpj = company.company_cnpj;
+  order.company_logo = company.company_logo;
   order.first_name = (order.first_name || '').trim().split(/\s+/)[0];
   order.history = await db.query('SELECT status, created_at FROM service_order_status_history WHERE service_order_id = $1 ORDER BY id', [id]);
   return order;

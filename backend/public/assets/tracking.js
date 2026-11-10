@@ -14,11 +14,25 @@ function formatCnpjLine(value) {
   if (!clean) return '';
   return /^cnpj\s*:/i.test(clean) ? clean : `CNPJ: ${clean}`;
 }
-function updateCompanyFooter(order) {
+function updateCompanyBranding(order) {
+  const logoEl = element('company-logo');
   const nameEl = element('company-name');
   const cnpjEl = element('company-cnpj');
   const companyName = typeof order?.company_name === 'string' ? order.company_name.trim() : '';
   const companyCnpj = formatCnpjLine(order?.company_cnpj);
+  const companyLogo = typeof order?.company_logo === 'string' ? order.company_logo.trim() : '';
+
+  if (logoEl) {
+    if (companyLogo) {
+      logoEl.src = companyLogo;
+      logoEl.alt = companyName || 'Logo da empresa';
+      logoEl.hidden = false;
+    } else {
+      logoEl.hidden = true;
+      logoEl.removeAttribute('src');
+    }
+  }
+
   if (nameEl) {
     nameEl.textContent = companyName;
     nameEl.hidden = !companyName;
@@ -52,7 +66,7 @@ if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
       element('connection').textContent = 'Atualização automática conectada';
       element('connection').dataset.state = 'connected';
       element('order').hidden = false;
-      updateCompanyFooter(order);
+      updateCompanyBranding(order);
       element('number').textContent = formatOrderNumber(order.order_number);
       element('device').textContent = [order.brand, order.model].filter(Boolean).join(' ') || 'Aparelho';
       element('customer').textContent = order.customer_name || '—';

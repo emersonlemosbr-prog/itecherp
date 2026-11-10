@@ -28,6 +28,12 @@ function formatCnpjLine(cnpj) {
 function renderTrackingHtml(order) {
   const companyName = typeof order?.company_name === 'string' ? order.company_name.trim() : '';
   const companyCnpj = formatCnpjLine(order?.company_cnpj);
+  const companyLogo = typeof order?.company_logo === 'string' ? order.company_logo.trim() : '';
+
+  const logoMarkup = companyLogo
+    ? `<img id="company-logo" class="logo" src="${escapeHtml(companyLogo)}" alt="${escapeHtml(companyName || 'Logo da empresa')}" width="220" height="98">`
+    : '<img id="company-logo" class="logo" src="" alt="Logo da empresa" width="220" height="98" hidden>';
+
   const nameFooter = companyName
     ? `<footer id="company-name">${escapeHtml(companyName)}</footer>`
     : '<footer id="company-name" hidden></footer>';
@@ -36,6 +42,7 @@ function renderTrackingHtml(order) {
     : '<footer id="company-cnpj" hidden></footer>';
 
   return trackingHtmlTemplate
+    .replace('<img id="company-logo" class="logo" src="" alt="Logo da empresa" width="220" height="98" hidden>', logoMarkup)
     .replace('<footer id="company-name" hidden></footer>', nameFooter)
     .replace('<footer id="company-cnpj" hidden></footer>', cnpjFooter);
 }
@@ -68,7 +75,7 @@ function createPublicApp(db = defaultDb, { limit = 60, windowMs = 60000, pollMs 
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'X-Robots-Tag': 'noindex, nofollow',
-      'Content-Security-Policy': "default-src 'none'; img-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+      'Content-Security-Policy': "default-src 'none'; img-src 'self' data: https: blob:; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     });
     const now = Date.now();
     for (const [key, value] of requests) if (value.reset <= now) requests.delete(key);
