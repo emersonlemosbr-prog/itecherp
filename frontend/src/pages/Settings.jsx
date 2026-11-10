@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Save, RotateCcw, Store, Printer, SlidersHorizontal, Calculator, Users as UsersIcon, AlertTriangle } from 'lucide-react'
 import api from '../api/client'
 import { useSettings } from '../context/SettingsContext'
@@ -16,6 +17,8 @@ const groups = {
 export default function Settings() {
  const { isAdmin } = useAuth()
  const context = useSettings()
+ const [searchParams, setSearchParams] = useSearchParams()
+ const initialTab = searchParams.get('tab')
  const tabs = [
    ...baseTabs,
    ...(isAdmin ? [['danger', 'Zona de Perigo', AlertTriangle]] : [])
@@ -23,7 +26,14 @@ export default function Settings() {
  const [draft,setDraft] = useState(() => structuredClone(context.settings))
  const [seq,setSeq] = useState({...context.sequences})
  const [version,setVersion] = useState(context.version)
- const [tab,setTab] = useState('store')
+ const [tab,setTab] = useState(() => (initialTab && (baseTabs.some(([k]) => k === initialTab) || (initialTab === 'danger' && isAdmin)) ? initialTab : 'store'))
+
+ useEffect(() => {
+   const currentQueryTab = searchParams.get('tab')
+   if (currentQueryTab && (baseTabs.some(([k]) => k === currentQueryTab) || (currentQueryTab === 'danger' && isAdmin))) {
+     setTab(currentQueryTab)
+   }
+ }, [searchParams, isAdmin])
  const [busy,setBusy] = useState(false)
  const [notice,setNotice] = useState('')
  const [backup,setBackup] = useState(null)

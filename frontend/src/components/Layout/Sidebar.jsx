@@ -1,11 +1,11 @@
 import { useSettings } from '../../context/SettingsContext'
 import { canAccess } from '../../utils/access'
-import React, { useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import React, { useEffect, useState, useRef } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Wrench, ShieldCheck, HandCoins, X, Smartphone, NotebookPen,
   ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings,
-  User, Bell, LogOut
+  User, Bell, UserCircle
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBodyScrollLock } from '../UI/ModalFrame'
@@ -50,15 +50,26 @@ const sidebarSections = [
 
 export default function Sidebar({ open, onClose }) {
   useBodyScrollLock(open)
-  const { isAdmin, user, logout } = useAuth()
+  const navigate = useNavigate()
+  const { isAdmin, user } = useAuth()
   const { settings } = useSettings()
   const { unreadCount, setIsPanelOpen } = useNotifications()
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const userMenuRef = useRef(null)
 
-  function handleLogoutClick() {
-    if (window.confirm('Tem certeza que deseja sair do sistema?')) {
-      logout()
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setUserMenuOpen(false)
+      }
     }
-  }
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [userMenuOpen])
 
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 768px)')
@@ -125,24 +136,41 @@ export default function Sidebar({ open, onClose }) {
                 className={({ isActive }) => `sidebar-link ${isActive ? "sidebar-link-active" : ""}`}
               >
                 <Settings size={18} />
-                <span>Configurações</span>
+                <span>Configurações da Loja</span>
               </NavLink>
             </div>
           )}
         </nav>
 
         {/* Área Fixa do Usuário e Central de Notificações */}
-        <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 shrink-0">
+        <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 shrink-0 relative" ref={userMenuRef}>
+          {/* Menu Suspenso do Usuário */}
+          {userMenuOpen && (
+            <div className="absolute bottom-full left-3 right-3 mb-2 p-1.5 rounded-2xl bg-white dark:bg-[#222225] border border-slate-200 dark:border-white/10 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+              <button
+                type="button"
+                onClick={() => {
+                  setUserMenuOpen(false)
+                  onClose()
+                  navigate('/configuracoes?tab=users')
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-white/10 transition text-left"
+              >
+                <UserCircle size={17} className="text-[var(--brand-primary)] shrink-0" />
+                <span>Minha conta</span>
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-white dark:bg-[#222225] border border-slate-200/80 dark:border-white/5 shadow-sm">
             {/* Identificação do Usuário */}
-            <div
-              className={`flex items-center gap-2.5 min-w-0 flex-1 pr-1 ${isAdmin ? 'cursor-pointer hover:opacity-80 transition' : ''}`}
-              onClick={() => {
-                if (isAdmin) {
-                  onClose()
-                }
-              }}
+            <button
+              type="button"
+              className="flex items-center gap-2.5 min-w-0 flex-1 pr-1 text-left cursor-pointer hover:opacity-85 transition rounded-lg"
+              onClick={() => setUserMenuOpen(prev => !prev)}
               title={user?.full_name || user?.username}
+              aria-haspopup="true"
+              aria-expanded={userMenuOpen}
             >
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#FFC806] to-[#D9A800] text-slate-950 flex items-center justify-center text-xs font-black shrink-0 shadow-sm">
                 {user?.full_name ? user.full_name.slice(0, 1).toUpperCase() : <User size={15} />}
@@ -155,13 +183,14 @@ export default function Sidebar({ open, onClose }) {
                   {user?.role === 'admin' ? 'Administrador' : 'Funcionário'}
                 </p>
               </div>
-            </div>
+            </button>
 
-            {/* Ações: Sino de Notificações e Sair */}
+            {/* Ações: Sino de Notificações */}
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => {
+                  setUserMenuOpen(false)
                   setIsPanelOpen(true)
                   if (open) onClose()
                 }}
@@ -175,16 +204,6 @@ export default function Sidebar({ open, onClose }) {
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLogoutClick}
-                className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition"
-                title="Sair do sistema"
-                aria-label="Sair"
-              >
-                <LogOut size={17} />
               </button>
             </div>
           </div>
