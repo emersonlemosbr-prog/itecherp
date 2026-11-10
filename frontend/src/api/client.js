@@ -2,14 +2,12 @@ import axios from 'axios'
 
 /**
  * Resolve a URL-base da API com resiliência para todos os ambientes:
- * 1. Se VITE_API_URL estiver definida: normaliza garantindo que termine em /api (sem barras duplicadas).
- *    Caso contenha a URL legada 'itecherp-backend.onrender.com' (inválida), redireciona automaticamente para o backend ativo.
- * 2. Se estiver em produção no Cloudflare Pages (*.pages.dev ou domínio customizado diferente do Render):
- *    utiliza como fallback a URL pública oficial e ativa do backend no Render (https://itech-project-z1ez.onrender.com/api).
- * 3. Se estiver acessando diretamente pelo Render (*.onrender.com) ou em desenvolvimento local (localhost/127.0.0.1):
- *    utiliza '/api' relativo (mesma origem ou proxy do Vite).
+ * 1. Quando o frontend e o backend estão na mesma origem (Shard Cloud em erp.itechcelulareinformatica.com.br,
+ *    domínio principal, localhost ou rede local LAN), utiliza '/api' relativo sobre o mesmo protocolo/porta (HTTPS).
+ * 2. Em ambientes externos/separados (ex: Cloudflare Pages *.pages.dev), utiliza VITE_API_URL normalizada
+ *    ou faz fallback para a URL oficial da API na Shard Cloud (https://erp.itechcelulareinformatica.com.br/api).
  */
-export const DEFAULT_API_URL = 'https://api.itechcelulareinformatica.com.br/api'
+export const DEFAULT_API_URL = 'https://erp.itechcelulareinformatica.com.br/api'
 export const DEFAULT_RENDER_API_URL = DEFAULT_API_URL
 
 export function resolveApiBaseUrl() {
@@ -17,29 +15,39 @@ export function resolveApiBaseUrl() {
     const hostname = window.location.hostname.toLowerCase()
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0'
     const isRender = hostname.endsWith('.onrender.com')
+    const isShardCloud = hostname.endsWith('.shardweb.app') || hostname.endsWith('.shardcloud.app')
 
     // IPs privados locais (Wi-Fi/LAN para celulares ou computadores na mesma rede: 192.168.x.x, 10.x.x.x, 172.16-31.x.x, 26.x.x.x VPN)
     const isPrivateIp = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.|26\.)/.test(hostname) || hostname.endsWith('.internal') || hostname.endsWith('.local')
 
-    // Domínio oficial de produção da API da iTech acessado diretamente pelo navegador
-    const isApiDomain = hostname === 'api.itechcelulareinformatica.com.br'
+    // Domínios oficiais em que frontend e backend são servidos na mesma origem
+    const isSameOriginDomain =
+      hostname === 'erp.itechcelulareinformatica.com.br' ||
+      hostname === 'itechcelulareinformatica.com.br' ||
+      hostname === 'www.itechcelulareinformatica.com.br' ||
+      hostname === 'api.itechcelulareinformatica.com.br'
 
-    // 1. Quando o frontend estiver rodando na mesma origem do backend (localhost, rede local, render ou diretamente no domínio api):
+    // 1. Quando o frontend estiver rodando na mesma origem do backend:
     // Sempre utilizar '/api' relativo.
-    if (isLocalhost || isRender || isPrivateIp || isApiDomain) {
+    if (isLocalhost || isRender || isShardCloud || isPrivateIp || isSameOriginDomain) {
       return '/api'
     }
   }
 
-  // 2. Em ambientes remotos ou domínios separados (Cloudflare Pages, erp.*, etc.):
+  // 2. Em ambientes remotos ou domínios separados (Cloudflare Pages, etc.):
   const envUrl = (import.meta.env.VITE_API_URL || '').trim()
 
-  if (envUrl && !envUrl.includes('itecherp-backend.onrender.com') && !envUrl.includes('itech-project-z1ez.onrender.com')) {
+  if (
+    envUrl &&
+    !envUrl.includes('itecherp-backend.onrender.com') &&
+    !envUrl.includes('itech-project-z1ez.onrender.com') &&
+    !envUrl.includes('api.itechcelulareinformatica.com.br')
+  ) {
     const clean = envUrl.replace(/\/+$/, '')
     return clean.endsWith('/api') ? clean : `${clean}/api`
   }
 
-  // 3. Fallback oficial ativo: Cloudflare Tunnel da iTech
+  // 3. Fallback oficial ativo: Shard Cloud da iTech
   return DEFAULT_API_URL
 }
 

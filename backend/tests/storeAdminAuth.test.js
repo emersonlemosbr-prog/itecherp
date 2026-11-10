@@ -230,3 +230,44 @@ test('Store Admin Authentication & Production Domain Suite', async (t) => {
   assert.match(empAccess.body.error, /exclusivo para administradores/i);
 });
 
+test('Frontend Production API Resolution (Shard Cloud same-origin & fallback)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const vm = require('node:vm');
+
+  const clientPath = path.join(__dirname, '../../frontend/src/api/client.js');
+  const src = fs.readFileSync(clientPath, 'utf8');
+  const fnMatch = src.match(/export const DEFAULT_API_URL[\s\S]*?return DEFAULT_API_URL\s*\}/);
+  assert.ok(fnMatch, 'Função resolveApiBaseUrl deve existir em frontend/src/api/client.js');
+
+  function runResolve(hostname, envUrl = '') {
+    const code = fnMatch[0]
+      .replace(/export const /g, 'const ')
+      .replace(/export function /g, 'function ')
+      .replace(/import\.meta\.env\.VITE_API_URL/g, JSON.stringify(envUrl));
+    const sandbox = hostname ? { window: { location: { hostname } } } : {};
+    return vm.runInNewContext(`${code}\nresolveApiBaseUrl();`, sandbox);
+  }
+
+  // Produção Shard Cloud (mesma origem): deve usar '/api' relativo
+  assert.equal(runResolve('erp.itechcelulareinformatica.com.br', 'https://api.itechcelulareinformatica.com.br/api'), '/api');
+  assert.equal(runResolve('erp.itechcelulareinformatica.com.br', 'https://erp.itechcelulareinformatica.com.br/api'), '/api');
+  assert.equal(runResolve('itechcelulareinformatica.com.br', ''), '/api');
+  assert.equal(runResolve('app.shardweb.app', ''), '/api');
+  assert.equal(runResolve('app.shardcloud.app', ''), '/api');
+  assert.equal(runResolve('localhost', 'https://erp.itechcelulareinformatica.com.br/api'), '/api');
+  assert.equal(runResolve('192.168.1.50', ''), '/api');
+
+  // Domínios externos separados não devem apontar para túnel antigo nem portas locais
+  assert.equal(runResolve('itecherp.pages.dev', 'https://api.itechcelulareinformatica.com.br/api'), 'https://erp.itechcelulareinformatica.com.br/api');
+  assert.equal(runResolve('itecherp.pages.dev', ''), 'https://erp.itechcelulareinformatica.com.br/api');
+
+  // Verifica se o build publicado em backend/public aponta para a URL correta
+  const publicHtml = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
+  const scriptMatch = publicHtml.match(/src="\/assets\/(index-[^"]+\.js)"/);
+  assert.ok(scriptMatch, 'backend/public/index.html deve referenciar o bundle principal index-*.js');
+  const bundleJs = fs.readFileSync(path.join(__dirname, '../public/assets', scriptMatch[1]), 'utf8');
+  assert.ok(bundleJs.includes('https://erp.itechcelulareinformatica.com.br/api'), 'Bundle compilado deve usar erp.itechcelulareinformatica.com.br/api como fallback');
+  assert.ok(!bundleJs.includes('Tt="https://api.itechcelulareinformatica.com.br/api"'), 'Bundle compilado não deve ter túnel antigo como URL padrão');
+});
+

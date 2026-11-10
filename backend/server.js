@@ -43,8 +43,8 @@ function isOriginAllowed(origin) {
     return true;
   }
 
-  // 3. Subdomínios do Render (*.onrender.com)
-  if (normalized.endsWith('.onrender.com')) {
+  // 3. Subdomínios do Render (*.onrender.com) e Shard Cloud (*.shardweb.app / *.shardcloud.app)
+  if (normalized.endsWith('.onrender.com') || normalized.endsWith('.shardweb.app') || normalized.endsWith('.shardcloud.app')) {
     return true;
   }
 
