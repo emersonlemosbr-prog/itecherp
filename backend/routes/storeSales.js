@@ -4,6 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 const { getTrustedNowSqlite } = require('../utils/time');
 const { emitDashboardRefresh, emitInventoryRefresh } = require('../utils/events');
+const { dispatchNotification } = require('../services/notificationService');
 const { nextNumber } = require('../services/settings');
 
 const router = express.Router();
@@ -335,6 +336,30 @@ router.post('/finalize', async (req, res, next) => {
     await logAction({ user: req.user, action: 'finalize_store_sale', recordType: 'store_sale', recordId: saleId, details: { sale_number: sale.sale_number } });
     emitDashboardRefresh({ source: 'store_sale', saleId, saleNumber: sale.sale_number });
     emitInventoryRefresh({ source: 'store_sale', saleId, saleNumber: sale.sale_number });
+
+    (async () => {
+      // Notificação de venda de caixa
+      await dispatchNotification({
+        storeId,
+        actorId: req.user.id,
+        eventKey: 'sale_box_completed',
+        title: `Venda de Caixa Realizada — ${sale.sale_number}`,
+        description: `Venda finalizada no valor de R$ ${Number(sale.net_amount || 0).toFixed(2)}.`,
+        link: '/vendas',
+        metadata: { saleId, saleNumber: sale.sale_number, amount: sale.net_amount }
+      });
+
+      // Notificação para outros funcionários
+      await dispatchNotification({
+        storeId,
+        actorId: req.user.id,
+        eventKey: 'sale_by_other_staff',
+        title: `Venda Registrada — ${sale.sale_number}`,
+        description: `Nova venda registrada pelo operador ${req.user.full_name || req.user.username}.`,
+        link: '/vendas',
+        metadata: { saleId, saleNumber: sale.sale_number, operator: req.user.username }
+      });
+    })().catch(err => console.error('[NOTIF_ERROR]', err.message));
     res.status(201).json(sale);
   } catch (error) {
     next(error);
@@ -379,6 +404,16 @@ router.post('/:id/cancel', requireRole('admin'), async (req, res, next) => {
 
     emitDashboardRefresh({ source: 'store_sale_cancel', saleId, saleNumber: canceledSale.sale_number });
     emitInventoryRefresh({ source: 'store_sale_cancel', saleId, saleNumber: canceledSale.sale_number });
+
+    dispatchNotification({
+      storeId,
+      actorId: req.user.id,
+      eventKey: 'sale_canceled',
+      title: `Venda Cancelada — ${canceledSale.sale_number}`,
+      description: `A venda ${canceledSale.sale_number} foi cancelada/estornada por ${req.user.full_name || req.user.username}.`,
+      link: '/vendas',
+      metadata: { saleId, saleNumber: canceledSale.sale_number }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
 
     res.json({ success: true, canceled_sale_id: saleId, sale_number: canceledSale.sale_number });
   } catch (error) {

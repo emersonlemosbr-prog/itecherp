@@ -4,10 +4,12 @@ import React, { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Wrench, ShieldCheck, HandCoins, X, Smartphone, NotebookPen,
-  ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings
+  ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings,
+  User, Bell, LogOut
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBodyScrollLock } from '../UI/ModalFrame'
+import { useNotifications } from '../../context/NotificationContext'
 
 const sidebarSections = [
   {
@@ -48,8 +50,15 @@ const sidebarSections = [
 
 export default function Sidebar({ open, onClose }) {
   useBodyScrollLock(open)
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, user, logout } = useAuth()
   const { settings } = useSettings()
+  const { unreadCount, setIsPanelOpen } = useNotifications()
+
+  function handleLogoutClick() {
+    if (window.confirm('Tem certeza que deseja sair do sistema?')) {
+      logout()
+    }
+  }
 
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 768px)')
@@ -121,6 +130,65 @@ export default function Sidebar({ open, onClose }) {
             </div>
           )}
         </nav>
+
+        {/* Área Fixa do Usuário e Central de Notificações */}
+        <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 shrink-0">
+          <div className="flex items-center justify-between gap-1.5 p-2 rounded-xl bg-white dark:bg-[#222225] border border-slate-200/80 dark:border-white/5 shadow-sm">
+            {/* Identificação do Usuário */}
+            <div
+              className={`flex items-center gap-2.5 min-w-0 flex-1 pr-1 ${isAdmin ? 'cursor-pointer hover:opacity-80 transition' : ''}`}
+              onClick={() => {
+                if (isAdmin) {
+                  onClose()
+                }
+              }}
+              title={user?.full_name || user?.username}
+            >
+              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#FFC806] to-[#D9A800] text-slate-950 flex items-center justify-center text-xs font-black shrink-0 shadow-sm">
+                {user?.full_name ? user.full_name.slice(0, 1).toUpperCase() : <User size={15} />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-800 dark:text-zinc-100 truncate leading-tight">
+                  {user?.full_name || user?.username || 'Usuário'}
+                </p>
+                <p className="text-[10px] text-slate-400 dark:text-zinc-400 truncate mt-0.5">
+                  {user?.role === 'admin' ? 'Administrador' : 'Funcionário'}
+                </p>
+              </div>
+            </div>
+
+            {/* Ações: Sino de Notificações e Sair */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPanelOpen(true)
+                  if (open) onClose()
+                }}
+                className="relative p-2 rounded-lg text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-white/10 transition"
+                title="Central de Notificações"
+                aria-label="Notificações"
+              >
+                <Bell size={17} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white shadow-sm ring-1 ring-white dark:ring-[#222225]">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogoutClick}
+                className="p-2 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition"
+                title="Sair do sistema"
+                aria-label="Sair"
+              >
+                <LogOut size={17} />
+              </button>
+            </div>
+          </div>
+        </div>
       </aside>
     </>
   )

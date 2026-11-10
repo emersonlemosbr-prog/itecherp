@@ -2,7 +2,7 @@ import { useSettings } from '../../context/SettingsContext'
 import { canAccess } from '../../utils/access'
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Menu, Sun, Moon, Search, LogOut, ChevronDown, Banknote, Settings } from 'lucide-react'
+import { Menu, Sun, Moon, Search, Banknote } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import api from '../../api/client'
@@ -25,13 +25,12 @@ const menuItems = [
 
 export default function Header({ onMenuClick }) {
   const { settings } = useSettings()
-  const { user, logout, isAdmin } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { dark, toggle, setLight, setDarkTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
   const [q, setQ] = useState('')
   const [results, setResults] = useState(null)
-  const [menuOpen, setMenuOpen] = useState(false)
   const boxRef = useRef(null)
 
   const currentPage = menuItems.find(item => item.to === location.pathname)?.label || 'Dashboard'
@@ -153,34 +152,6 @@ export default function Header({ onMenuClick }) {
           <button className="btn-ghost !px-2.5" onClick={toggle} title="Alternar tema">
             {dark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-
-          <div className="relative">
-            <button className="flex items-center gap-2 pl-2 pr-1 py-1 rounded-[14px] border border-white/5 bg-white/[0.03] hover:bg-white/[0.09]"
-              onClick={() => setMenuOpen(o => !o)}>
-              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-[#FFC806] to-[#D9A800] text-[#1C1C1C] flex items-center justify-center text-xs font-bold">
-                {user?.full_name?.slice(0, 1).toUpperCase()}
-              </div>
-              <ChevronDown size={14} className="text-zinc-400" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 mt-2 w-52 card p-2 text-sm z-30">
-                <div className="px-2 py-2 border-b border-white/10 mb-1">
-                  <p className="font-semibold">{user?.full_name}</p>
-                  <p className="text-xs text-zinc-400">{user?.role === 'admin' ? 'Administrador' : 'Funcionário'}</p>
-                </div>
-                {isAdmin && (
-                  <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/10"
-                    onClick={() => { navigate('/configuracoes'); setMenuOpen(false) }}>
-                    <Settings size={15} /> Configurações
-                  </button>
-                )}
-                <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/10 text-rose-400"
-                  onClick={logout}>
-                  <LogOut size={15} /> Sair
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </header>

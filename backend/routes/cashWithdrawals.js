@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 const { emitDashboardRefresh } = require('../utils/events');
+const { dispatchNotification } = require('../services/notificationService');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
@@ -42,6 +43,16 @@ router.post('/', async (req, res, next) => {
     const withdrawalId = info.id;
     await logAction({ user: req.user, action: 'create_cash_withdrawal', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { amount }, storeId });
     emitDashboardRefresh({ source: 'cash_withdrawal_create', cashWithdrawalId: withdrawalId });
+
+    dispatchNotification({
+      storeId,
+      actorId: req.user.id,
+      eventKey: 'finance_expense',
+      title: 'Retirada de Caixa / Despesa',
+      description: `Lançada retirada/despesa de R$ ${Number(amount).toFixed(2)}: ${reason}.`,
+      link: '/caixa',
+      metadata: { withdrawalId, amount, reason }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
     res.status(201).json({ id: withdrawalId });
   } catch (err) {
     next(err);

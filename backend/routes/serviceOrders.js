@@ -9,6 +9,7 @@ const { logAction } = require('../utils/audit');
 const { nextOrderNumber } = require('../utils/orderNumber');
 const { getTrustedNowSqlite } = require('../utils/time');
 const { emitDashboardRefresh } = require('../utils/events');
+const { dispatchNotification } = require('../services/notificationService');
 const { ensureFinancialHistoryUpToDate } = require('../utils/financialHistory');
 const { getStorageService } = require('../services/storage');
 const { normalizePartDetails, recordOnDelivery } = require('../services/serviceOrderPartWithdrawal');
@@ -462,6 +463,15 @@ router.post('/', async (req, res, next) => {
     await logAction({ user: req.user, action: 'create_service_order', recordType: 'service_order', recordId: order.id, details: { order_number: order.order_number } });
     if (withdrawalId) await logAction({ user: req.user, action: 'sync_cash_withdrawal_from_service_order', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { service_order_id: order.id } });
     emitDashboardRefresh({ source: 'service_order_create', orderId: order.id, orderNumber: order.order_number });
+    dispatchNotification({
+      storeId,
+      actorId: req.user.id,
+      eventKey: 'os_created',
+      title: `Nova OS Criada — ${order.order_number}`,
+      description: `Ordem de serviço ${order.order_number} aberta para ${order.first_name || 'Cliente'} (${order.brand || ''} ${order.model || ''}).`,
+      link: `/ordens/${order.id}`,
+      metadata: { orderId: order.id, orderNumber: order.order_number }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
     res.status(201).json({
       ...order,
       unlock_password: decryptDevicePassword(order.unlock_password),
@@ -573,6 +583,52 @@ router.put('/:id', async (req, res, next) => {
     await logAction({ user: req.user, action: 'update_service_order', recordType: 'service_order', recordId: order.id, details: { status: order.status } });
     if (withdrawalId) await logAction({ user: req.user, action: 'sync_cash_withdrawal_from_service_order', recordType: 'cash_withdrawal', recordId: withdrawalId, details: { service_order_id: order.id } });
     emitDashboardRefresh({ source: 'service_order_update', orderId: order.id, orderNumber: order.order_number });
+
+    // Notificações de atualização de OS, mudança de status, conclusão e entrega
+    (async () => {
+      const statusChanged = existing.status !== order.status;
+      if (order.status === 'delivered' && existing.status !== 'delivered') {
+        await dispatchNotification({
+          storeId,
+          actorId: req.user.id,
+          eventKey: 'os_delivered',
+          title: `OS Entregue — ${order.order_number}`,
+          description: `Aparelho da OS ${order.order_number} entregue ao cliente.`,
+          link: `/ordens/${order.id}`,
+          metadata: { orderId: order.id, orderNumber: order.order_number }
+        });
+      } else if ((order.status === 'ready' || order.status === 'completed') && existing.status !== order.status) {
+        await dispatchNotification({
+          storeId,
+          actorId: req.user.id,
+          eventKey: 'os_completed',
+          title: `OS Concluída — ${order.order_number}`,
+          description: `Serviço da OS ${order.order_number} foi marcado como pronto/concluído.`,
+          link: `/ordens/${order.id}`,
+          metadata: { orderId: order.id, orderNumber: order.order_number }
+        });
+      } else if (statusChanged) {
+        await dispatchNotification({
+          storeId,
+          actorId: req.user.id,
+          eventKey: 'os_status_changed',
+          title: `Status da OS Alterado — ${order.order_number}`,
+          description: `OS ${order.order_number} mudou de status para "${order.status}".`,
+          link: `/ordens/${order.id}`,
+          metadata: { orderId: order.id, orderNumber: order.order_number, newStatus: order.status }
+        });
+      } else {
+        await dispatchNotification({
+          storeId,
+          actorId: req.user.id,
+          eventKey: 'os_updated',
+          title: `OS Atualizada — ${order.order_number}`,
+          description: `Dados da OS ${order.order_number} foram modificados.`,
+          link: `/ordens/${order.id}`,
+          metadata: { orderId: order.id, orderNumber: order.order_number }
+        });
+      }
+    })().catch(err => console.error('[NOTIF_ERROR]', err.message));
 
     const photoRows = await db.query('SELECT * FROM service_order_photos WHERE service_order_id = $1 ORDER BY id', [order.id]);
     res.json({

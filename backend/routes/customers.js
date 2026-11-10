@@ -3,6 +3,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { dispatchNotification } = require('../services/notificationService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -103,6 +104,15 @@ router.post('/', async (req, res, next) => {
 
     const customerId = info.id;
     await logAction({ user: req.user, action: 'create_customer', recordType: 'customer', recordId: customerId, storeId });
+    dispatchNotification({
+      storeId,
+      actorId: req.user.id,
+      eventKey: 'customer_created',
+      title: 'Novo Cliente Cadastrado',
+      description: `Cliente ${first_name} ${last_name} cadastrado no sistema.`,
+      link: `/clientes/${customerId}`,
+      metadata: { customerId, name: `${first_name} ${last_name}` }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
     res.status(201).json({ id: customerId });
   } catch (err) {
     next(err);
@@ -130,6 +140,15 @@ router.put('/:id', async (req, res, next) => {
     ]);
 
     await logAction({ user: req.user, action: 'update_customer', recordType: 'customer', recordId: req.params.id, storeId });
+    dispatchNotification({
+      storeId,
+      actorId: req.user.id,
+      eventKey: 'customer_updated',
+      title: 'Cliente Atualizado',
+      description: `Cadastro do cliente ${first_name || existing.first_name} ${last_name || existing.last_name} foi atualizado.`,
+      link: `/clientes/${req.params.id}`,
+      metadata: { customerId: req.params.id }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
     res.json({ success: true });
   } catch (err) {
     next(err);

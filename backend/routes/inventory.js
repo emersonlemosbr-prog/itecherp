@@ -5,6 +5,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
 const { getTrustedNowSqlite } = require('../utils/time');
 const cloudPhotos = require('../services/cloudinaryPhotos');
+const { dispatchNotification } = require('../services/notificationService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -521,6 +522,17 @@ router.post('/products', async (req, res, next) => {
 
     const product = await getProductById(productId, false, storeId);
     await logAction({ user: req.user, action: 'create_stock_product', recordType: 'stock_product', recordId: productId, details: { code: product.code } });
+
+    dispatchNotification({
+      storeId,
+      actorId: req.user.id,
+      eventKey: 'product_created',
+      title: 'Novo Produto Cadastrado',
+      description: `Produto "${product.name}" (${product.code}) cadastrado no estoque.`,
+      link: '/estoque',
+      metadata: { productId, code: product.code, name: product.name }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
+
     res.status(201).json(product);
   } catch (error) {
     next(error);
@@ -642,7 +654,19 @@ router.post('/products/:id/add-stock', async (req, res, next) => {
       return next(error);
     }
 
-    res.json(await getProductById(req.params.id, false, req.user.store_id || 1));
+    const updated = await getProductById(req.params.id, false, req.user.store_id || 1);
+
+    dispatchNotification({
+      storeId,
+      actorId: req.user.id,
+      eventKey: 'stock_entry',
+      title: 'Entrada de Estoque',
+      description: `Entrada de +${quantityToAdd} un no produto "${updated.name}" (${updated.code}). Saldo: ${updated.quantity}.`,
+      link: '/estoque',
+      metadata: { productId: updated.id, code: updated.code, quantityToAdd, newQuantity: updated.quantity }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
+
+    res.json(updated);
   } catch (err) {
     next(err);
   }
@@ -690,7 +714,43 @@ router.post('/products/:id/remove-stock', async (req, res, next) => {
       return next(error);
     }
 
-    res.json(await getProductById(req.params.id, false, req.user.store_id || 1));
+    const updated = await getProductById(req.params.id, false, req.user.store_id || 1);
+
+    (async () => {
+      await dispatchNotification({
+        storeId,
+        actorId: req.user.id,
+        eventKey: 'stock_exit',
+        title: 'Saída de Estoque',
+        description: `Saída de -${quantityToRemove} un no produto "${updated.name}" (${updated.code}). Saldo: ${updated.quantity}.`,
+        link: '/estoque',
+        metadata: { productId: updated.id, code: updated.code, quantityToRemove, newQuantity: updated.quantity }
+      });
+
+      if (updated.quantity === 0) {
+        await dispatchNotification({
+          storeId,
+          actorId: req.user.id,
+          eventKey: 'stock_out',
+          title: 'Produto Sem Estoque!',
+          description: `O produto "${updated.name}" (${updated.code}) está esgotado (0 un).`,
+          link: '/estoque',
+          metadata: { productId: updated.id, code: updated.code }
+        });
+      } else if (updated.min_stock && updated.quantity <= updated.min_stock) {
+        await dispatchNotification({
+          storeId,
+          actorId: req.user.id,
+          eventKey: 'stock_min_reached',
+          title: 'Estoque Mínimo Atingido',
+          description: `Produto "${updated.name}" atingiu o estoque mínimo: ${updated.quantity} un (mínimo: ${updated.min_stock}).`,
+          link: '/estoque',
+          metadata: { productId: updated.id, code: updated.code, current: updated.quantity, min: updated.min_stock }
+        });
+      }
+    })().catch(err => console.error('[NOTIF_ERROR]', err.message));
+
+    res.json(updated);
   } catch (err) {
     next(err);
   }

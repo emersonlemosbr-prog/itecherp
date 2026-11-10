@@ -1,9 +1,13 @@
 import React, { useState } from 'react'
 import Sidebar from './Sidebar'
 import Header from './Header'
+import NotificationDrawer from '../Notifications/NotificationDrawer'
+import NotificationPreferencesModal from '../Notifications/NotificationPreferencesModal'
+import { useNotifications } from '../../context/NotificationContext'
 
 export default function AppShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { isPreferencesOpen, setIsPreferencesOpen } = useNotifications()
 
   return (
     <div className="admin-shell relative flex min-h-screen bg-slate-100 text-slate-900 transition-colors duration-300 dark:bg-[var(--bg-primary)] dark:text-[var(--text-main)]">
@@ -14,6 +18,12 @@ export default function AppShell({ children }) {
           {children}
         </main>
       </div>
+
+      <NotificationDrawer />
+      <NotificationPreferencesModal
+        isOpen={isPreferencesOpen}
+        onClose={() => setIsPreferencesOpen(false)}
+      />
     </div>
   )
 }

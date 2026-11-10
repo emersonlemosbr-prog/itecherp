@@ -114,6 +114,7 @@ app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/screen-protectors', require('./routes/screenProtectors'));
 app.use('/api/store-sales', require('./routes/storeSales'));
 app.use('/api/events', require('./routes/events'));
+app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/virus-agent', require('./routes/virusAgent'));
 
 app.get('/api/health', async (_req, res) => {

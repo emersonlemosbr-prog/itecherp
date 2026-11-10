@@ -4,6 +4,7 @@ const db = require('../db/database')
 const { authenticate, requireRole } = require('../middleware/auth')
 const { getTrustedNowSqlite } = require('../utils/time')
 const { emitDashboardRefresh, emitInventoryRefresh } = require('../utils/events')
+const { dispatchNotification } = require('../services/notificationService')
 const { nextNumber } = require('../services/settings')
 
 const router = express.Router()
@@ -513,6 +514,16 @@ async function persistDeviceSale({ user, payload, existing = null }) {
 
     emitDashboardRefresh({ source: 'device_sale', saleId: info.id, saleNumber: created.order_number })
     emitInventoryRefresh({ source: 'device_sale', saleId: info.id, saleNumber: created.order_number, storeSaleId })
+
+    dispatchNotification({
+      storeId,
+      actorId: user.id,
+      eventKey: 'sale_device_completed',
+      title: `Aparelho Vendido — ${created.order_number}`,
+      description: `Venda de aparelho ${created.brand || ''} ${created.model || ''} para ${created.customer_name || 'Cliente'}.`,
+      link: `/venda-aparelho/${info.id}`,
+      metadata: { saleId: info.id, saleNumber: created.order_number }
+    }).catch(err => console.error('[NOTIF_ERROR]', err.message));
     return created
   }
 
