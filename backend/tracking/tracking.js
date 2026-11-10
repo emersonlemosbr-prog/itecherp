@@ -9,6 +9,25 @@ function date(value) {
   const parsed = new Date(value.length === 10 ? `${value}T12:00:00` : value.replace(' ', 'T') + (/Z$|[+-]\d\d:\d\d$/.test(value) ? '' : 'Z'));
   return Number.isNaN(parsed.getTime()) ? '—' : value.length === 10 ? parsed.toLocaleDateString('pt-BR') : parsed.toLocaleString('pt-BR');
 }
+function formatCnpjLine(value) {
+  const clean = typeof value === 'string' ? value.trim() : '';
+  if (!clean) return '';
+  return /^cnpj\s*:/i.test(clean) ? clean : `CNPJ: ${clean}`;
+}
+function updateCompanyFooter(order) {
+  const nameEl = element('company-name');
+  const cnpjEl = element('company-cnpj');
+  const companyName = typeof order?.company_name === 'string' ? order.company_name.trim() : '';
+  const companyCnpj = formatCnpjLine(order?.company_cnpj);
+  if (nameEl) {
+    nameEl.textContent = companyName;
+    nameEl.hidden = !companyName;
+  }
+  if (cnpjEl) {
+    cnpjEl.textContent = companyCnpj;
+    cnpjEl.hidden = !companyCnpj;
+  }
+}
 const token = location.pathname.split('/')[2];
 const source = new EventSource(`/api/public/service-order/${encodeURIComponent(token)}/events`);
 source.addEventListener('order', event => {
@@ -16,6 +35,7 @@ source.addEventListener('order', event => {
   element('connection').textContent = 'Atualização automática conectada';
   element('connection').dataset.state = 'connected';
   element('order').hidden = false;
+  updateCompanyFooter(order);
   element('number').textContent = formatOrderNumber(order.order_number);
   element('device').textContent = [order.brand, order.model].filter(Boolean).join(' ') || 'Aparelho';
   element('customer').textContent = order.customer_name || '—';

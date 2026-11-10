@@ -1,10 +1,44 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const defaultDb = require('./db/database');
 const { getPublicOrder } = require('./services/publicTracking');
 const push = require('./services/trackingPush');
 const { getListenConfig } = require('./config/publicTracking');
+
+const trackingHtmlTemplate = fs.readFileSync(path.join(__dirname, 'tracking/index.html'), 'utf8');
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function formatCnpjLine(cnpj) {
+  const clean = typeof cnpj === 'string' ? cnpj.trim() : '';
+  if (!clean) return '';
+  return /^cnpj\s*:/i.test(clean) ? clean : `CNPJ: ${clean}`;
+}
+
+function renderTrackingHtml(order) {
+  const companyName = typeof order?.company_name === 'string' ? order.company_name.trim() : '';
+  const companyCnpj = formatCnpjLine(order?.company_cnpj);
+  const nameFooter = companyName
+    ? `<footer id="company-name">${escapeHtml(companyName)}</footer>`
+    : '<footer id="company-name" hidden></footer>';
+  const cnpjFooter = companyCnpj
+    ? `<footer id="company-cnpj">${escapeHtml(companyCnpj)}</footer>`
+    : '<footer id="company-cnpj" hidden></footer>';
+
+  return trackingHtmlTemplate
+    .replace('<footer id="company-name" hidden></footer>', nameFooter)
+    .replace('<footer id="company-cnpj" hidden></footer>', cnpjFooter);
+}
 
 function createPublicApp(db = defaultDb, { limit = 60, windowMs = 60000, pollMs = 1000, trustProxy = process.env.PUBLIC_TRUST_PROXY } = {}) {
   const app = express();
@@ -77,7 +111,7 @@ function createPublicApp(db = defaultDb, { limit = 60, windowMs = 60000, pollMs 
     icons: [{ src: '/assets/logo.png', sizes: 'any', type: 'image/png' }],
   }));
   app.get('/assets/logo.png', (_req, res) => res.sendFile(path.join(__dirname, 'tracking/logo.png')));
-  app.get('/acompanhamento/:token', find, (_req, res) => res.sendFile(path.join(__dirname, 'tracking/index.html')));
+  app.get('/acompanhamento/:token', find, (_req, res) => res.type('html').send(renderTrackingHtml(res.locals.order)));
   for (const asset of ['tracking.js', 'tracking.css', 'push.js']) {
     app.get(`/assets/${asset}`, (_req, res) => res.sendFile(path.join(__dirname, 'tracking', asset)));
   }
