@@ -1,10 +1,10 @@
 import { useSettings } from '../context/SettingsContext'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Wallet, Clock, TrendingUp, Banknote, HandCoins, Wrench,
   CheckCircle2, PackageCheck, XCircle, Eye, EyeOff, Pencil, Printer,
-  ArrowUpRight, ShoppingCart, AlertCircle, RefreshCw
+  ArrowUpRight, ShoppingCart, AlertCircle, RefreshCw, Calendar
 } from 'lucide-react'
 import { Line, Bar, Doughnut } from 'react-chartjs-2'
 import {
@@ -32,7 +32,7 @@ const toneStyles = {
 
 export default function Dashboard() {
   const { settings } = useSettings()
-  const { isAdmin } = useAuth()
+  const { isAdmin, user } = useAuth()
   const [valuesVisible, setValuesVisible] = useState(() => {
     try {
       return localStorage.getItem('dashboardValuesVisible') !== 'false'
@@ -59,15 +59,63 @@ export default function Dashboard() {
   const [error, setError] = useState(null)
   const [selectedIndicator, setSelectedIndicator] = useState(null)
 
+  // Filtros de período: 'today' | '7d' | 'this_month' | 'last_month' | 'custom'
+  const [period, setPeriod] = useState('this_month')
+  const [customRange, setCustomRange] = useState({
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: new Date().toISOString().slice(0, 10),
+  })
+  const [customDraft, setCustomDraft] = useState({
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: new Date().toISOString().slice(0, 10),
+  })
+  const [showCustomModal, setShowCustomModal] = useState(false)
+  const [customError, setCustomError] = useState('')
+
+  // Saudação e Data formatada no fuso de Brasília
+  const greetingInfo = useMemo(() => {
+    try {
+      const now = new Date()
+      const hourStr = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }).format(now)
+      const hour = Number(hourStr)
+      const greeting = hour >= 5 && hour < 12 ? 'Bom dia' : hour >= 12 && hour < 18 ? 'Boa tarde' : 'Boa noite'
+
+      const dateStr = new Intl.DateTimeFormat('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+      }).format(now)
+      const capitalizedDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1)
+      const displayName = user?.full_name?.trim() || user?.username || 'usuário'
+
+      return {
+        line1: `${capitalizedDate} - ${greeting}, ${displayName}`,
+      }
+    } catch {
+      return {
+        line1: `Hoje - Olá, ${user?.full_name || 'usuário'}`,
+      }
+    }
+  }, [user])
+
+  const periodParams = useMemo(() => {
+    if (period === 'custom') {
+      return { period: 'custom', startDate: customRange.startDate, endDate: customRange.endDate }
+    }
+    return { period }
+  }, [period, customRange])
+
   async function loadDashboardData() {
     setLoading(true)
     setError(null)
     try {
+      const params = periodParams
       const [statsRes, dailyRes, monthlyRes, statusRes, ordersRes] = await Promise.all([
-        api.get('/dashboard/stats'),
-        api.get('/dashboard/charts/daily-revenue'),
-        api.get('/dashboard/charts/monthly-revenue'),
-        api.get('/dashboard/charts/status-distribution'),
+        api.get('/dashboard/stats', { params }),
+        api.get('/dashboard/charts/daily-revenue', { params }),
+        api.get('/dashboard/charts/monthly-revenue', { params }),
+        api.get('/dashboard/charts/status-distribution', { params }),
         api.get('/service-orders'),
       ])
 
@@ -83,6 +131,10 @@ export default function Dashboard() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [periodParams])
 
   useEffect(() => {
     loadDashboardData()
@@ -208,26 +260,177 @@ export default function Dashboard() {
     { id: 'sales', label: 'Ticket médio', value: displayCurrency(stats.sales_avg_ticket), icon: TrendingUp, tone: 'green' },
   ]
 
+  const filterOptions = [
+    { id: 'today', label: 'Hoje' },
+    { id: '7d', label: '7 dias' },
+    { id: 'this_month', label: 'Este mês' },
+    { id: 'last_month', label: 'Mês passado' },
+    { id: 'custom', label: 'Personalizado' },
+  ]
+
+  function handleFilterClick(id) {
+    if (id === 'custom') {
+      setCustomDraft(customRange)
+      setCustomError('')
+      setShowCustomModal(true)
+      return
+    }
+    setPeriod(id)
+  }
+
+  function handleApplyCustom(e) {
+    e.preventDefault()
+    setCustomError('')
+    const { startDate, endDate } = customDraft
+    if (!startDate || !endDate) {
+      setCustomError('Preencha a data inicial e a data final.')
+      return
+    }
+    if (startDate > endDate) {
+      setCustomError('A data inicial não pode ser posterior à data final.')
+      return
+    }
+    setCustomRange({ startDate, endDate })
+    setPeriod('custom')
+    setShowCustomModal(false)
+  }
+
   return (
     <div className="space-y-6">
-      <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm text-[var(--text-muted)]">A dashboard exibe somente os indicadores do mês atual. Clique em qualquer bloco para ver seus registros detalhados.</p>
+      {/* Cabeçalho do Dashboard com Saudação Dinâmica e Filtros de Período */}
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pt-1 pb-2">
+        <div className="space-y-1 min-w-0">
+          <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-zinc-400">
+            {greetingInfo.line1}
+          </p>
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white truncate">
+            Como está a <span className="text-[var(--brand-primary)]">{settings?.store?.name || 'sua loja'}</span> hoje
+          </h2>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="btn-ghost !p-3 shrink-0"
-            onClick={() => setValuesVisible(visible => !visible)}
-            title={valuesVisible ? 'Ocultar valores' : 'Mostrar valores'}
-            aria-label={valuesVisible ? 'Ocultar valores' : 'Mostrar valores'}
-            aria-pressed={!valuesVisible}
-          >
-            {valuesVisible ? <Eye size={20} aria-hidden="true" /> : <EyeOff size={20} aria-hidden="true" />}
-          </button>
-          <Link to="/historico-financeiro" className="btn-secondary">Ver Histórico Financeiro</Link>
+
+        {/* Grupo de Filtros e Ações à Direita */}
+        <div className="flex flex-wrap items-center gap-2 self-start lg:self-end shrink-0">
+          <div className="inline-flex p-1 rounded-2xl bg-slate-100 dark:bg-[#202023] border border-slate-200 dark:border-white/10 shadow-sm max-w-full overflow-x-auto [scrollbar-width:none]">
+            {filterOptions.map(opt => {
+              const isActive = period === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleFilterClick(opt.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                    isActive
+                      ? 'bg-white dark:bg-[#2c2c30] text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/60 dark:ring-white/10'
+                      : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-200/50 dark:hover:bg-white/5'
+                  }`}
+                >
+                  {opt.label}
+                  {opt.id === 'custom' && period === 'custom' && customRange.startDate && (
+                    <span className="ml-1 text-[10px] font-normal opacity-75">
+                      ({customRange.startDate.slice(5).replace('-', '/')} - {customRange.endDate.slice(5).replace('-', '/')})
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              className="btn-ghost !p-2 text-slate-600 dark:text-zinc-400"
+              onClick={() => setValuesVisible(visible => !visible)}
+              title={valuesVisible ? 'Ocultar valores' : 'Mostrar valores'}
+              aria-label={valuesVisible ? 'Ocultar valores' : 'Mostrar valores'}
+              aria-pressed={!valuesVisible}
+            >
+              {valuesVisible ? <Eye size={18} aria-hidden="true" /> : <EyeOff size={18} aria-hidden="true" />}
+            </button>
+            <Link to="/historico-financeiro" className="btn-secondary !py-1.5 !px-3 text-xs">
+              Histórico
+            </Link>
+          </div>
         </div>
       </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-500/10 text-blue-500 text-xs font-semibold animate-pulse">
+          <RefreshCw size={14} className="animate-spin" />
+          <span>Atualizando indicadores do período...</span>
+        </div>
+      )}
+
+      {/* Modal de Intervalo Personalizado */}
+      {showCustomModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="card p-6 w-full max-w-md space-y-4 bg-white dark:bg-[#1f1f22] border border-slate-200 dark:border-white/10 shadow-2xl rounded-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar size={18} className="text-[var(--brand-primary)]" />
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">Período Personalizado</h3>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost !p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200"
+                onClick={() => setShowCustomModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Selecione o intervalo de datas para consolidar os indicadores da loja.
+            </p>
+
+            {customError && (
+              <p className="text-xs text-rose-500 font-semibold bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/20">
+                {customError}
+              </p>
+            )}
+
+            <form onSubmit={handleApplyCustom} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="label text-xs">Data inicial (De)</span>
+                  <input
+                    type="date"
+                    required
+                    className="input text-xs"
+                    value={customDraft.startDate}
+                    onChange={e => setCustomDraft(d => ({ ...d, startDate: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="label text-xs">Data final (Até)</span>
+                  <input
+                    type="date"
+                    required
+                    className="input text-xs"
+                    value={customDraft.endDate}
+                    onChange={e => setCustomDraft(d => ({ ...d, endDate: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => setShowCustomModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary text-xs"
+                >
+                  Aplicar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr_1fr]">
         <div
@@ -396,6 +599,7 @@ export default function Dashboard() {
           onClose={() => setSelectedIndicator(null)}
           isAdmin={isAdmin}
           valuesVisible={valuesVisible}
+          periodParams={periodParams}
           onRecordDeleted={() => {
             loadDashboardData()
           }}

@@ -18,6 +18,7 @@ export default function DashboardDetailModal({
   onClose,
   isAdmin = false,
   valuesVisible = true,
+  periodParams = {},
   onRecordDeleted = () => {}
 }) {
   const [data, setData] = useState(null)
@@ -38,7 +39,7 @@ export default function DashboardDetailModal({
     setLoading(true)
     setError(null)
     try {
-      const res = await api.get(`/dashboard/details/${indicator}`)
+      const res = await api.get(`/dashboard/details/${indicator}`, { params: periodParams })
       setData(res.data)
       setPage(1)
     } catch (err) {

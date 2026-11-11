@@ -6,6 +6,103 @@ const { getTrustedNowSqlite } = require('../utils/time');
 const { ensureFinancialHistoryUpToDate, getMonthDateRangeForSqlite } = require('../utils/financialHistory');
 const { calculateFinancialSummary } = require('../services/financialSummary');
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * Resolve o intervalo de datas (startDate inclusivo, nextStartDate exclusivo)
+ * no fuso horário oficial America/Sao_Paulo com base no período solicitado.
+ * Suporta:
+ *  - 'today': dia corrente em Brasília
+ *  - '7d' ou '7days': últimos 7 dias (incluindo hoje)
+ *  - 'this_month': do primeiro dia do mês atual até o início do próximo mês (padrão)
+ *  - 'last_month': do primeiro dia ao último dia do mês anterior
+ *  - 'custom': intervalo [startDate, endDate] informado com validações
+ */
+function resolvePeriodRange(query, trustedNowStr) {
+  const period = String(query.period || 'this_month').toLowerCase();
+  // trustedNowStr vem em formato 'YYYY-MM-DD HH:MM:SS' em UTC
+  let baseDate;
+  if (trustedNowStr) {
+    const isoUtc = trustedNowStr.replace(' ', 'T') + (trustedNowStr.endsWith('Z') ? '' : 'Z');
+    baseDate = new Date(isoUtc);
+    if (Number.isNaN(baseDate.getTime())) baseDate = new Date();
+  } else {
+    baseDate = new Date();
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(baseDate);
+  const m = {};
+  for (const p of parts) m[p.type] = p.value;
+  const curY = Number(m.year);
+  const curM = Number(m.month);
+  const curD = Number(m.day);
+
+  if (period === 'today') {
+    const todayStr = `${curY}-${pad2(curM)}-${pad2(curD)}`;
+    const nextD = new Date(Date.UTC(curY, curM - 1, curD + 1));
+    const nextStr = `${nextD.getUTCFullYear()}-${pad2(nextD.getUTCMonth() + 1)}-${pad2(nextD.getUTCDate())}`;
+    return { startDate: todayStr, nextStartDate: nextStr, period: 'today' };
+  }
+
+  if (period === '7d' || period === '7days') {
+    const start7 = new Date(Date.UTC(curY, curM - 1, curD - 6));
+    const startStr = `${start7.getUTCFullYear()}-${pad2(start7.getUTCMonth() + 1)}-${pad2(start7.getUTCDate())}`;
+    const nextD = new Date(Date.UTC(curY, curM - 1, curD + 1));
+    const nextStr = `${nextD.getUTCFullYear()}-${pad2(nextD.getUTCMonth() + 1)}-${pad2(nextD.getUTCDate())}`;
+    return { startDate: startStr, nextStartDate: nextStr, period: '7d' };
+  }
+
+  if (period === 'last_month') {
+    let prevY = curY;
+    let prevM = curM - 1;
+    if (prevM === 0) {
+      prevM = 12;
+      prevY -= 1;
+    }
+    const startStr = `${prevY}-${pad2(prevM)}-01`;
+    const nextStr = `${curY}-${pad2(curM)}-01`;
+    return { startDate: startStr, nextStartDate: nextStr, period: 'last_month' };
+  }
+
+  if (period === 'custom') {
+    const customStart = String(query.startDate || '').trim();
+    const customEnd = String(query.endDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(customStart) || !/^\d{4}-\d{2}-\d{2}$/.test(customEnd)) {
+      const err = new Error('Datas inicial e final são obrigatórias no formato AAAA-MM-DD para período personalizado.');
+      err.status = 400;
+      throw err;
+    }
+    if (customStart > customEnd) {
+      const err = new Error('A data inicial não pode ser posterior à data final.');
+      err.status = 400;
+      throw err;
+    }
+    const [eY, eM, eD] = customEnd.split('-').map(Number);
+    const nextD = new Date(Date.UTC(eY, eM - 1, eD + 1));
+    const nextStr = `${nextD.getUTCFullYear()}-${pad2(nextD.getUTCMonth() + 1)}-${pad2(nextD.getUTCDate())}`;
+    return { startDate: customStart, nextStartDate: nextStr, period: 'custom' };
+  }
+
+  // Default: this_month
+  let nextY = curY;
+  let nextM = curM + 1;
+  if (nextM === 13) {
+    nextM = 1;
+    nextY += 1;
+  }
+  const startStr = `${curY}-${pad2(curM)}-01`;
+  const nextStr = `${nextY}-${pad2(nextM)}-01`;
+  return { startDate: startStr, nextStartDate: nextStr, period: 'this_month' };
+}
+
 const router = express.Router();
 router.use(authenticate);
 
@@ -14,7 +111,7 @@ router.get('/stats', async (req, res, next) => {
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
     await ensureFinancialHistoryUpToDate(trustedNow, storeId);
-    const { startDate, nextStartDate } = getMonthDateRangeForSqlite(trustedNow);
+    const { startDate, nextStartDate, period } = resolvePeriodRange(req.query, trustedNow);
     const isAdmin = req.user.role === 'admin';
     const summary = await calculateFinancialSummary(db, startDate, nextStartDate, { includeProfit: isAdmin, storeId });
 
@@ -117,7 +214,7 @@ router.get('/charts/daily-revenue', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
-    const { startDate } = getMonthDateRangeForSqlite(trustedNow);
+    const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const rows = await db.query(`
       SELECT day::text, COALESCE(SUM(revenue), 0) as revenue
       FROM (
@@ -126,7 +223,7 @@ router.get('/charts/daily-revenue', async (req, res, next) => {
         WHERE store_id = $1
           AND payment_status IN ('paid', 'credit_account')
           AND COALESCE(delivery_date, entry_date)::date >= $2::date
-          AND COALESCE(delivery_date, entry_date)::date <= $3::date
+          AND COALESCE(delivery_date, entry_date)::date < $3::date
         GROUP BY COALESCE(delivery_date, entry_date)::date
 
         UNION ALL
@@ -135,13 +232,13 @@ router.get('/charts/daily-revenue', async (req, res, next) => {
         FROM store_sales
         WHERE store_id = $1
           AND created_at::date >= $2::date
-          AND created_at::date <= $3::date
+          AND created_at::date < $3::date
           AND COALESCE(is_canceled, 0) = 0
         GROUP BY created_at::date
       ) grouped
       GROUP BY day
       ORDER BY day ASC
-    `, [storeId, startDate, trustedNow]);
+    `, [storeId, startDate, nextStartDate]);
     res.json(rows);
   } catch (error) {
     next(error);
@@ -152,7 +249,7 @@ router.get('/charts/monthly-revenue', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
-    const { startDate, nextStartDate } = getMonthDateRangeForSqlite(trustedNow);
+    const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const rows = await db.query(`
       SELECT TO_CHAR($1::timestamptz, 'YYYY-MM') as month,
              COALESCE(service_revenue, 0) + COALESCE(store_revenue, 0) as revenue,
@@ -205,7 +302,7 @@ router.get('/charts/payment-methods', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
-    const { startDate, nextStartDate } = getMonthDateRangeForSqlite(trustedNow);
+    const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const rows = await db.query(`
       SELECT payment_method, COUNT(*) as count, COALESCE(SUM(service_price), 0) as total
       FROM service_orders
@@ -224,7 +321,7 @@ router.get('/charts/status-distribution', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
-    const { startDate, nextStartDate } = getMonthDateRangeForSqlite(trustedNow);
+    const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const rows = await db.query(`
       SELECT status, COUNT(*) as count
       FROM service_orders
@@ -243,7 +340,7 @@ router.get('/charts/cash-flow', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
     const trustedNow = await getTrustedNowSqlite();
-    const { startDate, nextStartDate } = getMonthDateRangeForSqlite(trustedNow);
+    const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const revenueByDay = await db.query(`
       SELECT COALESCE(delivery_date, entry_date)::date::text as day, COALESCE(SUM(service_price), 0) as inflow
       FROM service_orders
@@ -305,7 +402,7 @@ router.get('/details/:indicator', async (req, res, next) => {
       indicator = indicatorAliases[indicator];
     }
     const trustedNow = await getTrustedNowSqlite();
-    const { startDate, nextStartDate } = getMonthDateRangeForSqlite(trustedNow);
+    const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
 
     switch (indicator) {
       // 1. Receita total (todas as entradas financeiras: Ordens de Serviço pagas + Vendas de Caixa do mês)
@@ -359,8 +456,8 @@ router.get('/details/:indicator', async (req, res, next) => {
 
         return res.json({
           indicator,
-          title: 'Receita Total do Mês',
-          subtitle: 'Todas as entradas financeiras que compõem a receita do mês',
+          title: 'Receita Total',
+          subtitle: 'Todas as entradas financeiras que compõem a receita do período',
           total_count: combined.length,
           total_amount: totalAmount,
           has_financial: true,
@@ -398,7 +495,7 @@ router.get('/details/:indicator', async (req, res, next) => {
         return res.json({
           indicator,
           title: 'Receita Pendente',
-          subtitle: 'Valores faturados no mês que ainda precisam ser recebidos',
+          subtitle: 'Valores faturados no período que ainda precisam ser recebidos',
           total_count: rows.length,
           total_amount: totalAmount,
           has_financial: true,
@@ -437,7 +534,7 @@ router.get('/details/:indicator', async (req, res, next) => {
         return res.json({
           indicator,
           title: 'Pendentes em Aberto',
-          subtitle: 'Saldos de clientes em aberto com prazo no mês atual',
+          subtitle: 'Saldos de clientes em aberto com prazo no período',
           total_count: rows.length,
           total_amount: totalAmount,
           has_financial: true,
@@ -548,7 +645,7 @@ router.get('/details/:indicator', async (req, res, next) => {
         return res.json({
           indicator,
           title: 'Ordens de Serviço Concluídas',
-          subtitle: 'Ordens de serviço efetivamente entregues e finalizadas no mês',
+          subtitle: 'Ordens de serviço efetivamente entregues e finalizadas no período',
           total_count: rows.length,
           total_amount: totalAmount,
           has_financial: true,
@@ -630,7 +727,7 @@ router.get('/details/:indicator', async (req, res, next) => {
 
         return res.json({
           indicator,
-          title: 'Vendas Realizadas no Mês',
+          title: 'Vendas Realizadas no Período',
           subtitle: 'Listagem completa das vendas efetuadas com produtos e valores',
           total_count: sales.length,
           total_amount: totalAmount,

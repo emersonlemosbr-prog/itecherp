@@ -67,7 +67,7 @@ export default function Header({ onMenuClick }) {
       <div className="flex items-center gap-1.5 sm:gap-3 px-2 sm:px-4 md:px-6 py-3.5">
         <button className="btn-ghost md:hidden !px-2.5 !py-2 text-slate-600 dark:text-zinc-300" onClick={onMenuClick} aria-label="Abrir menu"><Menu size={22} /></button>
 
-        <h1 className="hidden sm:block text-[15px] font-semibold text-slate-800 tracking-[0.01em] dark:text-zinc-100">{currentPage}<span className="block text-xs font-normal text-slate-400 max-w-40 truncate">{settings.store.name}</span></h1>
+        <h1 className="hidden sm:block text-[15px] font-semibold text-slate-800 tracking-[0.01em] dark:text-zinc-100">{currentPage}</h1>
 
         <div className="relative min-w-0 flex-1 max-w-xl sm:ml-2" ref={boxRef}>
           <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-400" />
