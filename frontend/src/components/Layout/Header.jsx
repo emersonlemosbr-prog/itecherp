@@ -9,6 +9,7 @@ import api from '../../api/client'
 
 const menuItems = [
   { to: '/configuracoes', label: 'Configurações' },
+  { to: '/dashboard', label: 'Dashboard' },
   { to: '/', label: 'Dashboard' },
   { to: '/clientes', label: 'Clientes' },
   { to: '/ordens', label: 'Ordens de Serviço' },

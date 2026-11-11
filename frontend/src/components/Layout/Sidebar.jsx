@@ -15,7 +15,7 @@ const sidebarSections = [
   {
     title: 'Principal',
     items: [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/valor-frontais', label: 'Peças', icon: Smartphone },
       { to: '/ordens', label: 'Ordens de Serviço', icon: Wrench },
       { to: '/clientes', label: 'Clientes', icon: Users },

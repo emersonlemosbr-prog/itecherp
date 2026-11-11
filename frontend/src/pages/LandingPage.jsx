@@ -65,6 +65,7 @@ const FAQ_ITEMS = [
 
 // ── Navbar ───────────────────────────────────────────────────────
 function LandingNav({ onSectionClick }) {
+  const { user } = useAuth()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -78,6 +79,9 @@ function LandingNav({ onSectionClick }) {
     setMobileOpen(false)
     onSectionClick(id)
   }
+
+  const destination = user ? '/dashboard' : '/login'
+  const buttonLabel = user ? 'Dashboard →' : 'Acessar sistema →'
 
   return (
     <>
@@ -94,11 +98,18 @@ function LandingNav({ onSectionClick }) {
                 <a href={`#${id}`} onClick={(e) => { e.preventDefault(); handleLink(id) }}>{label}</a>
               </li>
             ))}
+            <li>
+              <Link to={destination}>Dashboard</Link>
+            </li>
           </ul>
 
           <div className="lp-nav-cta">
-            <Link to="/login" className="lp-btn-ghost">Entrar</Link>
-            <Link to="/login" className="lp-btn-primary">Acessar sistema →</Link>
+            <Link to={destination} className="lp-btn-ghost">
+              {user ? 'Dashboard' : 'Entrar'}
+            </Link>
+            <Link to={destination} className="lp-btn-primary">
+              {buttonLabel}
+            </Link>
           </div>
 
           <button
@@ -115,8 +126,11 @@ function LandingNav({ onSectionClick }) {
         {[['modulos','Módulos'],['funcionalidades','Funcionalidades'],['como-funciona','Como Funciona'],['seguranca','Segurança'],['faq','FAQ']].map(([id, label]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); handleLink(id) }}>{label}</a>
         ))}
-        <Link to="/login" className="lp-btn-primary" style={{ textAlign: 'center', marginTop: 8 }}>
-          Acessar sistema →
+        <Link to={destination} onClick={() => setMobileOpen(false)}>
+          Dashboard
+        </Link>
+        <Link to={destination} className="lp-btn-primary" style={{ textAlign: 'center', marginTop: 8 }} onClick={() => setMobileOpen(false)}>
+          {buttonLabel}
         </Link>
       </div>
     </>
@@ -125,6 +139,10 @@ function LandingNav({ onSectionClick }) {
 
 // ── Hero ─────────────────────────────────────────────────────────
 function LandingHero({ scrollTo }) {
+  const { user } = useAuth()
+  const destination = user ? '/dashboard' : '/login'
+  const buttonLabel = user ? 'Acessar Dashboard →' : 'Acessar sistema →'
+
   return (
     <section id="inicio" className="lp-hero">
       <div className="lp-container">
@@ -140,8 +158,8 @@ function LandingHero({ scrollTo }) {
               Controle ordens de serviço, estoque, clientes, financeiro e muito mais em um sistema feito especialmente para lojas de celulares e assistência técnica.
             </p>
             <div className="lp-hero-actions">
-              <Link to="/login" className="lp-btn-primary">
-                Acessar sistema →
+              <Link to={destination} className="lp-btn-primary">
+                {buttonLabel}
               </Link>
               <button
                 className="lp-btn-secondary"
@@ -235,11 +253,16 @@ function LandingModules() {
         </div>
         <div className="lp-modules-grid">
           {MODULES.map((m) => (
-            <div key={m.name} className="lp-module-card">
+            <Link
+              key={m.name}
+              to="/dashboard"
+              className="lp-module-card"
+              style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+            >
               <div className="lp-module-icon">{m.icon}</div>
               <p className="lp-module-name">{m.name}</p>
               <p className="lp-module-desc">{m.desc}</p>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -639,6 +662,10 @@ function LandingFAQ() {
 
 // ── CTA ───────────────────────────────────────────────────────────
 function LandingCTA() {
+  const { user } = useAuth()
+  const destination = user ? '/dashboard' : '/login'
+  const buttonLabel = user ? 'Acessar o Dashboard →' : 'Acessar o sistema →'
+
   return (
     <section className="lp-section lp-cta">
       <div className="lp-container">
@@ -650,8 +677,8 @@ function LandingCTA() {
             Comece a organizar suas ordens de serviço, clientes e financeiro com o iTech ERP. Acesso imediato, sem complicação.
           </p>
           <div className="lp-cta-actions">
-            <Link to="/login" className="lp-btn-primary">
-              Acessar o sistema →
+            <Link to={destination} className="lp-btn-primary">
+              {buttonLabel}
             </Link>
           </div>
         </div>
@@ -690,6 +717,7 @@ function LandingFooter({ scrollTo }) {
           <div>
             <p className="lp-footer-col-title">Acesso</p>
             <ul className="lp-footer-links">
+              <li><Link to="/dashboard">Dashboard</Link></li>
               <li><Link to="/login">Entrar no sistema</Link></li>
               <li><Link to="/cadastro">Cadastrar loja</Link></li>
               <li><Link to="/politica-privacidade">Política de Privacidade</Link></li>
