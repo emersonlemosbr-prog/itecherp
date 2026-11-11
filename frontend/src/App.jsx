@@ -7,6 +7,7 @@ import AppShell from './components/Layout/AppShell'
 
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import LandingPage from './pages/LandingPage'
 
 // Telas do SaaS Multi-Tenant
 const RegisterStore = lazy(() => import('./pages/RegisterStore'))
@@ -99,7 +100,7 @@ export default function App() {
   const location = useLocation()
   const config = useSettings()
 
-  if (user && user.role !== 'admin' && location.pathname !== '/login' && !canAccess(user, location.pathname)) {
+  if (user && user.role !== 'admin' && location.pathname !== '/login' && location.pathname !== '/' && !canAccess(user, location.pathname)) {
     const first = ['/ordens', '/clientes', '/garantias', '/anotacoes', '/estoque', '/vendas', '/venda-aparelho', '/fiados', '/removedor-virus'].find(path => canAccess(user, path))
     return first ? <Navigate to={first} replace /> : <AppShell><p className="p-6">Nenhuma área liberada. Solicite acesso ao administrador.</p></AppShell>
   }
@@ -108,7 +109,7 @@ export default function App() {
     <ErrorBoundary>
       <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to={config?.settings?.system.home || "/"} replace /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to={config?.settings?.system.home || '/dashboard'} replace /> : <Login />} />
         <Route path="/cadastro" element={<RegisterStore />} />
         <Route path="/aguardando-ativacao" element={<PendingActivation />} />
         <Route path="/loja-suspensa" element={<SuspendedStore />} />
@@ -125,12 +126,16 @@ export default function App() {
           <Protected><div className="min-h-screen bg-slate-100 dark:bg-[var(--bg-primary)] p-4 sm:p-6 print:p-0 print:m-0 print:bg-white print:min-h-0"><QrCodePrint /></div></Protected>
         } />
 
+        {/* Rota raiz: landing page pública ou dashboard para autenticados */}
+        <Route path="/" element={user ? <Navigate to={config?.settings?.system.home || '/dashboard'} replace /> : <LandingPage />} />
+
         <Route path="/*" element={
           <Protected>
             <AppShell>
               <Suspense fallback={<PageLoader />}>
                 <Routes>
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/historico-financeiro" element={<FinancialHistory />} />
                   <Route path="/clientes" element={<Customers />} />
                   <Route path="/clientes/:id" element={<CustomerDetail />} />
@@ -154,7 +159,7 @@ export default function App() {
                   <Route path="/caixa" element={<Protected adminOnly><CashWithdrawals /></Protected>} />
                   <Route path="/configuracoes" element={<Protected adminOnly><Settings /></Protected>} />
                   <Route path="/usuarios" element={<Protected adminOnly><Users /></Protected>} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
               </Suspense>
             </AppShell>
