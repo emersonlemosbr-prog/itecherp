@@ -1,38 +1,50 @@
 // db/database.js
-// Camada de Acesso a Dados 100% PostgreSQL (Supabase / Render) para iTech ERP
-// Conexão via Pool (pg), suporte a SSL, transações assíncronas e tradução de dialeto
+// Camada de Acesso a Dados Híbrida e Segura para o iTech ERP
+// - Produção / Dev: PostgreSQL (Supabase / Render) via pg Pool com RLS
+// - Testes: Banco PostgreSQL Isolado Seguro (TEST_DATABASE_URL) OU SQLite Isolado (:memory: / temp)
+// - PROTEÇÃO CENTRAL ATIVA: Bloqueia qualquer tentativa de conexão de testes contra Produção.
 
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
+const guard = require('./guard');
 
-if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
-  try {
-    require('dotenv').config({ path: path.join(__dirname, '../.env') });
-  } catch {}
+const isTestEnvironment =
+  process.env.NODE_ENV === 'test' ||
+  process.argv.some(arg => arg.includes('test'));
+
+// Em modo de teste, NUNCA carrega o .env padrão com DATABASE_URL de produção
+if (!isTestEnvironment) {
+  if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+    try {
+      require('dotenv').config({ path: path.join(__dirname, '../.env') });
+    } catch {}
+  }
 }
 
-const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+// Verifica e aplica a proteção permanente
+let connectionString = null;
+if (isTestEnvironment) {
+  // Testes só usam TEST_DATABASE_URL (se fornecida e autorizada)
+  const candidateUrl = process.env.TEST_DATABASE_URL;
+  guard.assertSafeTestEnvironment({ url: candidateUrl, isTestProcess: true });
+  connectionString = candidateUrl || null;
+} else {
+  connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+}
 
 /**
- * Analisa e extrai com segurança os parâmetros de conexão a partir de uma DATABASE_URL,
- * suportando senhas com caracteres especiais (como #, ?, @, +, $) e prevenindo erros de
- * parser causados por delimitadores não escapados.
- * NUNCA exibe ou registra a senha nos logs.
+ * Analisa e extrai com segurança os parâmetros de conexão a partir de uma DATABASE_URL
  */
 function parseDatabaseUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
 
-  // Alerta preventivo caso a URL tenha sido cortada no .env por um # sem aspas
   if (trimmed.startsWith('postgres') && !trimmed.includes('@') && trimmed.includes(':')) {
     console.warn('\n⚠️ [DATABASE] ATENÇÃO: A variável DATABASE_URL parece incompleta (falta o "@" separador de host).');
-    console.warn('Se a sua senha contiver "#", certifique-se de envolver toda a URL entre aspas duplas no arquivo .env:');
-    console.warn('Exemplo: DATABASE_URL="postgresql://postgres.xxx:senha#123@aws-0-us-east-1.pooler.supabase.com:6543/postgres"\n');
   }
 
-  // Regex para separar protocolo, credenciais (até o último @), host:porta, database e query params
   const urlMatch = trimmed.match(/^(postgres(?:ql)?:\/\/)(?:([^:]+)(?::(.*))?@)?([^/?#]+)(?:\/([^?#]*))?(?:\?(.*))?$/);
   if (!urlMatch) {
     return { connectionString: trimmed };
@@ -51,25 +63,14 @@ function parseDatabaseUrl(rawUrl) {
   let user = rawUser !== undefined ? rawUser : 'postgres';
   try {
     user = decodeURIComponent(user);
-  } catch {
-    // Mantém raw se falhar o decode
-  }
+  } catch {}
 
   let password = rawPassword !== undefined ? rawPassword : '';
   try {
     password = decodeURIComponent(password);
-  } catch {
-    // Mantém raw se falhar o decode
-  }
+  } catch {}
 
   const database = (rawDatabase ? rawDatabase.trim() : '') || 'postgres';
-
-  // Diagnóstico seguro para o Supabase (sem expor credenciais)
-  if (host.includes('pooler.supabase.com') && !user.includes('.')) {
-    console.warn('⚠️ [DATABASE] Dica Supabase: Ao conectar via Pooler (pooler.supabase.com), o usuário normalmente requer o prefixo do projeto (ex: postgres.seu-ref).');
-  } else if (host.startsWith('db.') && host.includes('.supabase.co') && user.includes('.')) {
-    console.warn('⚠️ [DATABASE] Dica Supabase: Na conexão direta (db.<ref>.supabase.co:5432), o usuário deve ser apenas "postgres" (sem sufixo de tenant).');
-  }
 
   return {
     host,
@@ -81,57 +82,77 @@ function parseDatabaseUrl(rawUrl) {
   };
 }
 
-function createPool() {
-  if (!connectionString) {
-    console.warn('\n⚠️ [DATABASE] ATENÇÃO: Nenhuma variável DATABASE_URL ou POSTGRES_URL encontrada.');
-    console.warn('Configure a DATABASE_URL no seu arquivo .env ou no painel do Render/Supabase.');
-    console.warn('Exemplo: DATABASE_URL="postgresql://postgres.xxx:senha@aws-0-us-east-1.pooler.supabase.com:6543/postgres"\n');
+let pool = null;
+let sqliteDb = null;
+const isSqliteMode = isTestEnvironment && !connectionString;
+
+if (isSqliteMode) {
+  // Modo SQLite isolado para testes rápidos e seguros sem tocar na nuvem
+  const Database = require('better-sqlite3');
+  const dbPath = process.env.ITECH_DB_PATH || ':memory:';
+  if (dbPath !== ':memory:') {
+    try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) {}
   }
+  sqliteDb = new Database(dbPath);
+  sqliteDb.pragma('journal_mode = WAL');
+  sqliteDb.pragma('foreign_keys = ON');
 
-  const parsed = parseDatabaseUrl(connectionString);
-  const isLocal = parsed?.host
-    ? (parsed.host.includes('localhost') || parsed.host.includes('127.0.0.1') || process.env.PGSSLMODE === 'disable')
-    : (connectionString && (connectionString.includes('localhost') || connectionString.includes('127.0.0.1') || process.env.PGSSLMODE === 'disable'));
+  // Inicializa o schema SQLite compatível e completo para testes isolados
+  try {
+    const { initSqliteTestSchema } = require('./sqliteSchema');
+    initSqliteTestSchema(sqliteDb);
+  } catch (err) {
+    console.warn('[DATABASE] Erro ao carregar schema de teste SQLite:', err.message);
+  }
+} else {
+  // Modo PostgreSQL (Produção ou TEST_DATABASE_URL autorizada)
+  function createPool() {
+    if (!connectionString) {
+      console.warn('\n⚠️ [DATABASE] ATENÇÃO: Nenhuma variável DATABASE_URL ou POSTGRES_URL encontrada.');
+    }
 
-  const poolConfig = parsed && parsed.host
-    ? {
-        host: parsed.host,
-        port: parsed.port,
-        user: parsed.user,
-        password: parsed.password,
-        database: parsed.database,
-        ssl: isLocal ? false : { rejectUnauthorized: false },
-        max: Number(process.env.DB_POOL_MAX || 15),
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-      }
-    : (connectionString
-        ? {
-            connectionString,
-            ssl: isLocal ? false : { rejectUnauthorized: false },
-            max: Number(process.env.DB_POOL_MAX || 15),
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
-          }
-        : {
-            host: process.env.PGHOST || 'localhost',
-            port: Number(process.env.PGPORT) || 5432,
-            user: process.env.PGUSER || 'postgres',
-            password: process.env.PGPASSWORD || '',
-            database: process.env.PGDATABASE || 'postgres',
-            ssl: false,
-          });
+    const parsed = parseDatabaseUrl(connectionString);
+    const isLocal = parsed?.host
+      ? (parsed.host.includes('localhost') || parsed.host.includes('127.0.0.1') || process.env.PGSSLMODE === 'disable')
+      : (connectionString && (connectionString.includes('localhost') || connectionString.includes('127.0.0.1') || process.env.PGSSLMODE === 'disable'));
 
-  const p = new Pool(poolConfig);
+    const poolConfig = parsed && parsed.host
+      ? {
+          host: parsed.host,
+          port: parsed.port,
+          user: parsed.user,
+          password: parsed.password,
+          database: parsed.database,
+          ssl: isLocal ? false : { rejectUnauthorized: false },
+          max: Number(process.env.DB_POOL_MAX || 15),
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 10000,
+        }
+      : (connectionString
+          ? {
+              connectionString,
+              ssl: isLocal ? false : { rejectUnauthorized: false },
+              max: Number(process.env.DB_POOL_MAX || 15),
+              idleTimeoutMillis: 30000,
+              connectionTimeoutMillis: 10000,
+            }
+          : {
+              host: process.env.PGHOST || 'localhost',
+              port: Number(process.env.PGPORT) || 5432,
+              user: process.env.PGUSER || 'postgres',
+              password: process.env.PGPASSWORD || '',
+              database: process.env.PGDATABASE || 'postgres',
+              ssl: false,
+            });
 
-  p.on('error', (err) => {
-    console.error('❌ [DATABASE] Erro inesperado no cliente do pool PostgreSQL:', err.message);
-  });
-
-  return p;
+    const p = new Pool(poolConfig);
+    p.on('error', (err) => {
+      console.error('❌ [DATABASE] Erro inesperado no cliente do pool PostgreSQL:', err.message);
+    });
+    return p;
+  }
+  pool = createPool();
 }
-
-const pool = createPool();
 
 /**
  * Normaliza e traduz consultas SQL do dialeto SQLite para PostgreSQL
@@ -139,12 +160,10 @@ const pool = createPool();
 function normalizeSql(sql) {
   if (!sql || typeof sql !== 'string') return sql;
 
-  // Substitui datetime('now') por CURRENT_TIMESTAMP e date('now') por CURRENT_DATE
   let translated = sql
     .replace(/\bdatetime\s*\(\s*'now'\s*\)/gi, 'CURRENT_TIMESTAMP')
     .replace(/\bdate\s*\(\s*'now'\s*\)/gi, 'CURRENT_DATE');
 
-  // Traduz ? para $1, $2, ...
   if (!translated.includes('?')) return translated;
 
   let inString = false;
@@ -171,9 +190,6 @@ function normalizeSql(sql) {
   return result;
 }
 
-/**
- * Normaliza parâmetros: se forem passados como argumentos soltos (val1, val2) ou array ([val1, val2])
- */
 function normalizeParams(args) {
   if (!args || args.length === 0) return [];
   if (args.length === 1 && Array.isArray(args[0])) return args[0];
@@ -185,6 +201,29 @@ function normalizeParams(args) {
  */
 async function query(sql, ...args) {
   const params = normalizeParams(args);
+  if (isSqliteMode) {
+    let sqliteSql = sql.replace(/\$\d+/g, '?');
+    const hasReturning = /\bRETURNING\b/i.test(sqliteSql);
+    const cleanSql = sqliteSql.replace(/\s+RETURNING\s+[\w*,\s]+/i, '');
+    const isMutation = /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\b/i.test(cleanSql);
+    const stmt = sqliteDb.prepare(cleanSql);
+    if (isMutation) {
+      const info = stmt.run(...params);
+      const rows = [];
+      rows.rowCount = info.changes || 0;
+      rows.lastInsertRowid = info.lastInsertRowid || null;
+      if (hasReturning) {
+        rows.push({
+          id: info.lastInsertRowid,
+          lastInsertRowid: info.lastInsertRowid,
+        });
+      }
+      return rows;
+    }
+    const rows = stmt.all(...params);
+    rows.rowCount = rows.length;
+    return rows;
+  }
   const formattedSql = normalizeSql(sql);
   const result = await pool.query(formattedSql, params);
   const rows = result.rows || [];
@@ -205,6 +244,18 @@ async function queryOne(sql, ...args) {
  */
 async function execute(sql, ...args) {
   const params = normalizeParams(args);
+  if (isSqliteMode) {
+    const sqliteSql = sql.replace(/\$\d+/g, '?');
+    const stmt = sqliteDb.prepare(sqliteSql);
+    const info = stmt.run(...params);
+    return {
+      rowCount: info.changes || 0,
+      changes: info.changes || 0,
+      rows: [],
+      id: info.lastInsertRowid || null,
+      lastInsertRowid: info.lastInsertRowid || null,
+    };
+  }
   const formattedSql = normalizeSql(sql);
   const result = await pool.query(formattedSql, params);
   return {
@@ -217,78 +268,116 @@ async function execute(sql, ...args) {
 }
 
 /**
- * Executa bloco dentro de uma transação PostgreSQL (BEGIN / COMMIT / ROLLBACK).
+ * Executa bloco dentro de uma transação (PostgreSQL ou SQLite).
  */
-async function transaction(callback) {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const tx = {
-      query: async (sql, ...args) => {
-        const params = normalizeParams(args);
-        const res = await client.query(normalizeSql(sql), params);
-        const rows = res.rows || [];
-        rows.rowCount = res.rowCount;
-        return rows;
-      },
-      queryOne: async (sql, ...args) => {
-        const params = normalizeParams(args);
-        const res = await client.query(normalizeSql(sql), params);
-        return res.rows?.[0] || null;
-      },
-      execute: async (sql, ...args) => {
-        const params = normalizeParams(args);
-        const res = await client.query(normalizeSql(sql), params);
-        return {
-          rowCount: res.rowCount || 0,
-          changes: res.rowCount || 0,
-          rows: res.rows || [],
-          id: res.rows?.[0]?.id || null,
-          lastInsertRowid: res.rows?.[0]?.id || null,
-        };
-      },
-      run: async (sql, ...args) => {
-        const params = normalizeParams(args);
-        const res = await client.query(normalizeSql(sql), params);
-        return {
-          rowCount: res.rowCount || 0,
-          changes: res.rowCount || 0,
-          rows: res.rows || [],
-          id: res.rows?.[0]?.id || null,
-          lastInsertRowid: res.rows?.[0]?.id || null,
-        };
-      },
-    };
-    const result = await callback(tx);
-    await client.query('COMMIT');
-    return result;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
+function transaction(callback) {
+  if (isSqliteMode) {
+    const isAsync = callback.constructor.name === 'AsyncFunction';
+    if (isAsync) {
+      sqliteDb.exec('BEGIN TRANSACTION');
+      return (async () => {
+        try {
+          const res = await callback({
+            query,
+            queryOne,
+            execute,
+            run: execute,
+          });
+          sqliteDb.exec('COMMIT');
+          return res;
+        } catch (err) {
+          try { sqliteDb.exec('ROLLBACK'); } catch (_) {}
+          throw err;
+        }
+      })();
+    }
+    const runTx = sqliteDb.transaction((...args) => callback(...args));
+    return (...args) => runTx(...args);
   }
+
+  return (async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const tx = {
+        query: async (sql, ...args) => {
+          const params = normalizeParams(args);
+          const res = await client.query(normalizeSql(sql), params);
+          const rows = res.rows || [];
+          rows.rowCount = res.rowCount;
+          return rows;
+        },
+        queryOne: async (sql, ...args) => {
+          const params = normalizeParams(args);
+          const res = await client.query(normalizeSql(sql), params);
+          return res.rows?.[0] || null;
+        },
+        execute: async (sql, ...args) => {
+          const params = normalizeParams(args);
+          const res = await client.query(normalizeSql(sql), params);
+          return {
+            rowCount: res.rowCount || 0,
+            changes: res.rowCount || 0,
+            rows: res.rows || [],
+            id: res.rows?.[0]?.id || null,
+            lastInsertRowid: res.rows?.[0]?.id || null,
+          };
+        },
+        run: async (sql, ...args) => {
+          const params = normalizeParams(args);
+          const res = await client.query(normalizeSql(sql), params);
+          return {
+            rowCount: res.rowCount || 0,
+            changes: res.rowCount || 0,
+            rows: res.rows || [],
+            id: res.rows?.[0]?.id || null,
+            lastInsertRowid: res.rows?.[0]?.id || null,
+          };
+        },
+      };
+      const result = await callback(tx);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  })();
 }
 
 /**
  * Executa o arquivo postgresSchema.sql no banco de dados.
  */
 async function initSchema() {
+  if (isSqliteMode) return;
   const schemaPath = path.join(__dirname, 'postgresSchema.sql');
   if (!fs.existsSync(schemaPath)) {
     throw new Error(`Arquivo de esquema não encontrado em: ${schemaPath}`);
   }
   const ddl = fs.readFileSync(schemaPath, 'utf8');
-  console.log('⚡ [DATABASE] Inicializando/validando esquema PostgreSQL...');
   await pool.query(ddl);
-  console.log('✅ [DATABASE] Esquema PostgreSQL pronto e atualizado com sucesso.');
 }
 
 /**
- * Objeto de compatibilidade e acesso universal ao PostgreSQL
+ * Fecha a conexão de forma segura
+ */
+function close() {
+  if (sqliteDb) {
+    try { sqliteDb.close(); } catch (_) {}
+  }
+  if (pool) {
+    try { pool.end(); } catch (_) {}
+  }
+}
+
+/**
+ * Objeto de compatibilidade universal
  */
 const db = {
   pool,
+  sqliteDb,
   query,
   queryOne,
   execute,
@@ -298,16 +387,32 @@ const db = {
   normalizeSql,
   translatePlaceholders: normalizeSql,
   parseDatabaseUrl,
+  close,
 
-  // Wrapper compatível com prepared statements assíncronos
-  prepare: (sql) => ({
-    all: async (...args) => query(sql, ...args),
-    get: async (...args) => queryOne(sql, ...args),
-    run: async (...args) => execute(sql, ...args),
-  }),
+  // Wrapper compatível síncrono/assíncrono para prepared statements
+  prepare: (sql) => {
+    if (isSqliteMode) {
+      const sqliteSql = sql.replace(/\$\d+/g, '?');
+      const stmt = sqliteDb.prepare(sqliteSql);
+      return {
+        all: (...args) => stmt.all(...normalizeParams(args)),
+        get: (...args) => stmt.get(...normalizeParams(args)),
+        run: (...args) => stmt.run(...normalizeParams(args)),
+      };
+    }
+    return {
+      all: async (...args) => query(sql, ...args),
+      get: async (...args) => queryOne(sql, ...args),
+      run: async (...args) => execute(sql, ...args),
+    };
+  },
 
-  // Execução direta de múltiplos comandos SQL
-  exec: async (sql) => pool.query(sql),
+  exec: async (sql) => {
+    if (isSqliteMode) {
+      return sqliteDb.exec(sql);
+    }
+    return pool.query(sql);
+  },
 };
 
 module.exports = db;

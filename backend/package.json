@@ -19,7 +19,8 @@
     "db:bootstrap": "node scripts/bootstrapPostgres.js",
     "db:audit-security": "node scripts/applySecurityMigration.js",
     "db:migrate-security": "node scripts/applySecurityMigration.js --apply",
-    "test": "node --test --test-concurrency=1 tests/*.test.js"
+    "test": "node scripts/runSafeTests.js",
+    "test:single": "node scripts/runSafeTests.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.840.0",
