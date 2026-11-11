@@ -5,7 +5,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Wrench, ShieldCheck, HandCoins, X, Smartphone, NotebookPen,
   ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings,
-  User, Bell, UserCircle
+  User, Bell, UserCircle, LogOut
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBodyScrollLock } from '../UI/ModalFrame'
@@ -51,7 +51,7 @@ const sidebarSections = [
 export default function Sidebar({ open, onClose }) {
   useBodyScrollLock(open)
   const navigate = useNavigate()
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, user, logout } = useAuth()
   const { settings } = useSettings()
   const { unreadCount, setIsPanelOpen } = useNotifications()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -146,7 +146,7 @@ export default function Sidebar({ open, onClose }) {
         <div className="p-3 border-t border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/20 shrink-0 relative" ref={userMenuRef}>
           {/* Menu Suspenso do Usuário */}
           {userMenuOpen && (
-            <div className="absolute bottom-full left-3 right-3 mb-2 p-1.5 rounded-2xl bg-white dark:bg-[#222225] border border-slate-200 dark:border-white/10 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute bottom-full left-3 right-3 mb-2 p-1.5 rounded-2xl bg-white dark:bg-[#222225] border border-slate-200 dark:border-white/10 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-150 space-y-0.5">
               <button
                 type="button"
                 onClick={() => {
@@ -158,6 +158,20 @@ export default function Sidebar({ open, onClose }) {
               >
                 <UserCircle size={17} className="text-[var(--brand-primary)] shrink-0" />
                 <span>Minha conta</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setUserMenuOpen(false)
+                  if (open) onClose()
+                  logout()
+                  navigate('/login', { replace: true })
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition text-left"
+              >
+                <LogOut size={17} className="shrink-0" />
+                <span>Sair</span>
               </button>
             </div>
           )}
