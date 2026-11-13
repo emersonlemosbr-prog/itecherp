@@ -100,8 +100,12 @@ export default function App() {
   const location = useLocation()
   const config = useSettings()
 
+  const defaultHome = (config?.settings?.system?.home && config?.settings?.system?.home !== '/')
+    ? config.settings.system.home
+    : '/dashboard'
+
   if (user && user.role !== 'admin' && location.pathname !== '/login' && location.pathname !== '/' && !canAccess(user, location.pathname)) {
-    const first = ['/ordens', '/clientes', '/garantias', '/anotacoes', '/estoque', '/vendas', '/venda-aparelho', '/fiados', '/removedor-virus'].find(path => canAccess(user, path))
+    const first = ['/dashboard', '/ordens', '/clientes', '/garantias', '/anotacoes', '/estoque', '/vendas', '/venda-aparelho', '/fiados', '/removedor-virus'].find(path => canAccess(user, path))
     return first ? <Navigate to={first} replace /> : <AppShell><p className="p-6">Nenhuma área liberada. Solicite acesso ao administrador.</p></AppShell>
   }
 
@@ -109,7 +113,7 @@ export default function App() {
     <ErrorBoundary>
       <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/login" element={user ? <Navigate to={config?.settings?.system.home || '/dashboard'} replace /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to={defaultHome} replace /> : <Login />} />
         <Route path="/cadastro" element={<RegisterStore />} />
         <Route path="/aguardando-ativacao" element={<PendingActivation />} />
         <Route path="/loja-suspensa" element={<SuspendedStore />} />
@@ -127,7 +131,7 @@ export default function App() {
         } />
 
         {/* Rota raiz: landing page pública ou dashboard para autenticados */}
-        <Route path="/" element={user ? <Navigate to={config?.settings?.system.home || '/dashboard'} replace /> : <LandingPage />} />
+        <Route path="/" element={user ? <Navigate to={defaultHome} replace /> : <LandingPage />} />
 
         <Route path="/*" element={
           <Protected>

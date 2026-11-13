@@ -20,8 +20,17 @@ export default function Login() {
     setLoading(true)
     try {
       const account = await login(username, password)
-      const { data } = await api.get('/settings')
-      navigate(account.role === 'admin' ? data.settings.system.home : '/ordens')
+      let destination = '/dashboard'
+      try {
+        const { data } = await api.get('/settings')
+        const configuredHome = data?.settings?.system?.home
+        if (configuredHome && configuredHome !== '/') {
+          destination = configuredHome
+        }
+      } catch (settingsErr) {
+        console.warn('Configurações não puderam ser carregadas após o login, usando rota padrão:', settingsErr)
+      }
+      navigate(destination)
     } catch (err) {
       const code = err.response?.data?.code
       if (code === 'STORE_PENDING') {

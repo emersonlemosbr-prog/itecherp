@@ -111,12 +111,19 @@ export default function Dashboard() {
     setError(null)
     try {
       const params = periodParams
+      const ordersPromise = (user?.role === 'admin' || user?.permissions?.orders)
+        ? api.get('/service-orders').catch(err => {
+            console.warn('Não foi possível carregar ordens de serviço no painel:', err)
+            return { data: [] }
+          })
+        : Promise.resolve({ data: [] })
+
       const [statsRes, dailyRes, monthlyRes, statusRes, ordersRes] = await Promise.all([
         api.get('/dashboard/stats', { params }),
         api.get('/dashboard/charts/daily-revenue', { params }),
         api.get('/dashboard/charts/monthly-revenue', { params }),
         api.get('/dashboard/charts/status-distribution', { params }),
-        api.get('/service-orders'),
+        ordersPromise,
       ])
 
       setStats(statsRes.data)
