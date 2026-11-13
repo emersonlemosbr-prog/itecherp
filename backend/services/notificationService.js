@@ -41,6 +41,7 @@ const NOTIFICATION_EVENTS = {
   'system_important': { category: 'system', label: 'Notificações importantes do sistema' },
   'system_admin_alert': { category: 'system', label: 'Alertas administrativos', adminOnly: true },
   'system_update': { category: 'system', label: 'Avisos de atualização do sistema' },
+  'subscription_reminder': { category: 'system', label: 'Lembretes de vencimento da mensalidade', adminOnly: false },
 };
 
 /**

@@ -4,6 +4,7 @@ const db = require('../db/database');
 const { userView } = require('../services/settings');
 const { authorize } = require('./permissions');
 const { checkStoreSubscription } = require('../services/multiTenantService');
+const { enforceStoreSuspension } = require('./suspension');
 
 async function authenticate(req, res, next) {
   const header = req.headers.authorization || '';
@@ -37,10 +38,16 @@ async function authenticate(req, res, next) {
         });
       }
       req.store = store;
+      req.store.subscription = subscription;
+      req.store.is_suspended = subscription.status === 'suspended';
+      req.store.suspension_reason = store.suspension_reason || subscription.reason;
+      req.store.suspended_at = store.suspended_at || subscription.suspendedAt || null;
     }
 
     req.user = userView(user);
-    authorize(req, res, next);
+    authorize(req, res, () => {
+      enforceStoreSuspension(req, res, next);
+    });
   } catch (err) {
     return res.status(401).json({ error: 'Sessão expirada ou token inválido.' });
   }

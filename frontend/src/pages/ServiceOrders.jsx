@@ -13,7 +13,7 @@ import {
 export default function ServiceOrders() {
   const { settings } = useSettings()
   const [page, setPage] = useState(1)
-  const { isAdmin } = useAuth()
+  const { isAdmin, isSuspended } = useAuth()
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('')
   const [orders, setOrders] = useState([])
@@ -27,6 +27,10 @@ export default function ServiceOrders() {
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t) }, [load])
 
   async function handleDelete(id) {
+    if (isSuspended) {
+      alert('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+      return
+    }
     if (settings.system.confirm_delete && !confirm('Excluir esta ordem de serviço?')) return
     try {
       await api.delete(`/service-orders/${id}`)
@@ -43,7 +47,13 @@ export default function ServiceOrders() {
           <h2 className="font-display font-bold text-xl">Ordens de Serviços</h2>
           <p className="text-sm text-slate-400">Cadastro e acompanhamento de reparos</p>
         </div>
-        <Access permission="create_order"><Link to="/ordens/nova" className="btn-primary"><Plus size={16} /> Nova Ordem</Link></Access>
+        {!isSuspended && (
+          <Access permission="create_order">
+            <Link to="/ordens/nova" className="btn-primary">
+              <Plus size={16} /> Nova Ordem
+            </Link>
+          </Access>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-3">

@@ -109,9 +109,8 @@ api.interceptors.response.use(
       const code = err.response?.data?.code
       if (code === 'STORE_PENDING' && window.location.pathname !== '/aguardando-ativacao') {
         window.location.href = '/aguardando-ativacao'
-      } else if (code === 'STORE_SUSPENDED' && window.location.pathname !== '/loja-suspensa') {
-        window.location.href = '/loja-suspensa'
       }
+      // NOTA: 'STORE_SUSPENDED' não redireciona para fora do ERP; o usuário opera no modo de acesso restrito
     }
     return Promise.reject(err)
   }

@@ -37,10 +37,6 @@ export default function Login() {
         navigate('/aguardando-ativacao')
         return
       }
-      if (code === 'STORE_SUSPENDED') {
-        navigate('/loja-suspensa')
-        return
-      }
       let msg = err.response?.data?.error
       if (!msg) {
         if (err.message === 'Network Error' || err.code === 'ERR_NETWORK') {

@@ -495,14 +495,23 @@ router.post('/stores/:id/suspend', async (req, res) => {
     const store = await db.queryOne('SELECT * FROM stores WHERE id = $1', [req.params.id]);
     if (!store) return res.status(404).json({ error: 'Loja não encontrada.' });
 
-    const { notes } = req.body;
+    const rawReason = (req.body.reason || req.body.notes || 'Suspensão administrativa').trim();
+    const rawNotes = (req.body.notes && req.body.notes !== rawReason) ? req.body.notes.trim() : '';
+    const finalReason = rawNotes ? `${rawReason} — ${rawNotes}` : rawReason;
+    const nowIso = new Date().toISOString();
+    const adminId = req.platformAdmin?.id || null;
+    const adminName = req.platformAdmin?.name || 'Administrador da Plataforma';
 
     await db.transaction(async (tx) => {
       await tx.execute(`
         UPDATE stores
-        SET status = 'suspended', updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1
-      `, [store.id]);
+        SET status = 'suspended',
+            suspended_at = $1,
+            suspension_reason = $2,
+            suspended_by_name = $3,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+      `, [nowIso, finalReason, adminName, store.id]);
 
       await tx.execute(`
         INSERT INTO store_subscription_history (
@@ -512,9 +521,9 @@ router.post('/stores/:id/suspend', async (req, res) => {
       `, [
         store.id,
         store.status,
-        notes || 'Acesso suspenso pelo administrador da plataforma.',
-        req.platformAdmin.id,
-        req.platformAdmin.name
+        finalReason,
+        adminId,
+        adminName
       ]);
     });
 
@@ -547,11 +556,18 @@ router.post('/stores/:id/reactivate', async (req, res) => {
         finalDueDate = d.toISOString().slice(0, 10);
       }
     }
+    const adminId = req.platformAdmin?.id || null;
+    const adminName = req.platformAdmin?.name || 'Administrador da Plataforma';
 
     await db.transaction(async (tx) => {
       await tx.execute(`
         UPDATE stores
-        SET status = 'active', due_date = $1, updated_at = CURRENT_TIMESTAMP
+        SET status = 'active',
+            due_date = $1,
+            suspended_at = NULL,
+            suspension_reason = NULL,
+            suspended_by_name = NULL,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
       `, [finalDueDate, store.id]);
 
@@ -567,8 +583,8 @@ router.post('/stores/:id/reactivate', async (req, res) => {
         store.due_date,
         finalDueDate,
         notes || 'Loja reativada pelo administrador da plataforma.',
-        req.platformAdmin.id,
-        req.platformAdmin.name
+        adminId,
+        adminName
       ]);
     });
 
@@ -894,11 +910,17 @@ router.post('/stores/bulk-action', async (req, res) => {
 
           processedIds.push(id);
         } else if (action === 'suspend') {
+          const nowIso = new Date().toISOString();
+          const bulkReason = (notes || 'Acesso suspenso via ação em massa no painel da plataforma.').trim();
           await tx.execute(`
             UPDATE stores
-            SET status = 'suspended', updated_at = CURRENT_TIMESTAMP
-            WHERE id = $1
-          `, [id]);
+            SET status = 'suspended',
+                suspended_at = $1,
+                suspension_reason = $2,
+                suspended_by_name = $3,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+          `, [nowIso, bulkReason, adminName, id]);
 
           await tx.execute(`
             INSERT INTO store_subscription_history (
@@ -908,7 +930,7 @@ router.post('/stores/bulk-action', async (req, res) => {
           `, [
             id,
             store.status,
-            notes || 'Acesso suspenso via ação em massa no painel da plataforma.',
+            bulkReason,
             adminId,
             adminName
           ]);

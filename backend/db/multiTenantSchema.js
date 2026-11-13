@@ -31,6 +31,9 @@ module.exports = function migrateMultiTenant(db) {
         grace_period_days INTEGER NOT NULL DEFAULT 3,
         contact_phone TEXT,
         notes TEXT,
+        suspended_at TEXT,
+        suspension_reason TEXT,
+        suspended_by_name TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now')),
         last_access TEXT
@@ -131,6 +134,19 @@ module.exports = function migrateMultiTenant(db) {
       'parts_models',
       'virus_scans'
     ];
+
+    // Garantir colunas de suspensão na tabela stores
+    if (hasTable('stores')) {
+      if (!hasColumn('stores', 'suspended_at')) {
+        db.exec('ALTER TABLE stores ADD COLUMN suspended_at TEXT');
+      }
+      if (!hasColumn('stores', 'suspension_reason')) {
+        db.exec('ALTER TABLE stores ADD COLUMN suspension_reason TEXT');
+      }
+      if (!hasColumn('stores', 'suspended_by_name')) {
+        db.exec('ALTER TABLE stores ADD COLUMN suspended_by_name TEXT');
+      }
+    }
 
     for (const table of tablesToMigrate) {
       if (hasTable(table)) {

@@ -9,6 +9,7 @@ import {
   Plus, Pencil, Trash2, ArrowDownCircle, ArrowUpCircle, History, Settings, Camera, ImagePlus, X
 } from 'lucide-react';
 import api, { getApiBaseUrl } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/format';
 
 const MOVEMENT_LABELS = {
@@ -34,6 +35,7 @@ function statusForProduct(product) {
 }
 
 export default function InventoryControl() {
+  const { isSuspended } = useAuth();
   const [filters, setFilters] = useState({
     q: '',
     category_id: '',
@@ -130,16 +132,28 @@ export default function InventoryControl() {
   }, [refreshCore]);
 
   function openCreateForm() {
+    if (isSuspended) {
+      setFeedback('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.');
+      return;
+    }
     setEditingProduct(null);
     setFormOpen(true);
   }
 
   function openEditForm(product) {
+    if (isSuspended) {
+      setFeedback('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.');
+      return;
+    }
     setEditingProduct(product);
     setFormOpen(true);
   }
 
   function openStockAction(mode, product) {
+    if (isSuspended) {
+      setFeedback('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.');
+      return;
+    }
     setActionModal({ open: true, mode, product });
   }
 
@@ -149,6 +163,10 @@ export default function InventoryControl() {
   }
 
   async function removeProduct(product) {
+    if (isSuspended) {
+      setFeedback('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.');
+      return;
+    }
     if (!confirmRecordDeletion(`Excluir o produto ${product.name}?`)) return;
 
     try {

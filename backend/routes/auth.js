@@ -242,7 +242,10 @@ router.post('/google', async (req, res) => {
           owner_name: storeByGoogle.owner_name,
           owner_email: storeByGoogle.owner_email,
           status: subStatus.effectiveStatus || storeByGoogle.status,
-          due_date: storeByGoogle.due_date
+          due_date: storeByGoogle.due_date,
+          is_suspended: (subStatus.effectiveStatus || storeByGoogle.status) === 'suspended',
+          suspended_at: storeByGoogle.suspended_at || subStatus.suspendedAt || null,
+          suspension_reason: storeByGoogle.suspension_reason || subStatus.reason || null
         }
       });
     }
@@ -329,7 +332,10 @@ router.post('/google', async (req, res) => {
           owner_name: storeByEmail.owner_name,
           owner_email: storeByEmail.owner_email,
           status: subStatus.effectiveStatus || storeByEmail.status,
-          due_date: storeByEmail.due_date
+          due_date: storeByEmail.due_date,
+          is_suspended: (subStatus.effectiveStatus || storeByEmail.status) === 'suspended',
+          suspended_at: storeByEmail.suspended_at || subStatus.suspendedAt || null,
+          suspension_reason: storeByEmail.suspension_reason || subStatus.reason || null
         }
       });
     }
@@ -495,14 +501,17 @@ router.post('/login', loginRateLimit, async (req, res) => {
         });
       }
 
-      // Se for ativa ou em tolerância
+      // Se for ativa, em tolerância ou suspensa (acesso restrito)
       storeData = {
         id: store.id,
         name: store.name,
         status: subscription.status,
         plan: store.plan,
         due_date: store.due_date,
-        in_grace_period: !!subscription.inGracePeriod
+        in_grace_period: !!subscription.inGracePeriod,
+        is_suspended: subscription.status === 'suspended',
+        suspended_at: store.suspended_at || subscription.suspendedAt || null,
+        suspension_reason: store.suspension_reason || subscription.reason || null
       };
     }
 
@@ -545,7 +554,10 @@ router.get('/me', authenticate, (req, res) => {
       name: req.store.name,
       status: req.store.status,
       plan: req.store.plan,
-      due_date: req.store.due_date
+      due_date: req.store.due_date,
+      is_suspended: req.store.status === 'suspended',
+      suspended_at: req.store.suspended_at || null,
+      suspension_reason: req.store.suspension_reason || null
     } : null
   });
 });

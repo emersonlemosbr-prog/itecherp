@@ -1,10 +1,15 @@
 export const permissionLabels = { customers: 'Clientes', create_customer: 'Criar cliente', edit_customer: 'Editar cliente', orders: 'Ordens de Serviço', create_order: 'Criar OS', edit_order: 'Editar OS', finish_order: 'Finalizar OS', warranties: 'Garantias', inventory: 'Estoque', store_sales: 'Venda de Balcão', device_sales: 'Venda de Aparelho', credits: 'Fiados', android: 'Diagnóstico Android', notes: 'Bloco de Notas', printing: 'Impressões' }
 export function canAccess(user, path) {
   if (!user) return false
+  const cleanPath = (path || '').split('?')[0].replace(/\/+$/, '') || '/'
+
+  // Durante a suspensão da loja, novas Ordens de Serviço são bloqueadas
+  if (user?.is_suspended || user?.store?.status === 'suspended') {
+    if (cleanPath === '/ordens/nova') return false
+  }
+
   if (user?.role === 'admin') return true
   const p = user?.permissions || {}
-
-  const cleanPath = (path || '').split('?')[0].replace(/\/+$/, '') || '/'
 
   // Rotas comuns e ferramentas operacionais acessíveis a qualquer usuário autenticado
   if (cleanPath === '' || cleanPath === '/' || cleanPath === '/dashboard') return true

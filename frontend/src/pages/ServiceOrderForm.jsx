@@ -16,7 +16,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export default function ServiceOrderForm() {
   const { settings } = useSettings()
-  const { isAdmin } = useAuth()
+  const { isAdmin, isSuspended } = useAuth()
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
@@ -126,6 +126,14 @@ export default function ServiceOrderForm() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (submitLock.current) return
+    if (isSuspended && !isEdit) {
+      setError('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa. Abertura de novas ordens de serviço bloqueada.')
+      return
+    }
+    if (isSuspended && isEdit && (savedOrder?.status === 'delivered' || savedOrder?.status === 'not_performed')) {
+      setError('Esta ordem de serviço já foi finalizada e não pode ser reaberta durante o período de suspensão da loja.')
+      return
+    }
     if (!customer) { setError('Selecione um cliente.'); return }
     submitLock.current = true
     setSaving(true)
@@ -262,9 +270,27 @@ export default function ServiceOrderForm() {
         catch (err) { setError(err.response?.data?.error || 'Falha ao excluir foto.') }
       }} />
 
+      {isSuspended && !isEdit && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold leading-relaxed">
+          Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa. Abertura de novas ordens de serviço bloqueada.
+        </div>
+      )}
+
+      {isSuspended && isEdit && (savedOrder?.status === 'delivered' || savedOrder?.status === 'not_performed') && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold leading-relaxed">
+          Esta ordem de serviço já foi finalizada e não pode ser reaberta durante o período de suspensão da loja.
+        </div>
+      )}
+
       <div className="form-actions">
         <button type="button" disabled={saving} onClick={() => navigate('/ordens')} className="btn-secondary">Cancelar</button>
-        <button type="submit" className="btn-primary" disabled={saving}><Save size={16} /> {uploading ? 'Enviando fotos...' : saving ? 'Salvando...' : 'Salvar Ordem de Serviço'}</button>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={saving || (isSuspended && !isEdit) || (isSuspended && isEdit && (savedOrder?.status === 'delivered' || savedOrder?.status === 'not_performed'))}
+        >
+          <Save size={16} /> {uploading ? 'Enviando fotos...' : saving ? 'Salvando...' : 'Salvar Ordem de Serviço'}
+        </button>
       </div>
       </fieldset>
     </form>

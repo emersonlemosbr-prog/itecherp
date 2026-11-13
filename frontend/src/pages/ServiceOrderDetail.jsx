@@ -17,7 +17,7 @@ import {
 
 export default function ServiceOrderDetail() {
   const { settings } = useSettings()
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, user, isSuspended } = useAuth()
   const { id } = useParams()
   const [order, setOrder] = useState(null)
   const [photos, setPhotos] = useState([])
@@ -162,7 +162,13 @@ export default function ServiceOrderDetail() {
           )}
           <Access permission="printing"><Link to={`/ordens/${id}/imprimir`} className="btn-secondary"><Printer size={16} /> Imprimir</Link></Access>
           <Link to={`/removedor-virus?serviceOrderId=${id}`} className="btn-secondary">Remover Vírus</Link>
-          <Access permission="edit_order"><Link to={`/ordens/${id}/editar`} className="btn-primary"><Pencil size={16} /> Editar</Link></Access>
+          {isSuspended && (order.status === 'delivered' || order.status === 'not_performed') ? (
+            <span className="inline-flex items-center text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20" title="Ordens de serviço encerradas não podem ser reabertas durante a suspensão.">
+              OS Encerrada
+            </span>
+          ) : (
+            <Access permission="edit_order"><Link to={`/ordens/${id}/editar`} className="btn-primary"><Pencil size={16} /> Editar</Link></Access>
+          )}
         </div>
       </div>
 

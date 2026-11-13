@@ -5,8 +5,10 @@ import { Link } from 'react-router-dom'
 import { Plus, X, Trash2 } from 'lucide-react'
 import api from '../api/client'
 import { formatCurrency, formatDate } from '../utils/format'
+import { useAuth } from '../context/AuthContext'
 
 export default function CashWithdrawals() {
+  const { isSuspended } = useAuth()
   const [items, setItems] = useState([])
   const [showForm, setShowForm] = useState(false)
 
@@ -14,6 +16,10 @@ export default function CashWithdrawals() {
   useEffect(() => { load() }, [])
 
   async function remove(id) {
+    if (isSuspended) {
+      alert('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+      return
+    }
     if (!confirmRecordDeletion('Excluir esta retirada de caixa?')) return
     await api.delete(`/cash-withdrawals/${id}`)
     load()
@@ -28,7 +34,20 @@ export default function CashWithdrawals() {
           <h2 className="font-display font-bold text-xl">Retiradas de Caixa</h2>
           <p className="text-sm text-slate-400">Total retirado: <span className="font-semibold text-rose-600">{formatCurrency(total)}</span></p>
         </div>
-        <button className="btn-primary" onClick={() => setShowForm(true)}><Plus size={16} /> Nova Retirada</button>
+        <button
+          className="btn-primary"
+          onClick={() => {
+            if (isSuspended) {
+              alert('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+              return
+            }
+            setShowForm(true)
+          }}
+          disabled={isSuspended}
+          title={isSuspended ? 'Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.' : ''}
+        >
+          <Plus size={16} /> Nova Retirada
+        </button>
       </div>
 
       <div className="card overflow-hidden">

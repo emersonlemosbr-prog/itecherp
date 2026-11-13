@@ -3,6 +3,8 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import NotificationDrawer from '../Notifications/NotificationDrawer'
 import NotificationPreferencesModal from '../Notifications/NotificationPreferencesModal'
+import SuspensionBanner from '../Suspension/SuspensionBanner'
+import SuspensionEntryModal from '../Suspension/SuspensionEntryModal'
 import { useNotifications } from '../../context/NotificationContext'
 
 export default function AppShell({ children }) {
@@ -14,6 +16,7 @@ export default function AppShell({ children }) {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
         <Header onMenuClick={() => setSidebarOpen(true)} />
+        <SuspensionBanner />
         <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 max-w-[1560px] w-full mx-auto min-w-0">
           {children}
         </main>
@@ -24,6 +27,7 @@ export default function AppShell({ children }) {
         isOpen={isPreferencesOpen}
         onClose={() => setIsPreferencesOpen(false)}
       />
+      <SuspensionEntryModal />
     </div>
   )
 }

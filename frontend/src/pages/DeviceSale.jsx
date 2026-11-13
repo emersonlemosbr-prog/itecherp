@@ -1,5 +1,6 @@
 import DocumentHeader from '../components/UI/DocumentHeader'
 import { useSettings } from '../context/SettingsContext'
+import { useAuth } from '../context/AuthContext'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FileText, Mail, Package, Plus, Printer, Save, Search, Trash2, UserRound } from 'lucide-react'
@@ -56,6 +57,7 @@ function createDraft() {
 
 export default function DeviceSale() {
   const { settings } = useSettings()
+  const { isSuspended } = useAuth()
   const d = settings.documents
   const { id } = useParams()
   const navigate = useNavigate()
@@ -137,6 +139,10 @@ export default function DeviceSale() {
   })), [form.items])
 
   async function saveSale(nextForm = form) {
+    if (isSuspended) {
+      setFeedback('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+      return
+    }
     const payload = {
       ...nextForm,
       items: nextForm.items.map((row, index) => ({
@@ -363,13 +369,25 @@ export default function DeviceSale() {
           <button className="btn-secondary" onClick={() => { setForm(createDraft()); setSelectedCustomer(null); setFeedback(''); navigate('/venda-aparelho') }}>
             <FileText size={16} /> Novo
           </button>
-          <button className="btn-secondary" onClick={() => saveSale()} disabled={saving}>
+          <button className="btn-secondary" onClick={() => {
+            if (isSuspended) {
+              alert('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+              return
+            }
+            saveSale()
+          }} disabled={saving || isSuspended} title={isSuspended ? 'Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.' : ''}>
             <Save size={16} /> {saving ? 'Salvando...' : 'Salvar'}
           </button>
           <button className="btn-secondary" onClick={handlePrint}>
             <Printer size={16} /> Imprimir
           </button>
-          <button className="btn-primary" onClick={handleEmail}>
+          <button className="btn-primary" onClick={() => {
+            if (isSuspended) {
+              alert('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+              return
+            }
+            handleEmail()
+          }} disabled={isSuspended} title={isSuspended ? 'Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.' : ''}>
             <Mail size={16} /> Enviar por E-mail
           </button>
         </div>

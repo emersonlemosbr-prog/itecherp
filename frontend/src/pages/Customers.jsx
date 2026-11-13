@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { formatDate } from '../utils/format'
 
 export default function Customers() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, isSuspended } = useAuth()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [customers, setCustomers] = useState([])
@@ -50,7 +50,19 @@ export default function Customers() {
           <h2 className="font-display font-bold text-xl">Clientes</h2>
           <p className="text-sm text-slate-400">Cadastro e histórico de clientes</p>
         </div>
-        <Access permission="create_customer"><button className="btn-primary" onClick={() => { setEditing(null); setShowForm(true) }}>
+        <Access permission="create_customer"><button
+          className="btn-primary disabled:opacity-50"
+          disabled={isSuspended}
+          title={isSuspended ? 'Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.' : ''}
+          onClick={() => {
+            if (isSuspended) {
+              setError('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+              return
+            }
+            setEditing(null)
+            setShowForm(true)
+          }}
+        >
           <Plus size={16} /> Novo Cliente
         </button></Access>
       </div>
@@ -81,8 +93,40 @@ export default function Customers() {
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-1">
                     <Link to={`/clientes/${c.id}`} className="btn-ghost !px-1.5 !py-1"><Eye size={15} /></Link>
-                    <Access permission="edit_customer"><button className="btn-ghost !px-1.5 !py-1" onClick={() => { setEditing(c); setShowForm(true) }}><Pencil size={15} /></button></Access>
-                    {isAdmin && <button aria-label={`Excluir ${c.first_name} ${c.last_name}`} className="btn-ghost !px-1.5 !py-1 text-rose-600" onClick={() => setPendingDelete(c)}><Trash2 size={15} /></button>}
+                    <Access permission="edit_customer">
+                      <button
+                        disabled={isSuspended}
+                        title={isSuspended ? 'Indisponível durante a suspensão da loja' : 'Editar'}
+                        className="btn-ghost !px-1.5 !py-1 disabled:opacity-40"
+                        onClick={() => {
+                          if (isSuspended) {
+                            setError('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+                            return
+                          }
+                          setEditing(c)
+                          setShowForm(true)
+                        }}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    </Access>
+                    {isAdmin && (
+                      <button
+                        disabled={isSuspended}
+                        title={isSuspended ? 'Indisponível durante a suspensão da loja' : 'Excluir'}
+                        aria-label={`Excluir ${c.first_name} ${c.last_name}`}
+                        className="btn-ghost !px-1.5 !py-1 text-rose-600 disabled:opacity-40"
+                        onClick={() => {
+                          if (isSuspended) {
+                            setError('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
+                            return
+                          }
+                          setPendingDelete(c)
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

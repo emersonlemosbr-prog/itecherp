@@ -22,7 +22,7 @@ function formatDateTime(value) {
 
 export default function Sales() {
   const { settings } = useSettings()
-  const { isAdmin } = useAuth();
+  const { isAdmin, isSuspended } = useAuth();
   const [q, setQ] = useState('');
   const [products, setProducts] = useState([]);
   const [history, setHistory] = useState([]);
@@ -145,6 +145,11 @@ export default function Sales() {
   async function finalizeSale() {
     if (!cart.length || saving) return;
 
+    if (isSuspended) {
+      setFeedback('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.');
+      return;
+    }
+
     setSaving(true);
     setFeedback('');
 
@@ -175,6 +180,10 @@ export default function Sales() {
 
   async function openCancelModal(sale) {
     if (!isAdmin) return;
+    if (isSuspended) {
+      setFeedback('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.');
+      return;
+    }
     try {
       const { data } = await api.get(`/store-sales/history/${sale.id}`);
       setCancelReason('');

@@ -43,7 +43,7 @@ export default function PlatformAdmin() {
   const [dueDateForm, setDueDateForm] = useState({ due_date: '', grace_period_days: 3, notes: '' })
   const [activateForm, setActivateForm] = useState({ due_date: '', grace_period_days: 3, notes: '' })
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
-  const [suspendForm, setSuspendForm] = useState({ reason: '' })
+  const [suspendForm, setSuspendForm] = useState({ reason: 'Mensalidade não paga', custom_reason: '', notes: '' })
   const [storeHistory, setStoreHistory] = useState([])
 
   // Seleção múltipla de lojas para ações em massa
@@ -224,7 +224,14 @@ export default function PlatformAdmin() {
     setActionError('')
     setActionLoading(true)
     try {
-      await api.post(`/platform/stores/${selectedStore.id}/suspend`, suspendForm, platformApiConfig())
+      const finalReason = suspendForm.reason === 'Outro motivo'
+        ? (suspendForm.custom_reason?.trim() || 'Outro motivo')
+        : suspendForm.reason
+      const payload = {
+        reason: finalReason,
+        notes: suspendForm.notes?.trim() || ''
+      }
+      await api.post(`/platform/stores/${selectedStore.id}/suspend`, payload, platformApiConfig())
       setModalType(null)
       loadStores()
     } catch (err) {
@@ -972,7 +979,7 @@ export default function PlatformAdmin() {
                             <button
                               onClick={() => {
                                 setSelectedStore(store)
-                                setSuspendForm({ reason: '' })
+                                setSuspendForm({ reason: 'Mensalidade não paga', custom_reason: '', notes: '' })
                                 setModalType('suspend')
                               }}
                               className="py-1 px-2.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/40 text-rose-300 font-semibold text-xs transition-all cursor-pointer"
@@ -1327,10 +1334,14 @@ export default function PlatformAdmin() {
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-white text-lg font-bold">✕</button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Tem certeza que deseja suspender a loja <strong className="text-white">{selectedStore.name}</strong>?
-              O proprietário e todos os funcionários serão imediatamente impedidos de acessar as telas e APIs do ERP. Os dados permanecerão intactos.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Confirmar suspensão da loja <strong className="text-white text-sm">{selectedStore.name}</strong>?
+              </p>
+              <p className="text-[11px] text-amber-300/90 bg-amber-950/40 border border-amber-800/40 rounded-xl p-2.5 leading-relaxed">
+                A loja entrará no <strong>modo de acesso restrito</strong>: os usuários poderão consultar informações e finalizar ordens de serviço já abertas, mas novas operações comerciais serão bloqueadas.
+              </p>
+            </div>
 
             {actionError && (
               <div className="text-xs text-rose-300 bg-rose-950/50 border border-rose-800/60 rounded-xl p-3">
@@ -1341,13 +1352,41 @@ export default function PlatformAdmin() {
             <form onSubmit={handleSuspendStore} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">Motivo da Suspensão</label>
-                <input
-                  type="text"
-                  required
+                <select
                   value={suspendForm.reason}
-                  onChange={(e) => setSuspendForm({ reason: e.target.value })}
-                  placeholder="Ex: Mensalidade em atraso após tolerância"
+                  onChange={(e) => setSuspendForm(f => ({ ...f, reason: e.target.value }))}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                >
+                  <option value="Mensalidade não paga">Mensalidade não paga</option>
+                  <option value="Pagamento em atraso">Pagamento em atraso</option>
+                  <option value="Pendência financeira">Pendência financeira</option>
+                  <option value="Suspensão administrativa">Suspensão administrativa</option>
+                  <option value="Outro motivo">Outro motivo</option>
+                </select>
+              </div>
+
+              {suspendForm.reason === 'Outro motivo' && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Especifique o Motivo</label>
+                  <input
+                    type="text"
+                    required
+                    value={suspendForm.custom_reason}
+                    onChange={(e) => setSuspendForm(f => ({ ...f, custom_reason: e.target.value }))}
+                    placeholder="Ex: Violação dos termos de uso da plataforma"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Descrição / Notas Adicionais (opcional)</label>
+                <textarea
+                  rows={2}
+                  value={suspendForm.notes}
+                  onChange={(e) => setSuspendForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Informações adicionais para registro no histórico da loja..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
                 />
               </div>
 

@@ -186,4 +186,12 @@ app.listen(PORT, '0.0.0.0', () => {
     .catch((error) => {
       console.error('[FINANCIAL_HISTORY] Falha ao processar fechamento mensal:', error.message);
     });
+
+  try {
+    const { startSubscriptionReminderScheduler } = require('./services/subscriptionReminderService');
+    startSubscriptionReminderScheduler();
+    console.log('[SUBSCRIPTION_REMINDERS] Agendador de lembretes de mensalidade iniciado.');
+  } catch (reminderErr) {
+    console.error('[SUBSCRIPTION_REMINDERS] Falha ao inicializar lembretes:', reminderErr.message);
+  }
 });
