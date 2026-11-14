@@ -90,17 +90,29 @@ function extractDateOnlyString(val) {
 
 let suspensionColsEnsured = false;
 async function ensureStoreSuspensionColumns() {
-  if (suspensionColsEnsured || db.isSqlite) return;
+  if (suspensionColsEnsured) return;
   try {
-    await db.query(`
-      ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
-      ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
-      ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_by_name VARCHAR(255);
-    `);
-    suspensionColsEnsured = true;
-  } catch (_err) {
-    // Silencioso se já existir ou sem permissão de DDL
-  }
+    if (db.exec) {
+      await db.exec(`
+        ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
+        ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
+        ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_by_name VARCHAR(255);
+      `);
+      suspensionColsEnsured = true;
+      return;
+    }
+  } catch (_) {}
+
+  try {
+    await db.query('ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ');
+  } catch (_) {}
+  try {
+    await db.query('ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspension_reason TEXT');
+  } catch (_) {}
+  try {
+    await db.query('ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_by_name VARCHAR(255)');
+  } catch (_) {}
+  suspensionColsEnsured = true;
 }
 
 /**
@@ -402,6 +414,7 @@ async function createStoreWithInitialData({
 
 module.exports = {
   checkStoreSubscription,
+  ensureStoreSuspensionColumns,
   getPlatformContactInfo,
   isNicknameAvailable,
   createStoreWithInitialData,

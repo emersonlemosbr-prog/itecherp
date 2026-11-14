@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
 const { authenticatePlatformAdmin } = require('../middleware/platformAuth');
-const { checkStoreSubscription } = require('../services/multiTenantService');
+const { checkStoreSubscription, ensureStoreSuspensionColumns } = require('../services/multiTenantService');
 
 const router = express.Router();
 
@@ -492,6 +492,7 @@ router.post('/stores/:id/activate', async (req, res) => {
  */
 router.post('/stores/:id/suspend', async (req, res) => {
   try {
+    await ensureStoreSuspensionColumns();
     const store = await db.queryOne('SELECT * FROM stores WHERE id = $1', [req.params.id]);
     if (!store) return res.status(404).json({ error: 'Loja não encontrada.' });
 
@@ -541,6 +542,7 @@ router.post('/stores/:id/suspend', async (req, res) => {
  */
 router.post('/stores/:id/reactivate', async (req, res) => {
   try {
+    await ensureStoreSuspensionColumns();
     const store = await db.queryOne('SELECT * FROM stores WHERE id = $1', [req.params.id]);
     if (!store) return res.status(404).json({ error: 'Loja não encontrada.' });
 
@@ -828,6 +830,7 @@ router.delete('/stores/:id', async (req, res) => {
  */
 router.post('/stores/bulk-action', async (req, res) => {
   try {
+    await ensureStoreSuspensionColumns();
     const { action, storeIds, dueDate, gracePeriodDays, notes, confirmation } = req.body;
 
     if (!['activate', 'suspend', 'delete'].includes(action)) {

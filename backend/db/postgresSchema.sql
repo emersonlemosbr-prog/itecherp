@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS stores (
 );
 CREATE INDEX IF NOT EXISTS idx_stores_status ON stores(status);
 CREATE INDEX IF NOT EXISTS idx_stores_slug ON stores(slug);
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMPTZ;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS suspended_by_name VARCHAR(255);
 
 -- ----------------------------------------------------------------------------
 -- 2. USUÁRIOS DA PLATAFORMA (Superadmins)
