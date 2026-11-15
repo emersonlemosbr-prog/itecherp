@@ -307,21 +307,21 @@ export default function DeviceFormDrawer({
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm flex justify-end">
-      <div className="w-full max-w-xl bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="w-full max-w-xl bg-white dark:bg-[#18181B] text-slate-900 dark:text-zinc-100 border-l border-slate-200 dark:border-white/10 h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
         {/* Cabeçalho */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90 sticky top-0 z-10">
+        <div className="p-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-between bg-white/95 dark:bg-[#18181B]/95 sticky top-0 z-10 backdrop-blur-sm">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Smartphone className="w-5 h-5 text-yellow-500" />
+            <h2 className="text-lg font-bold font-display text-slate-900 dark:text-white flex items-center gap-2">
+              <Smartphone className="w-5 h-5 text-brand-500" />
               {isEditing ? 'Editar aparelho' : 'Adicionar aparelho'}
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Cada cadastro é um aparelho físico, com IMEI ou número de série próprio.
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -330,26 +330,26 @@ export default function DeviceFormDrawer({
         {/* Formulário com rolagem */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5 text-sm">
           {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-600 dark:text-rose-400 text-xs">
               {error}
             </div>
           )}
 
           {/* APARELHO */}
           <div className="space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Aparelho
             </span>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   Marca *
                 </label>
                 <select
                   value={brand}
                   onChange={(e) => setBrand(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand-500"
                 >
                   {POPULAR_BRANDS.map(b => (
                     <option key={b} value={b}>{b}</option>
@@ -361,14 +361,14 @@ export default function DeviceFormDrawer({
                     placeholder="Digite a marca..."
                     value={customBrand}
                     onChange={(e) => setCustomBrand(e.target.value)}
-                    className="w-full mt-2 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                    className="w-full mt-2 bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                   />
                 )}
               </div>
 
               {/* Modelo com autocomplete */}
               <div className="relative" ref={suggestionsRef}>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   Modelo *
                 </label>
                 <input
@@ -380,20 +380,20 @@ export default function DeviceFormDrawer({
                     setShowSuggestions(true);
                   }}
                   onFocus={() => setShowSuggestions(true)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                 />
 
                 {showSuggestions && suggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-xl max-h-48 overflow-y-auto z-20 py-1">
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 rounded-xl shadow-xl max-h-48 overflow-y-auto z-20 py-1">
                     {suggestions.map((sug, idx) => (
                       <button
                         key={idx}
                         type="button"
                         onClick={() => handleSelectSuggestion(sug)}
-                        className="w-full text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700/80 hover:text-white flex items-center justify-between"
+                        className="w-full text-left px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-ink-700 hover:text-brand-600 dark:hover:text-white flex items-center justify-between"
                       >
                         <span>{sug.model} {sug.storage && <span className="text-slate-400">({sug.storage})</span>}</span>
-                        <span className="text-[10px] text-yellow-500/80 uppercase font-semibold">{sug.brand}</span>
+                        <span className="text-[10px] text-brand-600 dark:text-brand-400 uppercase font-semibold">{sug.brand}</span>
                       </button>
                     ))}
                   </div>
@@ -403,7 +403,7 @@ export default function DeviceFormDrawer({
 
             {/* Armazenamento (Pills) */}
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">
                 Armazenamento
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -414,8 +414,8 @@ export default function DeviceFormDrawer({
                     onClick={() => setStorage(st)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                       storage === st
-                        ? 'bg-yellow-500 text-slate-950 border-yellow-500 font-semibold'
-                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                        ? 'bg-brand-500 text-slate-950 border-brand-500 font-bold shadow-sm'
+                        : 'bg-slate-100 dark:bg-ink-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-ink-700 hover:border-brand-500/40'
                     }`}
                   >
                     {st}
@@ -428,7 +428,7 @@ export default function DeviceFormDrawer({
                   placeholder="Informe o armazenamento (ex: 16GB)..."
                   value={customStorage}
                   onChange={(e) => setCustomStorage(e.target.value)}
-                  className="w-full mt-2 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                  className="w-full mt-2 bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                 />
               )}
             </div>
@@ -436,7 +436,7 @@ export default function DeviceFormDrawer({
             {/* Cor e Categoria */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   Cor
                 </label>
                 <input
@@ -444,18 +444,18 @@ export default function DeviceFormDrawer({
                   placeholder="Ex: Titânio Natural, Preto..."
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   Categoria
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand-500"
                 >
                   <option value="Smartphone">Smartphone</option>
                   <option value="Tablet">Tablet</option>
@@ -468,17 +468,17 @@ export default function DeviceFormDrawer({
           </div>
 
           {/* IDENTIFICAÇÃO */}
-          <div className="space-y-3 pt-2 border-t border-slate-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Identificação
             </span>
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-slate-300">
+                <label className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
                   IMEI 1
                 </label>
-                <span className="text-[10px] text-slate-400">Bipe com o leitor ou digite (14-16 dígitos)</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">Bipe com o leitor ou digite (14-16 dígitos)</span>
               </div>
               <input
                 type="text"
@@ -486,13 +486,13 @@ export default function DeviceFormDrawer({
                 placeholder="Ex: 356872109876543"
                 value={imei1}
                 onChange={(e) => setImei1(e.target.value)}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-yellow-500"
+                className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-mono placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   IMEI 2 (Opcional)
                 </label>
                 <input
@@ -501,12 +501,12 @@ export default function DeviceFormDrawer({
                   placeholder="Opcional"
                   value={imei2}
                   onChange={(e) => setImei2(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-mono placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   Número de série
                 </label>
                 <input
@@ -514,15 +514,15 @@ export default function DeviceFormDrawer({
                   placeholder="Ex: F17XYZ89ABCD"
                   value={serialNumber}
                   onChange={(e) => setSerialNumber(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-mono placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                 />
               </div>
             </div>
           </div>
 
           {/* CONDIÇÃO & BATERIA */}
-          <div className="space-y-3 pt-2 border-t border-slate-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Condição e Bateria
             </span>
 
@@ -535,8 +535,8 @@ export default function DeviceFormDrawer({
                   onClick={() => setCondition(c.value)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
                     condition === c.value
-                      ? 'bg-yellow-500 text-slate-950 border-yellow-500 font-semibold'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-600'
+                      ? 'bg-brand-500 text-slate-950 border-brand-500 font-bold shadow-sm'
+                      : 'bg-slate-100 dark:bg-ink-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-ink-700 hover:border-brand-500/40'
                   }`}
                 >
                   {c.label}
@@ -545,17 +545,17 @@ export default function DeviceFormDrawer({
             </div>
 
             {/* Saúde de Bateria */}
-            <div className="bg-slate-800/40 p-3 rounded-xl border border-slate-800/80">
+            <div className="bg-slate-50 dark:bg-ink-800/40 p-3 rounded-xl border border-slate-200 dark:border-ink-700">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-slate-300">
+                <span className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
                   Saúde da bateria
                 </span>
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-400">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-500 dark:text-slate-400">
                   <input
                     type="checkbox"
                     checked={!hasBatteryInfo}
                     onChange={(e) => setHasBatteryInfo(!e.target.checked)}
-                    className="rounded bg-slate-800 border-slate-700 text-yellow-500 focus:ring-0"
+                    className="rounded bg-white dark:bg-ink-800 border-slate-300 dark:border-ink-700 text-brand-500 focus:ring-0"
                   />
                   <span>Não informada</span>
                 </label>
@@ -569,18 +569,18 @@ export default function DeviceFormDrawer({
                     max="100"
                     value={batteryHealth}
                     onChange={(e) => setBatteryHealth(Number(e.target.value))}
-                    className="flex-1 accent-yellow-500 cursor-pointer"
+                    className="flex-1 accent-brand-500 cursor-pointer"
                   />
-                  <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 px-2 py-1 rounded-lg">
+                  <div className="flex items-center gap-1 bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 px-2 py-1 rounded-lg">
                     <input
                       type="number"
                       min="1"
                       max="100"
                       value={batteryHealth}
                       onChange={(e) => setBatteryHealth(Math.max(1, Math.min(100, Number(e.target.value))))}
-                      className="w-10 bg-transparent text-white text-xs font-bold text-center focus:outline-none"
+                      className="w-10 bg-transparent text-slate-900 dark:text-white text-xs font-bold text-center focus:outline-none"
                     />
-                    <span className="text-xs text-slate-400">%</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">%</span>
                   </div>
                 </div>
               )}
@@ -588,14 +588,14 @@ export default function DeviceFormDrawer({
           </div>
 
           {/* VALORES E ORIGEM */}
-          <div className="space-y-3 pt-2 border-t border-slate-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Valores e Origem
             </span>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   Custo de aquisição (R$)
                 </label>
                 <input
@@ -603,12 +603,12 @@ export default function DeviceFormDrawer({
                   placeholder="0,00"
                   value={costPrice}
                   onChange={(e) => setCostPrice(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-mono placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                   Preço de venda (R$)
                 </label>
                 <input
@@ -616,7 +616,7 @@ export default function DeviceFormDrawer({
                   placeholder="0,00"
                   value={sellPrice}
                   onChange={(e) => setSellPrice(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs font-mono placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
                 />
               </div>
             </div>
@@ -624,13 +624,13 @@ export default function DeviceFormDrawer({
             {/* Fornecedor */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-slate-300">
+                <label className="text-xs font-semibold text-slate-700 dark:text-zinc-300">
                   Fornecedor
                 </label>
                 <button
                   type="button"
                   onClick={() => setIsNewSupplierModalOpen(true)}
-                  className="text-[11px] text-yellow-500 hover:text-yellow-400 flex items-center gap-1 font-semibold"
+                  className="text-[11px] text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1 font-semibold"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Novo fornecedor
@@ -640,7 +640,7 @@ export default function DeviceFormDrawer({
               <select
                 value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value)}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand-500"
               >
                 <option value="">Selecione um fornecedor...</option>
                 {suppliers.map(s => (
@@ -651,25 +651,25 @@ export default function DeviceFormDrawer({
           </div>
 
           {/* INFORMAÇÕES ADICIONAIS */}
-          <div className="space-y-3 pt-2 border-t border-slate-800">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-white/10">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Informações Adicionais
             </span>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                 Data de entrada
               </label>
               <input
                 type="date"
                 value={entryDate}
                 onChange={(e) => setEntryDate(e.target.value)}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs focus:outline-none focus:border-brand-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1">
                 Observações
               </label>
               <textarea
@@ -677,20 +677,20 @@ export default function DeviceFormDrawer({
                 placeholder="Detalhes sobre o estado estético, procedência, garantia do fornecedor..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500 resize-none"
+                className="w-full bg-slate-50 dark:bg-ink-800/80 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs placeholder:text-slate-400 focus:outline-none focus:border-brand-500 resize-none"
               />
             </div>
           </div>
         </div>
 
         {/* Rodapé de Ações */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between gap-3">
+        <div className="p-4 border-t border-slate-200 dark:border-white/10 bg-slate-50/95 dark:bg-[#18181B]/95 flex items-center justify-between gap-3 sticky bottom-0 z-10 backdrop-blur-sm">
           {!isEditing && (
             <button
               type="button"
               disabled={loading}
               onClick={() => handleSubmit(true)}
-              className="px-3.5 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 transition-colors disabled:opacity-50"
+              className="btn-secondary !text-xs disabled:opacity-50"
             >
               Salvar e cadastrar outro
             </button>
@@ -701,7 +701,7 @@ export default function DeviceFormDrawer({
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
+              className="btn-ghost !text-xs"
             >
               Cancelar
             </button>
@@ -710,7 +710,7 @@ export default function DeviceFormDrawer({
               type="button"
               disabled={loading}
               onClick={() => handleSubmit(false)}
-              className="px-5 py-2 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-yellow-500/20 transition-all disabled:opacity-50 flex items-center gap-1.5"
+              className="btn-primary !text-xs disabled:opacity-50 flex items-center gap-1.5"
             >
               {loading ? 'Salvando...' : (isEditing ? 'Atualizar aparelho' : 'Cadastrar aparelho')}
             </button>
@@ -720,13 +720,13 @@ export default function DeviceFormDrawer({
 
       {/* Modal Rápido de Novo Fornecedor */}
       {isNewSupplierModalOpen && (
-        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl">
-            <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-yellow-500" />
+        <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white dark:bg-[#18181B] border border-slate-200 dark:border-white/10 rounded-2xl p-5 shadow-2xl">
+            <h3 className="text-sm font-bold font-display text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-brand-500" />
               Cadastrar Novo Fornecedor
             </h3>
-            <p className="text-xs text-slate-400 mb-4">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
               Informe a razão social ou nome fantasia do fornecedor.
             </p>
             <form onSubmit={handleCreateSupplier} className="space-y-4">
@@ -736,20 +736,20 @@ export default function DeviceFormDrawer({
                 placeholder="Nome do fornecedor..."
                 value={newSupplierName}
                 onChange={(e) => setNewSupplierName(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-yellow-500"
+                className="w-full bg-slate-50 dark:bg-ink-800 border border-slate-200 dark:border-ink-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white text-xs placeholder:text-slate-400 focus:outline-none focus:border-brand-500"
               />
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsNewSupplierModalOpen(false)}
-                  className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+                  className="btn-ghost !text-xs"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingSupplier || !newSupplierName.trim()}
-                  className="px-4 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-slate-950 font-bold text-xs rounded-xl transition-colors disabled:opacity-50"
+                  className="btn-primary !text-xs disabled:opacity-50"
                 >
                   {savingSupplier ? 'Salvando...' : 'Salvar fornecedor'}
                 </button>

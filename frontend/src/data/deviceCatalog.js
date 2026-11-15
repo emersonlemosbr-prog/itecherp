@@ -25,19 +25,19 @@ export const STORAGE_OPTIONS = [
 ];
 
 export const CONDITION_OPTIONS = [
-  { value: 'Lacrado', label: 'Lacrado', badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
-  { value: 'Novo', label: 'Novo', badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
-  { value: 'Seminovo', label: 'Seminovo', badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
-  { value: 'CPO', label: 'CPO', badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
-  { value: 'Recondicionado', label: 'Recondicionado', badgeColor: 'bg-rose-500/10 text-rose-400 border-rose-500/30' }
+  { value: 'Lacrado', label: 'Lacrado', badgeColor: 'bg-emerald-100/90 text-emerald-800 border-emerald-300/70 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30' },
+  { value: 'Novo', label: 'Novo', badgeColor: 'bg-blue-100/90 text-blue-800 border-blue-300/70 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30' },
+  { value: 'Seminovo', label: 'Seminovo', badgeColor: 'bg-purple-100/90 text-purple-800 border-purple-300/70 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/30' },
+  { value: 'CPO', label: 'CPO', badgeColor: 'bg-amber-100/90 text-amber-800 border-amber-300/70 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30' },
+  { value: 'Recondicionado', label: 'Recondicionado', badgeColor: 'bg-rose-100/90 text-rose-800 border-rose-300/70 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/30' }
 ];
 
 export const STATUS_MAP = {
-  in_stock: { label: 'Em estoque', badgeClass: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' },
-  reserved: { label: 'Reservado', badgeClass: 'bg-amber-500/15 text-amber-400 border border-amber-500/30' },
-  unavailable: { label: 'Indisponível', badgeClass: 'bg-slate-500/15 text-slate-400 border border-slate-500/30' },
-  sold: { label: 'Vendido', badgeClass: 'bg-blue-500/15 text-blue-400 border border-blue-500/30' },
-  archived: { label: 'Arquivado', badgeClass: 'bg-zinc-700/30 text-zinc-400 border border-zinc-600/30' }
+  in_stock: { label: 'Em estoque', badgeClass: 'bg-emerald-100/90 text-emerald-800 border border-emerald-300/70 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30' },
+  reserved: { label: 'Reservado', badgeClass: 'bg-amber-100/90 text-amber-800 border border-amber-300/70 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30' },
+  unavailable: { label: 'Indisponível', badgeClass: 'bg-slate-100 text-slate-700 border border-slate-300/70 dark:bg-slate-500/15 dark:text-slate-400 dark:border-slate-500/30' },
+  sold: { label: 'Vendido', badgeClass: 'bg-blue-100/90 text-blue-800 border border-blue-300/70 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30' },
+  archived: { label: 'Arquivado', badgeClass: 'bg-zinc-100 text-zinc-700 border border-zinc-300/70 dark:bg-zinc-700/30 dark:text-zinc-400 dark:border-zinc-600/30' }
 };
 
 export const DEVICE_SUGGESTIONS = [
