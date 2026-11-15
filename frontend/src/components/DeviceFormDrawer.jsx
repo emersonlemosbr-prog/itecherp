@@ -274,16 +274,17 @@ export default function DeviceFormDrawer({
     } catch (err) {
       console.error('Erro ao salvar aparelho:', err);
       const rawData = err.response?.data;
-      const serverMessage = 
-        (typeof rawData === 'string' && rawData.trim().length > 0 ? rawData : null) ||
-        rawData?.error ||
-        rawData?.message ||
-        (Array.isArray(rawData?.errors) ? rawData.errors.map(e => e.msg || e.message).join(', ') : null);
+      const isHtmlResponse = typeof rawData === 'string' && (rawData.includes('<!DOCTYPE') || rawData.includes('<pre>') || rawData.includes('<html'));
+      const serverMessage = !isHtmlResponse && typeof rawData === 'string' && rawData.trim().length > 0
+        ? rawData.trim()
+        : (rawData?.error || rawData?.message || (Array.isArray(rawData?.errors) ? rawData.errors.map(e => e.msg || e.message).join(', ') : null));
 
       const status = err.response?.status;
 
       if (serverMessage) {
         setError(serverMessage);
+      } else if (status === 404 || isHtmlResponse) {
+        setError('Serviço em atualização ou rota indisponível. Por favor, recarregue a página e tente novamente.');
       } else if (status === 401) {
         setError('Sua sessão expirou. Por favor, faça login novamente.');
       } else if (status === 403) {

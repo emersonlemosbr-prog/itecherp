@@ -119,12 +119,50 @@ app.use('/api/events', require('./routes/events'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/virus-agent', require('./routes/virusAgent'));
 
-app.get('/api/health', async (_req, res) => {
+let cachedCommitHash = process.env.COMMIT_HASH || process.env.RENDER_GIT_COMMIT || process.env.SOURCE_VERSION || null;
+if (!cachedCommitHash) {
+  try {
+    cachedCommitHash = require('child_process').execSync('git rev-parse --short HEAD', { timeout: 1000 }).toString().trim();
+  } catch (_) {
+    cachedCommitHash = 'unknown';
+  }
+}
+
+app.get('/api/health', async (req, res) => {
   try {
     if (process.env.DATABASE_URL) {
       await db.queryOne('SELECT 1');
     }
-    res.json({ status: 'ok', database: process.env.DATABASE_URL ? 'postgresql' : 'offline' });
+
+    const routerStack = req.app._router ? req.app._router.stack : [];
+    let devicesLoaded = false;
+    let postDevicesRegistered = false;
+
+    routerStack.forEach(layer => {
+      if (layer.name === 'router') {
+        const match = layer.regexp && layer.regexp.test('/api/devices');
+        if (match) {
+          devicesLoaded = true;
+          if (layer.handle && layer.handle.stack) {
+            layer.handle.stack.forEach(subLayer => {
+              if (subLayer.route && subLayer.route.path === '/' && subLayer.route.methods?.post) {
+                postDevicesRegistered = true;
+              }
+            });
+          }
+        }
+      }
+    });
+
+    res.json({
+      status: 'ok',
+      service: 'itech-erp-backend',
+      entrypoint: path.basename(process.argv[1] || 'server.js'),
+      commit: cachedCommitHash,
+      devicesLoaded,
+      postDevicesRegistered,
+      database: process.env.DATABASE_URL ? 'postgresql' : 'offline'
+    });
   } catch (err) {
     res.status(503).json({ status: 'degraded', error: err.message });
   }
