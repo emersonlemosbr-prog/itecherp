@@ -2,20 +2,21 @@ import DocumentHeader from '../components/UI/DocumentHeader'
 import { useSettings } from '../context/SettingsContext'
 import { useAuth } from '../context/AuthContext'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { FileText, Mail, Package, Plus, Printer, Save, Search, Trash2, UserRound } from 'lucide-react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { FileText, Mail, Package, Plus, Printer, Save, Search, Trash2, UserRound, Smartphone } from 'lucide-react'
 import api from '../api/client'
 import CustomerPicker from '../components/UI/CustomerPicker'
 import { formatCurrency } from '../utils/format'
 
 
-function emptyItem(index = 1) {
+function emptyItem(index = 1, deviceId = null) {
   return {
     id: `${Date.now()}-${index}`,
     item: String(index),
     product: '',
     quantity: '1',
     unit_price: '',
+    device_id: deviceId,
   }
 }
 
@@ -60,13 +61,84 @@ export default function DeviceSale() {
   const { isSuspended } = useAuth()
   const d = settings.documents
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
+  const deviceIdParam = searchParams.get('deviceId')
   const navigate = useNavigate()
   const [form, setForm] = useState(createDraft)
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(!!id)
   const [feedback, setFeedback] = useState('')
+  const [inStockDevices, setInStockDevices] = useState([])
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
+  const [pickerTargetIndex, setPickerTargetIndex] = useState(null)
   const printRef = useRef(null)
+
+  // Se vier com ?deviceId=, carregar e pré-preencher o primeiro item
+  useEffect(() => {
+    if (id || !deviceIdParam) return
+    let active = true
+
+    async function loadPrefilledDevice() {
+      try {
+        const { data } = await api.get(`/devices/${deviceIdParam}`)
+        if (!active || !data) return
+        const description = `${data.brand} ${data.model} ${data.storage || ''} ${data.color ? `(${data.color})` : ''} - IMEI: ${data.imei1 || data.serial_number || 'Sem serial'}`.replace(/\s+/g, ' ').trim()
+        setForm(current => ({
+          ...current,
+          items: [
+            {
+              id: `${Date.now()}-1`,
+              item: '1',
+              product: description,
+              quantity: '1',
+              unit_price: String(data.sell_price || ''),
+              device_id: data.id,
+            }
+          ]
+        }))
+      } catch (err) {
+        console.error('Erro ao carregar aparelho pré-selecionado:', err)
+      }
+    }
+
+    loadPrefilledDevice()
+    return () => { active = false }
+  }, [id, deviceIdParam])
+
+  // Carregar lista de aparelhos disponíveis para o seletor rápido
+  const loadAvailableDevices = async () => {
+    try {
+      const res = await api.get('/devices', { params: { tab: 'in_stock', limit: 100 } })
+      setInStockDevices(res.data.items || [])
+    } catch (e) {
+      console.error('Erro ao listar aparelhos em estoque:', e)
+    }
+  }
+
+  const handleOpenPicker = (index) => {
+    setPickerTargetIndex(index)
+    loadAvailableDevices()
+    setIsPickerOpen(true)
+  }
+
+  const handleSelectDeviceForIndex = (dev) => {
+    if (pickerTargetIndex === null) return
+    const description = `${dev.brand} ${dev.model} ${dev.storage || ''} ${dev.color ? `(${dev.color})` : ''} - IMEI: ${dev.imei1 || dev.serial_number || 'Sem serial'}`.replace(/\s+/g, ' ').trim()
+    setForm(current => {
+      const nextItems = [...current.items]
+      nextItems[pickerTargetIndex] = {
+        ...nextItems[pickerTargetIndex],
+        product: description,
+        quantity: '1',
+        unit_price: String(dev.sell_price || ''),
+        device_id: dev.id
+      }
+      return { ...current, items: nextItems }
+    })
+    setIsPickerOpen(false)
+    setPickerTargetIndex(null)
+  }
 
   useEffect(() => {
     if (!id) return
@@ -151,6 +223,7 @@ export default function DeviceSale() {
         quantity: normalizeNumber(row.quantity),
         unit_price: normalizeNumber(row.unit_price),
         subtotal: buildRowSubtotal(row),
+        device_id: row.device_id || null,
       })),
       total_amount: computeTotal(nextForm.items),
     }
@@ -487,7 +560,17 @@ export default function DeviceSale() {
                               <input className="input" value={row.item} onChange={(e) => updateItem(index, 'item', e.target.value)} />
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <input className="input" value={row.product} onChange={(e) => updateItem(index, 'product', e.target.value)} placeholder="Descreva o aparelho" />
+                              <div className="flex items-center gap-1">
+                                <input className="input flex-1" value={row.product} onChange={(e) => updateItem(index, 'product', e.target.value)} placeholder="Descreva o aparelho ou selecione do estoque" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPicker(index)}
+                                  className="p-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-xl border border-yellow-500/30 transition-colors"
+                                  title="Buscar do estoque de Aparelhos"
+                                >
+                                  <Smartphone size={16} />
+                                </button>
+                              </div>
                             </td>
                             <td className="px-3 py-2 align-top">
                               <input type="number" min="0" step="1" className="input" value={row.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} />
@@ -700,6 +783,57 @@ export default function DeviceSale() {
           </div>
         </div>
       </div>
+
+      {/* Modal Seletor de Aparelhos em Estoque */}
+      {isPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-5 shadow-2xl flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-yellow-500" />
+                Selecionar Aparelho do Estoque
+              </h3>
+              <button
+                onClick={() => setIsPickerOpen(false)}
+                className="text-slate-400 hover:text-white text-xs"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {inStockDevices.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-500">
+                  Nenhum aparelho com status "Em estoque" encontrado.
+                </div>
+              ) : (
+                inStockDevices.map(dev => (
+                  <div
+                    key={dev.id}
+                    onClick={() => handleSelectDeviceForIndex(dev)}
+                    className="p-3 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 hover:border-yellow-500/50 rounded-xl cursor-pointer transition-all flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="font-bold text-white text-xs">
+                        {dev.brand} {dev.model} {dev.storage ? `(${dev.storage})` : ''}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        {dev.color || 'Sem cor'} · IMEI: {dev.imei1 || dev.serial_number || 'Sem serial'} · {dev.condition}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-bold font-mono text-emerald-400">
+                        R$ {Number(dev.sell_price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+                      <span className="text-[10px] text-yellow-500 font-semibold">Selecionar</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

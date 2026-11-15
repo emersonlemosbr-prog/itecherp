@@ -36,6 +36,7 @@ const sidebarSections = [
       { to: '/estoque', label: 'Controle de Estoque', icon: Boxes },
       { to: '/vendas', label: 'Venda de Caixa', icon: ShoppingCart },
       { to: '/venda-aparelho', label: 'Venda de Aparelho', icon: ReceiptText },
+      { to: '/aparelhos', label: 'Aparelhos', icon: Smartphone },
     ],
   },
   {

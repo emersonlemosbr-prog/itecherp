@@ -105,6 +105,7 @@ app.use('/api/warranties', require('./routes/warranties'));
 app.use('/api/credit-accounts', require('./routes/creditAccounts'));
 app.use('/api/cash-withdrawals', require('./routes/cashWithdrawals'));
 app.use('/api/calculators', require('./routes/calculators'));
+app.use('/api/devices', require('./routes/devices'));
 app.use('/api/device-sales', require('./routes/deviceSales'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/financial-history', require('./routes/financialHistory'));

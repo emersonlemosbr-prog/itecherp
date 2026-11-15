@@ -70,8 +70,9 @@ function isAuthorizedTestDatabaseUrl(rawUrl) {
   const lower = rawUrl.toLowerCase();
   const isLocal = lower.includes('localhost') || lower.includes('127.0.0.1');
   const isTestDbName = lower.includes('_test') || lower.includes('test_') || lower.includes('/test');
+  const isSqlite = lower.startsWith('sqlite:') || lower.includes(':memory:');
 
-  return isLocal || isTestDbName;
+  return isLocal || isTestDbName || isSqlite;
 }
 
 /**

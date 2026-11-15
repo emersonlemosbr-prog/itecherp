@@ -32,6 +32,7 @@ const CreditAccounts = lazy(() => import('./pages/CreditAccounts'))
 const PagbankCalculator = lazy(() => import('./pages/PagbankCalculator'))
 const FrontalsCalculator = lazy(() => import('./pages/FrontalsCalculator'))
 const DeviceSale = lazy(() => import('./pages/DeviceSale'))
+const Devices = lazy(() => import('./pages/Devices'))
 const Sales = lazy(() => import('./pages/Sales'))
 const InventoryControl = lazy(() => import('./pages/InventoryControl'))
 const CompatibleScreenProtectors = lazy(() => import('./pages/CompatibleScreenProtectors'))
@@ -105,7 +106,7 @@ export default function App() {
     : '/dashboard'
 
   if (user && user.role !== 'admin' && location.pathname !== '/login' && location.pathname !== '/' && !canAccess(user, location.pathname)) {
-    const first = ['/dashboard', '/ordens', '/clientes', '/garantias', '/anotacoes', '/estoque', '/vendas', '/venda-aparelho', '/fiados', '/removedor-virus'].find(path => canAccess(user, path))
+    const first = ['/dashboard', '/ordens', '/clientes', '/garantias', '/anotacoes', '/estoque', '/vendas', '/venda-aparelho', '/aparelhos', '/fiados', '/removedor-virus'].find(path => canAccess(user, path))
     return first ? <Navigate to={first} replace /> : <AppShell><p className="p-6">Nenhuma área liberada. Solicite acesso ao administrador.</p></AppShell>
   }
 
@@ -156,6 +157,7 @@ export default function App() {
                   <Route path="/peliculas-compativeis" element={<CompatibleScreenProtectors />} />
                   <Route path="/venda-aparelho" element={<DeviceSale />} />
                   <Route path="/venda-aparelho/:id" element={<DeviceSale />} />
+                  <Route path="/aparelhos" element={<Devices />} />
                   <Route path="/vendas" element={<Sales />} />
                   <Route path="/estoque" element={<InventoryControl />} />
                   <Route path="/anotacoes" element={<Notes />} />

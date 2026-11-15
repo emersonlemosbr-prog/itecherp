@@ -1,4 +1,21 @@
-export const permissionLabels = { customers: 'Clientes', create_customer: 'Criar cliente', edit_customer: 'Editar cliente', orders: 'Ordens de Serviço', create_order: 'Criar OS', edit_order: 'Editar OS', finish_order: 'Finalizar OS', warranties: 'Garantias', inventory: 'Estoque', store_sales: 'Venda de Balcão', device_sales: 'Venda de Aparelho', credits: 'Fiados', android: 'Diagnóstico Android', notes: 'Bloco de Notas', printing: 'Impressões' }
+export const permissionLabels = {
+  customers: 'Clientes',
+  create_customer: 'Criar cliente',
+  edit_customer: 'Editar cliente',
+  orders: 'Ordens de Serviço',
+  create_order: 'Criar OS',
+  edit_order: 'Editar OS',
+  finish_order: 'Finalizar OS',
+  warranties: 'Garantias',
+  inventory: 'Estoque',
+  store_sales: 'Venda de Balcão',
+  device_sales: 'Venda de Aparelho',
+  devices: 'Aparelhos',
+  credits: 'Fiados',
+  android: 'Diagnóstico Android',
+  notes: 'Bloco de Notas',
+  printing: 'Impressões'
+}
 export function canAccess(user, path) {
   if (!user) return false
   const cleanPath = (path || '').split('?')[0].replace(/\/+$/, '') || '/'
@@ -30,6 +47,7 @@ export function canAccess(user, path) {
     estoque: 'inventory',
     vendas: 'store_sales',
     'venda-aparelho': 'device_sales',
+    aparelhos: 'devices',
     fiados: 'credits',
     'removedor-virus': 'android',
     anotacoes: 'notes'

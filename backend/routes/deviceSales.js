@@ -54,6 +54,7 @@ function normalizeItem(item, index) {
     quantity,
     unit_price: unitPrice,
     subtotal,
+    device_id: item.device_id ? Number(item.device_id) : null,
   }
 }
 
@@ -106,18 +107,21 @@ async function ensureCustomerForDeviceSale(payload, storeId = 1) {
 
   const normalizedPhone = String(payload.phone || '').replace(/\D/g, '')
 
-  const existingCustomer = await db.queryOne(`
-    SELECT *
-    FROM customers
-    WHERE store_id = $1 AND (($2 != '' AND phone = $2) OR ($2 != '' AND REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $2))
-  `, [storeId, normalizedPhone])
+  let existingCustomer = null;
+  if (normalizedPhone) {
+    existingCustomer = await db.queryOne(`
+      SELECT *
+      FROM customers
+      WHERE store_id = $1 AND (phone = $2 OR phone = $3)
+    `, [storeId, normalizedPhone, payload.phone || '']);
+  }
 
   if (existingCustomer) return existingCustomer
 
   const customer = await db.queryOne(`
     SELECT *
     FROM customers
-    WHERE store_id = $1 AND $2 != '' AND LOWER(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) = LOWER($2)
+    WHERE store_id = $1 AND LOWER(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')) = LOWER($2)
   `, [storeId, name])
 
   if (customer) return customer
@@ -407,6 +411,106 @@ router.post('/email', async (req, res) => {
   }
 })
 
+// Sincroniza vínculos de aparelhos físicos individuais do módulo Aparelhos
+async function syncLinkedDevices({ items, saleId, orderNumber, customerName, saleDate, userId, userName, storeId }) {
+  const currentDeviceIds = (items || [])
+    .map(it => Number(it.device_id))
+    .filter(id => id && Number.isInteger(id) && id > 0);
+
+  // 1. Aparelhos que estavam vinculados a esta venda anteriormente mas foram removidos nesta edição
+  const previouslyLinked = await db.query(`
+    SELECT id, model, brand, imei1
+    FROM devices
+    WHERE sale_id = $1 AND store_id = $2
+  `, [saleId, storeId]);
+
+  for (const prev of previouslyLinked) {
+    if (!currentDeviceIds.includes(prev.id)) {
+      await db.execute(`
+        UPDATE devices
+        SET
+          status = 'in_stock',
+          sale_id = NULL,
+          sale_order_number = NULL,
+          sale_customer_name = NULL,
+          sale_price_sold = NULL,
+          sold_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND store_id = $2
+      `, [prev.id, storeId]);
+
+      await db.execute(`
+        INSERT INTO device_history (
+          device_id, store_id, user_id, user_name, action_type, description, details
+        ) VALUES ($1, $2, $3, $4, 'sale_removed', $5, $6)
+      `, [
+        prev.id,
+        storeId,
+        userId,
+        userName,
+        `Item desvinculado da venda ${orderNumber} — retornado ao estoque`,
+        JSON.stringify({ sale_id: saleId, order_number: orderNumber })
+      ]);
+    }
+  }
+
+  // 2. Vincular os novos aparelhos vendidos
+  for (const item of (items || [])) {
+    if (!item.device_id) continue;
+    const devId = Number(item.device_id);
+
+    const dev = await db.queryOne(`
+      SELECT id, status, model, brand, imei1, sale_id
+      FROM devices
+      WHERE id = $1 AND store_id = $2
+    `, [devId, storeId]);
+
+    if (!dev) continue;
+
+    // Se já está vinculado a outra venda diferente desta, previne duplicidade
+    if (dev.sale_id && dev.sale_id !== saleId && dev.status === 'sold') {
+      const error = new Error(`O aparelho ${dev.brand} ${dev.model} (ID #${dev.id}) já foi vendido em outra operação.`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const soldPrice = Number(item.unit_price) || 0;
+    const soldDateIso = saleDate ? new Date(saleDate).toISOString() : new Date().toISOString();
+
+    await db.execute(`
+      UPDATE devices
+      SET
+        status = 'sold',
+        sale_id = $1,
+        sale_order_number = $2,
+        sale_customer_name = $3,
+        sale_price_sold = $4,
+        sold_at = $5,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $6 AND store_id = $7
+    `, [saleId, orderNumber, customerName, soldPrice, soldDateIso, devId, storeId]);
+
+    await db.execute(`
+      INSERT INTO device_history (
+        device_id, store_id, user_id, user_name, action_type, description, details
+      ) VALUES ($1, $2, $3, $4, 'sold', $5, $6)
+    `, [
+      devId,
+      storeId,
+      userId,
+      userName,
+      `Aparelho vendido via pedido ${orderNumber} para ${customerName || 'Cliente'} por R$ ${soldPrice.toFixed(2)}`,
+      JSON.stringify({
+        sale_id: saleId,
+        order_number: orderNumber,
+        customer_name: customerName,
+        sale_price: soldPrice,
+        sold_at: soldDateIso
+      })
+    ]);
+  }
+}
+
 async function persistDeviceSale({ user, payload, existing = null }) {
   const storeId = user.store_id || 1
   const normalizedPayload = normalizeSale(payload, existing || {})
@@ -511,6 +615,16 @@ async function persistDeviceSale({ user, payload, existing = null }) {
     })
 
     await syncRelatedStockAdjustments({ items: normalizedPayload.items, deviceSaleId: info.id, userId: user.id, trustedNow, storeId })
+    await syncLinkedDevices({
+      items: normalizedPayload.items,
+      saleId: info.id,
+      orderNumber: created.order_number,
+      customerName: created.customer_name,
+      saleDate: normalizedPayload.sale_date,
+      userId: user.id,
+      userName: user.name || user.full_name || 'Vendedor',
+      storeId
+    })
 
     emitDashboardRefresh({ source: 'device_sale', saleId: info.id, saleNumber: created.order_number })
     emitInventoryRefresh({ source: 'device_sale', saleId: info.id, saleNumber: created.order_number, storeSaleId })
@@ -540,6 +654,16 @@ async function persistDeviceSale({ user, payload, existing = null }) {
   })
 
   await syncRelatedStockAdjustments({ items: normalizedPayload.items, deviceSaleId, userId: user.id, trustedNow, storeId })
+  await syncLinkedDevices({
+    items: normalizedPayload.items,
+    saleId: deviceSaleId,
+    orderNumber: updatedSale.order_number,
+    customerName: updatedSale.customer_name,
+    saleDate: normalizedPayload.sale_date,
+    userId: user.id,
+    userName: user.name || user.full_name || 'Vendedor',
+    storeId
+  })
 
   emitDashboardRefresh({ source: 'device_sale_update', saleId: deviceSaleId, saleNumber: updatedSale.order_number })
   emitInventoryRefresh({ source: 'device_sale_update', saleId: deviceSaleId, saleNumber: updatedSale.order_number, storeSaleId })
@@ -576,6 +700,42 @@ router.delete('/:id', requireRole('admin'), async (req, res, next) => {
 
     const trustedNow = await getTrustedNowSqlite()
     await syncRelatedStockAdjustments({ items: [], deviceSaleId: existing.id, userId: req.user.id, trustedNow, storeId })
+
+    // Reverte aparelhos associados de volta para estoque
+    const linkedDevices = await db.query(`
+      SELECT id, model, brand, imei1
+      FROM devices
+      WHERE sale_id = $1 AND store_id = $2
+    `, [existing.id, storeId]);
+
+    for (const dev of linkedDevices) {
+      await db.execute(`
+        UPDATE devices
+        SET
+          status = 'in_stock',
+          sale_id = NULL,
+          sale_order_number = NULL,
+          sale_customer_name = NULL,
+          sale_price_sold = NULL,
+          sold_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND store_id = $2
+      `, [dev.id, storeId]);
+
+      await db.execute(`
+        INSERT INTO device_history (
+          device_id, store_id, user_id, user_name, action_type, description, details
+        ) VALUES ($1, $2, $3, $4, 'sale_cancelled', $5, $6)
+      `, [
+        dev.id,
+        storeId,
+        req.user.id,
+        req.user.name || req.user.full_name || 'Administrador',
+        `Venda de aparelho ${existing.order_number} excluída — aparelho devolvido ao estoque disponível`,
+        JSON.stringify({ sale_id: existing.id, order_number: existing.order_number })
+      ]);
+    }
+
     await db.execute(`
       UPDATE store_sales
       SET is_canceled = 1, canceled_at = $1, canceled_by = $2, cancel_reason = $3

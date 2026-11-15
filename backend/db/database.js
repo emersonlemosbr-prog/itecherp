@@ -196,19 +196,36 @@ function normalizeParams(args) {
   return Array.from(args);
 }
 
+function translateSqliteSqlAndParams(sql, params) {
+  const orderedParams = [];
+  const sqliteSql = sql.replace(/\$(\d+)/g, (_, numStr) => {
+    const idx = parseInt(numStr, 10) - 1;
+    if (idx >= 0 && idx < params.length) {
+      orderedParams.push(params[idx]);
+    } else {
+      orderedParams.push(null);
+    }
+    return '?';
+  }).replace(/\bFOR\s+UPDATE\b/gi, '');
+
+  // Se a query original já usava ?, mantém os params originais
+  const finalParams = sqliteSql.includes('?') && orderedParams.length > 0 ? orderedParams : params;
+  return { sqliteSql, finalParams };
+}
+
 /**
  * Executa uma consulta e retorna todas as linhas encontradas.
  */
 async function query(sql, ...args) {
   const params = normalizeParams(args);
   if (isSqliteMode) {
-    let sqliteSql = sql.replace(/\$\d+/g, '?');
+    const { sqliteSql, finalParams } = translateSqliteSqlAndParams(sql, params);
     const hasReturning = /\bRETURNING\b/i.test(sqliteSql);
     const cleanSql = sqliteSql.replace(/\s+RETURNING\s+[\w*,\s]+/i, '');
     const isMutation = /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\b/i.test(cleanSql);
     const stmt = sqliteDb.prepare(cleanSql);
     if (isMutation) {
-      const info = stmt.run(...params);
+      const info = stmt.run(...finalParams);
       const rows = [];
       rows.rowCount = info.changes || 0;
       rows.lastInsertRowid = info.lastInsertRowid || null;
@@ -220,7 +237,7 @@ async function query(sql, ...args) {
       }
       return rows;
     }
-    const rows = stmt.all(...params);
+    const rows = stmt.all(...finalParams);
     rows.rowCount = rows.length;
     return rows;
   }
@@ -245,9 +262,9 @@ async function queryOne(sql, ...args) {
 async function execute(sql, ...args) {
   const params = normalizeParams(args);
   if (isSqliteMode) {
-    const sqliteSql = sql.replace(/\$\d+/g, '?');
+    const { sqliteSql, finalParams } = translateSqliteSqlAndParams(sql, params);
     const stmt = sqliteDb.prepare(sqliteSql);
-    const info = stmt.run(...params);
+    const info = stmt.run(...finalParams);
     return {
       rowCount: info.changes || 0,
       changes: info.changes || 0,

@@ -246,6 +246,8 @@ function initSqliteTestSchema(db) {
       previous_quantity INTEGER NOT NULL,
       new_quantity INTEGER NOT NULL,
       reason TEXT,
+      reference_type TEXT,
+      reference_id INTEGER,
       user_id INTEGER REFERENCES users(id),
       user_name TEXT,
       created_at TEXT DEFAULT (datetime('now'))
@@ -339,6 +341,57 @@ function initSqliteTestSchema(db) {
       read_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1 REFERENCES stores(id) ON DELETE CASCADE,
+      brand TEXT NOT NULL,
+      model TEXT NOT NULL,
+      storage TEXT,
+      color TEXT,
+      category TEXT NOT NULL DEFAULT 'Smartphone',
+      imei1 TEXT,
+      imei2 TEXT,
+      serial_number TEXT,
+      condition TEXT NOT NULL DEFAULT 'Seminovo',
+      battery_health INTEGER,
+      cost_price REAL NOT NULL DEFAULT 0,
+      sell_price REAL NOT NULL DEFAULT 0,
+      supplier_id INTEGER REFERENCES stock_suppliers(id) ON DELETE SET NULL,
+      supplier_name TEXT,
+      entry_date TEXT NOT NULL DEFAULT (date('now')),
+      status TEXT NOT NULL DEFAULT 'in_stock',
+      reservation_notes TEXT,
+      reserved_at TEXT,
+      sold_at TEXT,
+      sale_id INTEGER REFERENCES device_sales(id) ON DELETE SET NULL,
+      sale_order_number TEXT,
+      sale_customer_name TEXT,
+      sale_price_sold REAL,
+      notes TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_devices_store_status ON devices(store_id, status);
+    CREATE INDEX IF NOT EXISTS idx_devices_store_brand_model ON devices(store_id, brand, model);
+    CREATE INDEX IF NOT EXISTS idx_devices_store_imei1 ON devices(store_id, imei1);
+    CREATE INDEX IF NOT EXISTS idx_devices_store_serial ON devices(store_id, serial_number);
+    CREATE INDEX IF NOT EXISTS idx_devices_store_entry_date ON devices(store_id, entry_date);
+
+    CREATE TABLE IF NOT EXISTS device_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+      store_id INTEGER NOT NULL DEFAULT 1 REFERENCES stores(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      user_name TEXT,
+      action_type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      details TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_device_history_device ON device_history(device_id);
+    CREATE INDEX IF NOT EXISTS idx_device_history_store ON device_history(store_id);
   `);
 
   // 2. Aplica migrações multi-tenant
