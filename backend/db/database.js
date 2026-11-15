@@ -395,6 +395,7 @@ function close() {
 const db = {
   pool,
   sqliteDb,
+  isSqlite: isSqliteMode,
   query,
   queryOne,
   execute,

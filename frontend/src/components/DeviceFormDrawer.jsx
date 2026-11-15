@@ -256,7 +256,24 @@ export default function DeviceFormDrawer({
       }
     } catch (err) {
       console.error('Erro ao salvar aparelho:', err);
-      setError(err.response?.data?.error || 'Erro ao salvar aparelho.');
+      const serverMessage = err.response?.data?.error || err.response?.data?.message;
+      const status = err.response?.status;
+
+      if (serverMessage) {
+        setError(serverMessage);
+      } else if (status === 401) {
+        setError('Sua sessão expirou. Por favor, faça login novamente.');
+      } else if (status === 403) {
+        setError('Você não tem permissão para cadastrar aparelhos ou a loja está suspensa.');
+      } else if (status === 409) {
+        setError('Aparelho duplicado: IMEI ou número de série já cadastrado nesta loja.');
+      } else if (status >= 500) {
+        setError('Erro interno no servidor ao salvar aparelho. Tente novamente em instantes.');
+      } else if (!err.response) {
+        setError('Falha de conexão com o servidor. Verifique sua conexão com a internet.');
+      } else {
+        setError('Erro ao salvar aparelho. Por favor, verifique os dados informados.');
+      }
     } finally {
       setLoading(false);
     }

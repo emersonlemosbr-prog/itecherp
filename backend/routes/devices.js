@@ -8,8 +8,106 @@ const router = express.Router();
 router.use(authenticate);
 router.use(enforceStoreSuspension);
 
+// Garante idempotentemente a existência das tabelas devices e device_history
+let devicesTablesEnsured = false;
+let devicesTablesPromise = null;
+
+async function ensureDevicesTables() {
+  if (devicesTablesEnsured) return;
+  if (devicesTablesPromise) return devicesTablesPromise;
+
+  devicesTablesPromise = (async () => {
+    try {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS devices (
+          id SERIAL PRIMARY KEY,
+          store_id INT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+          brand VARCHAR(100) NOT NULL,
+          model VARCHAR(150) NOT NULL,
+          storage VARCHAR(50),
+          color VARCHAR(80),
+          category VARCHAR(80) NOT NULL DEFAULT 'Smartphone',
+          imei1 VARCHAR(50),
+          imei2 VARCHAR(50),
+          serial_number VARCHAR(80),
+          condition VARCHAR(50) NOT NULL DEFAULT 'Seminovo',
+          battery_health INT,
+          cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          sell_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+          supplier_id INT REFERENCES stock_suppliers(id) ON DELETE SET NULL,
+          supplier_name VARCHAR(255),
+          entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
+          status VARCHAR(50) NOT NULL DEFAULT 'in_stock',
+          reservation_notes TEXT,
+          reserved_at TIMESTAMPTZ,
+          sold_at TIMESTAMPTZ,
+          sale_id INT REFERENCES device_sales(id) ON DELETE SET NULL,
+          sale_order_number VARCHAR(64),
+          sale_customer_name VARCHAR(255),
+          sale_price_sold NUMERIC(12, 2),
+          notes TEXT,
+          created_by INT REFERENCES users(id) ON DELETE SET NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS device_history (
+          id SERIAL PRIMARY KEY,
+          device_id INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+          store_id INT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+          user_id INT REFERENCES users(id) ON DELETE SET NULL,
+          user_name VARCHAR(255),
+          action_type VARCHAR(50) NOT NULL,
+          description TEXT NOT NULL,
+          details JSONB,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_devices_store_status ON devices(store_id, status);');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_devices_store_brand_model ON devices(store_id, brand, model);');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_devices_store_imei1 ON devices(store_id, imei1);');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_devices_store_serial ON devices(store_id, serial_number);');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_devices_store_entry_date ON devices(store_id, entry_date);');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_device_history_device ON device_history(device_id);');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_device_history_store ON device_history(store_id);');
+
+      // Se estiver em PostgreSQL, habilita RLS caso ainda não esteja habilitado
+      const isSqlite = Boolean(db.isSqlite || db.sqliteDb || (process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL));
+      if (!isSqlite) {
+        try {
+          await db.execute('ALTER TABLE IF EXISTS public.devices ENABLE ROW LEVEL SECURITY;');
+          await db.execute('ALTER TABLE IF EXISTS public.device_history ENABLE ROW LEVEL SECURITY;');
+        } catch (rlsErr) {
+          // Registro informativo se já estiver ativado ou permissão restrita
+          console.warn('[ENSURE_DEVICES_RLS_NOTICE]', rlsErr.message);
+        }
+      }
+
+      devicesTablesEnsured = true;
+    } catch (err) {
+      console.error('[ENSURE_DEVICES_TABLES_ERROR]', err);
+      throw err;
+    } finally {
+      devicesTablesPromise = null;
+    }
+  })();
+
+  return devicesTablesPromise;
+}
+
+function getDaysInStockSql(dateColumn = 'd.entry_date') {
+  // Em PostgreSQL ou SQLite: calcular a diferença em dias
+  const isSqlite = Boolean(db.isSqlite || db.sqliteDb || (process.env.NODE_ENV === 'test' && !process.env.DATABASE_URL));
+  if (isSqlite) {
+    return `ROUND(julianday('now') - julianday(${dateColumn}))`;
+  }
+  return `ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - ${dateColumn}::timestamp)) / 86400)`;
+}
+
 function normalizeString(val) {
-  if (val === null || val === undefined) return null;
   const str = String(val).trim();
   return str.length > 0 ? str : null;
 }
@@ -38,6 +136,7 @@ function canViewFinancials(user) {
 // -------------------------------------------------------------
 router.get('/', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const isFinancialAllowed = canViewFinancials(req.user);
 
@@ -60,9 +159,7 @@ router.get('/', async (req, res) => {
     const offset = (pageNum - 1) * limitNum;
 
     // 1. Contadores dinâmicos para as abas e métricas do topo
-    // SQLite/PostgreSQL date diff:
-    // Para SQLite: julianday('now') - julianday(entry_date) > 60
-    // Para Postgres: CURRENT_DATE - entry_date > 60
+    const daysInStockRaw = getDaysInStockSql('entry_date');
     const rawCounts = await db.query(`
       SELECT
         COUNT(CASE WHEN status != 'archived' THEN 1 END) AS count_all,
@@ -71,10 +168,10 @@ router.get('/', async (req, res) => {
         COUNT(CASE WHEN status = 'unavailable' THEN 1 END) AS count_unavailable,
         COUNT(CASE WHEN status = 'sold' THEN 1 END) AS count_sold,
         COUNT(CASE WHEN status = 'archived' THEN 1 END) AS count_archived,
-        COUNT(CASE WHEN status = 'in_stock' AND (julianday('now') - julianday(entry_date)) > 60 THEN 1 END) AS count_older_60,
+        COUNT(CASE WHEN status = 'in_stock' AND (${daysInStockRaw}) > 60 THEN 1 END) AS count_older_60,
         SUM(CASE WHEN status IN ('in_stock', 'reserved') THEN cost_price ELSE 0 END) AS stock_cost_total,
         SUM(CASE WHEN status = 'in_stock' THEN (sell_price - cost_price) ELSE 0 END) AS potential_profit_total,
-        SUM(CASE WHEN status = 'in_stock' AND (julianday('now') - julianday(entry_date)) > 60 THEN cost_price ELSE 0 END) AS older_60_cost_total
+        SUM(CASE WHEN status = 'in_stock' AND (${daysInStockRaw}) > 60 THEN cost_price ELSE 0 END) AS older_60_cost_total
       FROM devices
       WHERE store_id = $1
     `, [storeId]);
@@ -111,7 +208,8 @@ router.get('/', async (req, res) => {
     } else if (tab === 'unavailable') {
       conditions.push("d.status = 'unavailable'");
     } else if (tab === 'older_60') {
-      conditions.push("d.status = 'in_stock' AND (julianday('now') - julianday(d.entry_date)) > 60");
+      const daysInStockD = getDaysInStockSql('d.entry_date');
+      conditions.push(`d.status = 'in_stock' AND (${daysInStockD}) > 60`);
     } else if (tab === 'sold') {
       conditions.push("d.status = 'sold'");
     } else if (tab === 'archived') {
@@ -229,7 +327,7 @@ router.get('/', async (req, res) => {
         d.created_by,
         d.created_at,
         d.updated_at,
-        ROUND(julianday('now') - julianday(d.entry_date)) AS days_in_stock,
+        ${getDaysInStockSql('d.entry_date')} AS days_in_stock,
         s.name AS linked_supplier_name
       FROM devices d
       LEFT JOIN stock_suppliers s ON s.id = d.supplier_id
@@ -261,6 +359,7 @@ router.get('/', async (req, res) => {
 // -------------------------------------------------------------
 router.get('/brands', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const rows = await db.query(`
       SELECT DISTINCT brand
@@ -284,13 +383,14 @@ router.get('/brands', async (req, res) => {
 // -------------------------------------------------------------
 router.get('/:id', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const isFinancialAllowed = canViewFinancials(req.user);
 
     const device = await db.queryOne(`
       SELECT
         d.*,
-        ROUND(julianday('now') - julianday(d.entry_date)) AS days_in_stock,
+        ${getDaysInStockSql('d.entry_date')} AS days_in_stock,
         s.name AS linked_supplier_name
       FROM devices d
       LEFT JOIN stock_suppliers s ON s.id = d.supplier_id
@@ -333,6 +433,7 @@ router.get('/:id', async (req, res) => {
 // -------------------------------------------------------------
 router.post('/', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const userId = req.user.id || null;
     const userName = req.user.name || req.user.full_name || 'Usuário';
@@ -407,42 +508,44 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // Inserção
-    const info = await db.execute(`
-      INSERT INTO devices (
-        store_id, brand, model, storage, color, category,
-        imei1, imei2, serial_number, condition, battery_health,
-        cost_price, sell_price, supplier_id, supplier_name,
-        entry_date, status, notes, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'in_stock', $17, $18)
-      RETURNING id
-    `, [
-      storeId, brand, model, storage, color, category,
-      imei1, imei2, serialNumber, condition, batteryHealth,
-      costPrice, sellPrice, supplierId, supplierName,
-      entryDate, notes, userId
-    ]);
+    // Inserção e histórico em transação atômica
+    const newDevice = await db.transaction(async (tx) => {
+      const info = await tx.execute(`
+        INSERT INTO devices (
+          store_id, brand, model, storage, color, category,
+          imei1, imei2, serial_number, condition, battery_health,
+          cost_price, sell_price, supplier_id, supplier_name,
+          entry_date, status, notes, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'in_stock', $17, $18)
+        RETURNING id
+      `, [
+        storeId, brand, model, storage, color, category,
+        imei1, imei2, serialNumber, condition, batteryHealth,
+        costPrice, sellPrice, supplierId, supplierName,
+        entryDate, notes, userId
+      ]);
 
-    const newId = info.id;
+      const newId = info.id;
 
-    // Registrar histórico
-    await db.execute(`
-      INSERT INTO device_history (
-        device_id, store_id, user_id, user_name, action_type, description, details
-      ) VALUES ($1, $2, $3, $4, 'created', $5, $6)
-    `, [
-      newId,
-      storeId,
-      userId,
-      userName,
-      'Aparelho cadastrado no estoque',
-      JSON.stringify({ brand, model, storage, color, imei1, serialNumber, costPrice, sellPrice })
-    ]);
+      await tx.execute(`
+        INSERT INTO device_history (
+          device_id, store_id, user_id, user_name, action_type, description, details
+        ) VALUES ($1, $2, $3, $4, 'created', $5, $6)
+      `, [
+        newId,
+        storeId,
+        userId,
+        userName,
+        'Aparelho cadastrado no estoque',
+        JSON.stringify({ brand, model, storage, color, imei1, serialNumber, costPrice, sellPrice })
+      ]);
 
-    emitInventoryRefresh({ source: 'device_create', deviceId: newId });
+      return tx.queryOne('SELECT * FROM devices WHERE id = $1', [newId]);
+    });
 
-    const created = await db.queryOne('SELECT * FROM devices WHERE id = $1', [newId]);
-    res.status(201).json(created);
+    emitInventoryRefresh({ source: 'device_create', deviceId: newDevice.id });
+
+    res.status(201).json(newDevice);
   } catch (err) {
     console.error('[DEVICES_POST_ERROR]', err);
     res.status(500).json({ error: 'Erro ao cadastrar aparelho: ' + err.message });
@@ -454,6 +557,7 @@ router.post('/', async (req, res) => {
 // -------------------------------------------------------------
 router.put('/:id', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const userId = req.user.id || null;
     const userName = req.user.name || req.user.full_name || 'Usuário';
@@ -540,52 +644,55 @@ router.put('/:id', async (req, res) => {
     if (imei1 !== existing.imei1) changes.push(`IMEI 1: ${existing.imei1 || '-'} -> ${imei1 || '-'}`);
     if (imei2 !== existing.imei2) changes.push(`IMEI 2: ${existing.imei2 || '-'} -> ${imei2 || '-'}`);
 
-    await db.execute(`
-      UPDATE devices
-      SET
-        brand = $1,
-        model = $2,
-        storage = $3,
-        color = $4,
-        category = $5,
-        imei1 = $6,
-        imei2 = $7,
-        serial_number = $8,
-        condition = $9,
-        battery_health = $10,
-        cost_price = $11,
-        sell_price = $12,
-        supplier_id = $13,
-        supplier_name = $14,
-        entry_date = $15,
-        notes = $16,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = $17 AND store_id = $18
-    `, [
-      brand, model, storage, color, category,
-      imei1, imei2, serialNumber, condition, batteryHealth,
-      costPrice, sellPrice, supplierId, supplierName,
-      entryDate, notes, existing.id, storeId
-    ]);
-
-    if (changes.length > 0) {
-      await db.execute(`
-        INSERT INTO device_history (
-          device_id, store_id, user_id, user_name, action_type, description, details
-        ) VALUES ($1, $2, $3, $4, 'updated', $5, $6)
+    const updated = await db.transaction(async (tx) => {
+      await tx.execute(`
+        UPDATE devices
+        SET
+          brand = $1,
+          model = $2,
+          storage = $3,
+          color = $4,
+          category = $5,
+          imei1 = $6,
+          imei2 = $7,
+          serial_number = $8,
+          condition = $9,
+          battery_health = $10,
+          cost_price = $11,
+          sell_price = $12,
+          supplier_id = $13,
+          supplier_name = $14,
+          entry_date = $15,
+          notes = $16,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $17 AND store_id = $18
       `, [
-        existing.id,
-        storeId,
-        userId,
-        userName,
-        `Aparelho atualizado: ${changes.join(', ')}`,
-        JSON.stringify(changes)
+        brand, model, storage, color, category,
+        imei1, imei2, serialNumber, condition, batteryHealth,
+        costPrice, sellPrice, supplierId, supplierName,
+        entryDate, notes, existing.id, storeId
       ]);
-    }
+
+      if (changes.length > 0) {
+        await tx.execute(`
+          INSERT INTO device_history (
+            device_id, store_id, user_id, user_name, action_type, description, details
+          ) VALUES ($1, $2, $3, $4, 'updated', $5, $6)
+        `, [
+          existing.id,
+          storeId,
+          userId,
+          userName,
+          `Aparelho atualizado: ${changes.join(', ')}`,
+          JSON.stringify(changes)
+        ]);
+      }
+
+      return tx.queryOne('SELECT * FROM devices WHERE id = $1', [existing.id]);
+    });
 
     emitInventoryRefresh({ source: 'device_update', deviceId: existing.id });
 
-    const updated = await db.queryOne('SELECT * FROM devices WHERE id = $1', [existing.id]);
     res.json(updated);
   } catch (err) {
     console.error('[DEVICES_PUT_ERROR]', err);
@@ -598,6 +705,7 @@ router.put('/:id', async (req, res) => {
 // -------------------------------------------------------------
 router.post('/:id/reserve', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const userId = req.user.id || null;
     const userName = req.user.name || req.user.full_name || 'Usuário';
@@ -652,6 +760,7 @@ router.post('/:id/reserve', async (req, res) => {
 // -------------------------------------------------------------
 router.post('/:id/cancel-reservation', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const userId = req.user.id || null;
     const userName = req.user.name || req.user.full_name || 'Usuário';
@@ -700,6 +809,7 @@ router.post('/:id/cancel-reservation', async (req, res) => {
 // -------------------------------------------------------------
 router.post('/:id/status', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const userId = req.user.id || null;
     const userName = req.user.name || req.user.full_name || 'Usuário';
@@ -753,6 +863,7 @@ router.post('/:id/status', async (req, res) => {
 // -------------------------------------------------------------
 router.post('/:id/archive', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const userId = req.user.id || null;
     const userName = req.user.name || req.user.full_name || 'Usuário';
@@ -793,6 +904,7 @@ router.post('/:id/archive', async (req, res) => {
 // -------------------------------------------------------------
 router.post('/:id/restore', async (req, res) => {
   try {
+    await ensureDevicesTables();
     const storeId = req.user.store_id || 1;
     const userId = req.user.id || null;
     const userName = req.user.name || req.user.full_name || 'Usuário';
