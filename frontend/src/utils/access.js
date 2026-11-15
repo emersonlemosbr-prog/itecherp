@@ -31,7 +31,7 @@ export function canAccess(user, path) {
   // Rotas comuns e ferramentas operacionais acessíveis a qualquer usuário autenticado
   if (cleanPath === '' || cleanPath === '/' || cleanPath === '/dashboard') return true
   if (cleanPath === '/historico-financeiro') return true
-  if (cleanPath === '/calculadora-maquininha' || cleanPath === '/pagbank-calculadora') return true
+  if (cleanPath === '/taxa-de-juros' || cleanPath === '/calculadora-maquininha' || cleanPath === '/pagbank-calculadora') return true
   if (cleanPath === '/valor-frontais' || cleanPath === '/calculo-peca') return true
   if (cleanPath === '/peliculas-compativeis') return true
 

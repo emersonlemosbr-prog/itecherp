@@ -5,7 +5,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Wrench, ShieldCheck, HandCoins, X, Smartphone, NotebookPen,
   ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings,
-  User, Bell, UserCircle, LogOut
+  User, Bell, UserCircle, LogOut, Percent
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBodyScrollLock } from '../UI/ModalFrame'
@@ -24,7 +24,7 @@ const sidebarSections = [
   {
     title: 'Financeiro',
     items: [
-      { to: '/calculadora-maquininha', label: 'Calculadora Maquininha', icon: Smartphone },
+      { to: '/taxa-de-juros', label: 'Taxa de Juros', icon: Percent },
       { to: '/garantias', label: 'Garantias', icon: ShieldCheck },
       { to: '/fiados', label: 'Pendentes', icon: HandCoins },
       { to: '/historico-financeiro', label: 'Histórico Financeiro', icon: FolderArchive },

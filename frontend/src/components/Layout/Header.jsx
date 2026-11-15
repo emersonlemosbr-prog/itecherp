@@ -15,7 +15,7 @@ const menuItems = [
   { to: '/ordens', label: 'Ordens de Serviço' },
   { to: '/garantias', label: 'Garantias' },
   { to: '/fiados', label: 'Pendentes' },
-  { to: '/calculadora-maquininha', label: 'Calculadora Maquininha' },
+  { to: '/taxa-de-juros', label: 'Taxa de Juros' },
   { to: '/valor-frontais', label: 'Peças' },
   { to: '/peliculas-compativeis', label: 'Películas Compatíveis' },
   { to: '/venda-aparelho', label: 'Venda de Aparelho' },
