@@ -114,7 +114,19 @@ function normalizeString(val) {
 
 function normalizeNumber(val, defaultVal = 0) {
   if (val === null || val === undefined || val === '') return defaultVal;
-  const num = Number(val);
+  if (typeof val === 'number') return Number.isNaN(val) ? defaultVal : val;
+  const str = String(val).trim();
+  if (str.includes(',') && str.includes('.')) {
+    // Formato brasileiro com milhar: 1.500,00 -> remove pontos e substitui vírgula
+    const clean = str.replace(/\./g, '').replace(',', '.');
+    const num = Number(clean);
+    return Number.isNaN(num) ? defaultVal : num;
+  }
+  if (str.includes(',')) {
+    const num = Number(str.replace(',', '.'));
+    return Number.isNaN(num) ? defaultVal : num;
+  }
+  const num = Number(str);
   return Number.isNaN(num) ? defaultVal : num;
 }
 

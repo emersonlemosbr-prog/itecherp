@@ -218,6 +218,23 @@ export default function DeviceFormDrawer({
 
       const selectedSupplier = suppliers.find(s => String(s.id) === String(supplierId));
 
+      const parseMoney = (val) => {
+        if (val === null || val === undefined || val === '') return 0;
+        if (typeof val === 'number') return isNaN(val) ? 0 : val;
+        const str = String(val).trim();
+        if (str.includes(',') && str.includes('.')) {
+          const clean = str.replace(/\./g, '').replace(',', '.');
+          const num = parseFloat(clean);
+          return isNaN(num) ? 0 : num;
+        }
+        if (str.includes(',')) {
+          const num = parseFloat(str.replace(',', '.'));
+          return isNaN(num) ? 0 : num;
+        }
+        const num = parseFloat(str);
+        return isNaN(num) ? 0 : num;
+      };
+
       const payload = {
         brand: activeBrand,
         model: model.trim(),
@@ -229,8 +246,8 @@ export default function DeviceFormDrawer({
         serial_number: cleanSerial || null,
         condition,
         battery_health: hasBatteryInfo ? Number(batteryHealth) : null,
-        cost_price: costPrice ? Number(costPrice.replace(',', '.')) : 0,
-        sell_price: sellPrice ? Number(sellPrice.replace(',', '.')) : 0,
+        cost_price: parseMoney(costPrice),
+        sell_price: parseMoney(sellPrice),
         supplier_id: supplierId ? Number(supplierId) : null,
         supplier_name: selectedSupplier ? selectedSupplier.name : null,
         entry_date: entryDate,
@@ -256,7 +273,13 @@ export default function DeviceFormDrawer({
       }
     } catch (err) {
       console.error('Erro ao salvar aparelho:', err);
-      const serverMessage = err.response?.data?.error || err.response?.data?.message;
+      const rawData = err.response?.data;
+      const serverMessage = 
+        (typeof rawData === 'string' && rawData.trim().length > 0 ? rawData : null) ||
+        rawData?.error ||
+        rawData?.message ||
+        (Array.isArray(rawData?.errors) ? rawData.errors.map(e => e.msg || e.message).join(', ') : null);
+
       const status = err.response?.status;
 
       if (serverMessage) {
