@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Store, User, Mail, Lock, Phone, CheckCircle2, XCircle, AlertCircle, ArrowRight, ShieldCheck, KeyRound } from 'lucide-react'
 import api from '../api/client'
+import itechLogo from '../assets/itech-logo.png'
 
 export default function RegisterStore() {
   const navigate = useNavigate()
@@ -352,15 +353,31 @@ export default function RegisterStore() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-4 sm:p-6 py-10">
-      <div className="w-full max-w-xl">
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a] text-white p-4 sm:p-6 py-10 relative overflow-hidden font-['Inter',sans-serif]">
+      {/* Glow de fundo inspirado na Landing Page */}
+      <div
+        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[550px] rounded-full blur-3xl opacity-35"
+        style={{ background: 'radial-gradient(circle, rgba(255, 190, 11, 0.15) 0%, transparent 70%)' }}
+      />
+      <div
+        className="pointer-events-none absolute -bottom-40 right-10 w-[600px] h-[450px] rounded-full blur-3xl opacity-20"
+        style={{ background: 'radial-gradient(circle, rgba(255, 190, 11, 0.12) 0%, transparent 70%)' }}
+      />
+
+      <div className="w-full max-w-xl relative z-10">
         {/* Cabeçalho */}
-        <div className="flex flex-col items-center mb-8 text-center text-white">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center mb-4 shadow-xl shadow-amber-500/20 ring-4 ring-amber-500/20">
-            <Store size={32} className="text-white" />
-          </div>
-          <h1 className="font-display font-extrabold text-3xl tracking-tight">Criar Conta no iTech ERP</h1>
-          <p className="text-slate-400 text-sm mt-2 max-w-md">
+        <div className="flex flex-col items-center mb-6 text-center text-white">
+          <Link to="/" className="inline-block transition-transform hover:scale-105 mb-3" title="iTech ERP">
+            <img
+              src={itechLogo}
+              alt="iTech ERP"
+              className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-[0_8px_24px_rgba(255,190,11,0.25)] rounded-2xl"
+            />
+          </Link>
+          <h1 className="font-['Sora',sans-serif] font-extrabold text-2xl sm:text-3xl tracking-tight text-white">
+            Criar Conta no iTech <span className="text-[#FFBE0B]">ERP</span>
+          </h1>
+          <p className="text-gray-400 text-xs sm:text-sm mt-2 max-w-md">
             Cadastre sua assistência técnica e gerencie clientes, ordens de serviço, vendas e estoque em uma plataforma completa.
           </p>
         </div>
@@ -368,33 +385,33 @@ export default function RegisterStore() {
         {/* Modal de vinculação segura de conta Google existente */}
         {linkModal.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-            <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
-              <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400">
+            <div className="w-full max-w-md bg-[#111111] border border-white/[0.08] rounded-2xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3 border-b border-white/[0.06] pb-3">
+                <div className="w-10 h-10 rounded-xl bg-[#FFBE0B]/10 border border-[#FFBE0B]/20 flex items-center justify-center text-[#FFBE0B]">
                   <KeyRound size={20} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-base">Confirmar Propriedade da Conta</h3>
-                  <p className="text-xs text-slate-400">Loja: {linkModal.storeName}</p>
+                  <h3 className="font-['Sora',sans-serif] font-bold text-white text-base">Confirmar Propriedade da Conta</h3>
+                  <p className="text-xs text-gray-400">Loja: {linkModal.storeName}</p>
                 </div>
               </div>
 
-              <p className="text-xs text-slate-300 leading-relaxed">
+              <p className="text-xs text-gray-300 leading-relaxed">
                 Já existe uma loja registrada com o e-mail <strong>{linkModal.email}</strong>. Por segurança, digite sua senha de acesso ao ERP para vincular sua conta Google.
               </p>
 
               {linkModal.error && (
-                <div className="p-3 bg-rose-950/50 border border-rose-800 rounded-xl text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0" />
+                <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0 text-rose-400" />
                   <span>{linkModal.error}</span>
                 </div>
               )}
 
               <form onSubmit={handleConfirmLink} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Senha da Loja</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">Senha da Loja</label>
                   <div className="relative">
-                    <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
                       type="password"
                       required
@@ -402,7 +419,7 @@ export default function RegisterStore() {
                       value={linkModal.password}
                       onChange={(e) => setLinkModal(prev => ({ ...prev, password: e.target.value }))}
                       placeholder="Sua senha atual"
-                      className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                     />
                   </div>
                 </div>
@@ -411,14 +428,14 @@ export default function RegisterStore() {
                   <button
                     type="button"
                     onClick={() => setLinkModal(prev => ({ ...prev, isOpen: false }))}
-                    className="flex-1 py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-gray-300 text-xs font-semibold transition-colors cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={linkModal.loading}
-                    className="flex-1 py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-[#FFBE0B] hover:bg-[#f5b400] text-[#0a0a0a] text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 transition-all cursor-pointer"
                   >
                     {linkModal.loading ? 'Confirmando...' : 'Vincular e Entrar'}
                   </button>
@@ -430,8 +447,8 @@ export default function RegisterStore() {
 
         {/* Modal/Aviso de Configuração Google */}
         {googleInfoOpen && (
-          <div className="mb-6 p-4 rounded-xl border border-amber-500/30 bg-amber-950/40 text-amber-200 text-sm space-y-2">
-            <div className="flex items-center gap-2 font-semibold text-amber-300">
+          <div className="mb-6 p-4 rounded-xl border border-[#FFBE0B]/30 bg-[#FFBE0B]/10 text-amber-200 text-sm space-y-2">
+            <div className="flex items-center gap-2 font-semibold text-[#FFBE0B]">
               <AlertCircle size={18} />
               Integração com Google Pronta para Ativação
             </div>
@@ -444,7 +461,7 @@ export default function RegisterStore() {
             <button
               type="button"
               onClick={() => setGoogleInfoOpen(false)}
-              className="text-xs underline text-amber-400 hover:text-amber-300 pt-1 cursor-pointer"
+              className="text-xs underline text-[#FFBE0B] hover:text-[#f5b400] pt-1 cursor-pointer"
             >
               Entendido, fechar aviso
             </button>
@@ -452,7 +469,7 @@ export default function RegisterStore() {
         )}
 
         {/* Card Principal */}
-        <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-black/50 space-y-6">
+        <div className="bg-[#111111] border border-white/[0.08] hover:border-[#FFBE0B]/30 rounded-2xl p-6 sm:p-8 shadow-2xl shadow-black/80 space-y-6 transition-all duration-200">
 
           {/* Banner de Conta Google Verificada */}
           {googleVerified && (
@@ -476,14 +493,14 @@ export default function RegisterStore() {
           {/* Alternância de Métodos de Cadastro */}
           {!googleVerified && (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3 p-1 bg-slate-950/60 rounded-xl border border-slate-800/80">
+              <div className="grid grid-cols-2 gap-3 p-1.5 bg-[#1a1a1a] rounded-xl border border-white/[0.06]">
                 <button
                   type="button"
                   onClick={() => setAuthMethod('email')}
-                  className={`py-2.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+                  className={`py-2.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                     authMethod === 'email'
-                      ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                      : 'text-slate-400 hover:text-white'
+                      ? 'bg-[#FFBE0B] text-[#0a0a0a] shadow-md shadow-[#FFBE0B]/20 font-bold'
+                      : 'text-gray-400 hover:text-white'
                   }`}
                 >
                   <Mail size={16} />
@@ -493,10 +510,10 @@ export default function RegisterStore() {
                   type="button"
                   onClick={handleGoogleClick}
                   disabled={googleLoading}
-                  className="py-2.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all bg-white hover:bg-slate-100 text-slate-800 shadow-sm cursor-pointer disabled:opacity-50"
+                  className="py-2.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all bg-white hover:bg-gray-100 text-gray-900 shadow-sm cursor-pointer disabled:opacity-50"
                 >
                   {googleLoading ? (
-                    <div className="w-4 h-4 border-2 border-slate-800 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <svg className="w-4 h-4" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -515,18 +532,18 @@ export default function RegisterStore() {
           )}
 
           {error && (
-            <div className="flex items-start gap-2.5 text-sm text-rose-300 bg-rose-950/50 border border-rose-800/60 rounded-xl p-3.5 animate-fadeIn">
+            <div className="flex items-start gap-2.5 text-xs text-rose-300 bg-rose-950/40 border border-rose-800/60 rounded-xl p-3.5 animate-fadeIn">
               <AlertCircle size={18} className="mt-0.5 shrink-0 text-rose-400" />
-              <span>{error}</span>
+              <span className="leading-relaxed">{error}</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Bloco 1: Dados da Loja e Proprietário */}
             <div className="space-y-4">
-              <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Store size={14} className="text-amber-500" />
+              <div className="border-b border-white/[0.06] pb-2 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                  <Store size={14} className="text-[#FFBE0B]" />
                   1. Dados da Sua Empresa
                 </span>
                 {googleVerified && (
@@ -538,39 +555,39 @@ export default function RegisterStore() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Nome da Loja *</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">Nome da Loja *</label>
                   <input
                     type="text"
                     required
                     value={storeName}
                     onChange={(e) => setStoreName(e.target.value)}
                     placeholder="Ex: TechFix Assistência"
-                    className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                    className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Nome do Proprietário *</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">Nome do Proprietário *</label>
                   <input
                     type="text"
                     required
                     value={ownerName}
                     onChange={(e) => setOwnerName(e.target.value)}
                     placeholder="Seu nome completo"
-                    className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                    className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">
                     E-mail Principal *
                     {googleVerified && (
                       <span className="ml-1 text-[10px] text-emerald-400 font-semibold">(Verificado pelo Google)</span>
                     )}
                   </label>
                   <div className="relative">
-                    <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
                       type="email"
                       required
@@ -578,26 +595,26 @@ export default function RegisterStore() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="proprietario@email.com"
-                      className={`w-full border rounded-lg pl-9 pr-3 py-2 text-sm transition-all ${
+                      className={`w-full border rounded-xl pl-10 pr-3.5 py-2.5 text-sm transition-all ${
                         googleVerified
-                          ? 'bg-slate-900 border-emerald-500/40 text-emerald-300 cursor-not-allowed'
-                          : 'bg-slate-950/70 border-slate-700/80 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500'
+                          ? 'bg-[#1a1a1a] border-emerald-500/40 text-emerald-300 cursor-not-allowed'
+                          : 'bg-[#1a1a1a] border-white/[0.08] text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B]'
                       }`}
                     />
                   </div>
-                  <span className="text-[11px] text-slate-400 mt-1 block">Usado para identificação e recuperação de acesso.</span>
+                  <span className="text-[11px] text-gray-400 mt-1 block">Usado para identificação e recuperação de acesso.</span>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">WhatsApp / Telefone *</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">WhatsApp / Telefone *</label>
                   <div className="relative">
-                    <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Phone size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
                       type="text"
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="(00) 00000-0000"
-                      className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                      className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                     />
                   </div>
                 </div>
@@ -606,30 +623,30 @@ export default function RegisterStore() {
 
             {/* Bloco 2: Acesso Operacional ao ERP */}
             <div className="space-y-4 pt-2">
-              <div className="border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <ShieldCheck size={14} className="text-amber-500" />
+              <div className="border-b border-white/[0.06] pb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                  <ShieldCheck size={14} className="text-[#FFBE0B]" />
                   2. Acesso Operacional ao ERP
                 </span>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">
                   Nickname de Acesso (Login no Sistema) *
                 </label>
                 <div className="relative">
-                  <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input
                     type="text"
                     required
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
                     placeholder="Ex: joao.techfix"
-                    className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-10 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                    className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                   />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
                     {nicknameStatus.checking && (
-                      <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-[#FFBE0B] border-t-transparent rounded-full animate-spin" />
                     )}
                     {!nicknameStatus.checking && nicknameStatus.available === true && (
                       <CheckCircle2 size={16} className="text-emerald-400" />
@@ -650,7 +667,7 @@ export default function RegisterStore() {
                       <button
                         type="button"
                         onClick={() => checkNicknameAvailability(nickname)}
-                        className="text-[11px] text-amber-400 hover:text-amber-300 underline font-medium cursor-pointer ml-2"
+                        className="text-[11px] text-[#FFBE0B] hover:text-[#f5b400] underline font-medium cursor-pointer ml-2"
                       >
                         Tentar novamente
                       </button>
@@ -661,30 +678,30 @@ export default function RegisterStore() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Senha do ERP *</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">Senha do ERP *</label>
                   <div className="relative">
-                    <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
                       type="password"
                       required
                       value={erpPassword}
                       onChange={(e) => setErpPassword(e.target.value)}
                       placeholder="Mínimo 6 caracteres"
-                      className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                      className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Confirmar Senha *</label>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">Confirmar Senha *</label>
                   <div className="relative">
-                    <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
                       type="password"
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Repita a senha"
-                      className="w-full bg-slate-950/70 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                      className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                     />
                   </div>
                 </div>
@@ -693,21 +710,21 @@ export default function RegisterStore() {
 
             {/* Termos de Privacidade e Consentimento LGPD */}
             <div className="pt-2">
-              <label className="flex items-start gap-3 p-3 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 cursor-pointer transition-colors">
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-[#1a1a1a] border border-white/[0.06] hover:border-white/[0.12] cursor-pointer transition-colors">
                 <input
                   type="checkbox"
                   required
                   checked={acceptPrivacy}
                   onChange={(e) => setAcceptPrivacy(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500/30 shrink-0 cursor-pointer accent-amber-500"
+                  className="mt-0.5 h-4 w-4 rounded border-white/[0.2] bg-[#111111] text-[#FFBE0B] focus:ring-[#FFBE0B]/30 shrink-0 cursor-pointer accent-[#FFBE0B]"
                 />
-                <span className="text-xs text-slate-300 leading-snug">
+                <span className="text-xs text-gray-300 leading-snug">
                   Li e concordo com a{' '}
                   <Link
                     to="/politica-privacidade"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-amber-400 hover:text-amber-300 underline font-medium"
+                    className="text-[#FFBE0B] hover:text-[#f5b400] underline font-medium"
                     onClick={(e) => e.stopPropagation()}
                   >
                     Política de Privacidade (LGPD)
@@ -721,11 +738,11 @@ export default function RegisterStore() {
               <button
                 type="submit"
                 disabled={loading || !acceptPrivacy || nicknameStatus.checking || nicknameStatus.available === false}
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="w-full py-3 px-4 rounded-xl bg-[#FFBE0B] hover:bg-[#f5b400] text-[#0a0a0a] font-bold text-sm tracking-wide shadow-lg shadow-[#FFBE0B]/20 flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 {loading ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-[#0a0a0a] border-t-transparent rounded-full animate-spin" />
                     Criando sua Loja...
                   </>
                 ) : (
@@ -739,21 +756,21 @@ export default function RegisterStore() {
           </form>
 
           {/* Links no Rodapé */}
-          <div className="pt-4 border-t border-slate-800 text-center text-xs text-slate-400 space-y-2">
+          <div className="pt-4 border-t border-white/[0.06] text-center text-xs text-gray-400 space-y-2">
             <p>
               Já possui uma loja cadastrada?{' '}
-              <Link to="/login" className="text-amber-400 hover:text-amber-300 font-semibold transition-colors">
-                Fazer login no ERP
+              <Link to="/login" className="text-[#FFBE0B] hover:text-[#f5b400] font-semibold transition-colors">
+                Fazer login no iTech ERP
               </Link>
             </p>
             <p>
               Esqueceu sua senha?{' '}
-              <Link to="/recuperar-senha" className="text-slate-400 hover:text-slate-200 underline transition-colors">
+              <Link to="/recuperar-senha" className="text-gray-400 hover:text-gray-200 underline transition-colors">
                 Recuperar acesso
               </Link>
             </p>
-            <div className="pt-2 text-[11px] text-slate-500">
-              <Link to="/politica-privacidade" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400 underline">
+            <div className="pt-2 text-[11px] text-gray-500">
+              <Link to="/politica-privacidade" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 underline">
                 Política de Privacidade e Proteção de Dados (LGPD)
               </Link>
             </div>
