@@ -2,6 +2,8 @@ module.exports = function migrateUserMaster(db) {
   const hasColumn = (table, column) => db.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column);
   db.transaction(() => {
     if (!hasColumn('users', 'is_master')) db.exec('ALTER TABLE users ADD COLUMN is_master INTEGER NOT NULL DEFAULT 0');
+    if (!hasColumn('users', 'email')) db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique_lower ON users(LOWER(TRIM(email))) WHERE email IS NOT NULL AND TRIM(email) <> ""');
     const snapshotColumns = [
       ['service_orders', 'created_by_name_snapshot'], ['cash_withdrawals', 'created_by_name_snapshot'],
       ['device_sales', 'created_by_name_snapshot'], ['stock_products', 'created_by_name_snapshot'],

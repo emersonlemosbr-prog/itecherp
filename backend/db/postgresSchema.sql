@@ -118,11 +118,14 @@ CREATE TABLE IF NOT EXISTS users (
     job_title VARCHAR(120) NOT NULL DEFAULT '',
     permissions TEXT NOT NULL DEFAULT '{}',
     session_version INT NOT NULL DEFAULT 0,
+    email VARCHAR(255),
     last_access TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_users_store_id ON users(store_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_master ON users(store_id, is_master) WHERE is_master = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique_lower ON users (LOWER(TRIM(email))) WHERE email IS NOT NULL AND TRIM(email) <> '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255);
 
 -- ----------------------------------------------------------------------------
 -- 7. CONFIGURAÇÕES DO SISTEMA (Documento JSON por Loja com versionamento)

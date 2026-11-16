@@ -391,6 +391,67 @@ router.post('/google', async (req, res) => {
 });
 
 /**
+ * Localiza contas associadas a um e-mail cadastrado (proprietário de loja ou usuário de acesso).
+ * Trata defensivamente a ausência da coluna users.email caso a migration correspondente
+ * ainda não tenha sido executada em produção, evitando erros 500 não tratados.
+ */
+async function findAccountsByEmail(cleanEmail) {
+  const accounts = [];
+
+  // 1. Buscar loja pelo owner_email
+  try {
+    const store = await db.queryOne(
+      'SELECT id, name, owner_name, owner_email FROM stores WHERE LOWER(owner_email) = $1',
+      [cleanEmail]
+    );
+    if (store) {
+      accounts.push({
+        type: 'owner',
+        id: store.id,
+        storeId: store.id,
+        email: store.owner_email,
+        name: store.owner_name || store.name
+      });
+    }
+  } catch (err) {
+    console.error('[AUTH_FIND_OWNER_ERROR]', err?.message || err);
+  }
+
+  // 2. Buscar usuário pelo users.email (tratamento defensivo se coluna não existir)
+  try {
+    const users = await db.query(
+      'SELECT id, store_id, full_name, username, email FROM users WHERE LOWER(email) = $1 AND active = 1',
+      [cleanEmail]
+    );
+    if (Array.isArray(users)) {
+      for (const u of users) {
+        accounts.push({
+          type: 'user',
+          id: u.id,
+          storeId: u.store_id,
+          email: u.email,
+          name: u.full_name || u.username
+        });
+      }
+    }
+  } catch (err) {
+    const msg = String(err?.message || '').toLowerCase();
+    const isMissingColumn =
+      err?.code === '42703' ||
+      msg.includes('no such column') ||
+      msg.includes('does not exist');
+
+    if (isMissingColumn) {
+      console.warn('[AUTH_WARN] Coluna users.email não identificada no banco atual. Recuperação restrita ao proprietário da loja até a execução da migration.');
+    } else {
+      console.error('[AUTH_FIND_USER_ERROR]', err?.message || err);
+    }
+  }
+
+  return accounts;
+}
+
+/**
  * Solicitação de recuperação de senha segura
  */
 router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
@@ -404,16 +465,6 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(cleanEmail)) {
       // Retorna a mesma mensagem genérica por segurança
-      return res.json({
-        success: true,
-        message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
-      });
-    }
-
-    const store = await db.queryOne('SELECT id, name, owner_name, owner_email FROM stores WHERE LOWER(owner_email) = $1', [cleanEmail]);
-
-    if (!store) {
-      // Por segurança, retorna mensagem genérica para não revelar existência de e-mail (timing mitigado)
       return res.json({
         success: true,
         message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
@@ -439,6 +490,32 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
       acctRecord.count += 1;
     }
 
+    const accounts = await findAccountsByEmail(cleanEmail);
+
+    if (accounts.length === 0) {
+      // Por segurança, retorna mensagem genérica para não revelar existência de e-mail (timing mitigado)
+      return res.json({
+        success: true,
+        message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
+      });
+    }
+
+    if (accounts.length > 1) {
+      // Ambiguidade detectada (múltiplas contas com o mesmo e-mail por dados legados/inconsistentes)
+      // Por segurança extrema, rejeita a geração do token para evitar comprometer a conta errada,
+      // loga o alerta interno e retorna a mesma resposta genérica ao solicitante.
+      console.warn('[FORGOT_PASSWORD_AMBIGUITY] Ambiguidade na recuperação de senha:', {
+        email: cleanEmail,
+        count: accounts.length
+      });
+      return res.json({
+        success: true,
+        message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
+      });
+    }
+
+    const targetAccount = accounts[0];
+
     // Gerar token criptograficamente seguro com validade estrita de 30 minutos
     const resetToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
@@ -447,11 +524,11 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
     // Invalidar tokens antigos pendentes deste e-mail
     await db.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE LOWER(email) = $1 AND used_at IS NULL', [cleanEmail]);
 
-    // Salvar novo token (apenas o hash SHA-256)
+    // Salvar novo token (apenas o hash SHA-256) com target_type ('owner' ou 'user') e target_id
     await db.execute(`
       INSERT INTO password_reset_tokens (email, token_hash, target_type, target_id, expires_at)
-      VALUES ($1, $2, 'owner', $3, $4)
-    `, [cleanEmail, tokenHash, store.id, expiresAt]);
+      VALUES ($1, $2, $3, $4, $5)
+    `, [cleanEmail, tokenHash, targetAccount.type, targetAccount.id, expiresAt]);
 
     // Montar URL pública oficial para redefinição
     const appBaseUrl = getAppBaseUrl();
@@ -460,7 +537,7 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
 
     // Renderizar template oficial aprovado (HTML + Texto Puro)
     const { html, text } = renderPasswordResetEmail({
-      userName: store.owner_name || store.name,
+      userName: targetAccount.name,
       resetUrl,
       logoUrl,
       systemName: 'iTech ERP',
@@ -666,5 +743,7 @@ router.get('/me', authenticate, (req, res) => {
     } : null
   });
 });
+
+router.findAccountsByEmail = findAccountsByEmail;
 
 module.exports = router;

@@ -24,9 +24,12 @@ function initSqliteTestSchema(db) {
       job_title TEXT,
       permissions TEXT,
       session_version INTEGER DEFAULT 0,
+      email TEXT,
       last_access TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique_lower ON users(LOWER(TRIM(email))) WHERE email IS NOT NULL AND TRIM(email) <> '';
 
     CREATE TABLE IF NOT EXISTS frontals_price_list (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

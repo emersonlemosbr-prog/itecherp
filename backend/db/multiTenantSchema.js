@@ -153,8 +153,11 @@ module.exports = function migrateMultiTenant(db) {
         if (!hasColumn(table, 'store_id')) {
           db.exec(`ALTER TABLE ${table} ADD COLUMN store_id INTEGER REFERENCES stores(id)`);
         }
-        // Para a tabela users, evitar violação da constraint de único master por loja ao migrar para a loja 1
         if (table === 'users') {
+          if (!hasColumn('users', 'email')) {
+            db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+          }
+          db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique_lower ON users(LOWER(TRIM(email))) WHERE email IS NOT NULL AND TRIM(email) <> ""');
           const hasMasterInStore1 = db.prepare('SELECT id FROM users WHERE store_id = 1 AND is_master = 1').get();
           if (hasMasterInStore1) {
             db.exec('UPDATE users SET is_master = 0 WHERE store_id IS NULL AND is_master = 1');

@@ -105,7 +105,7 @@ export default function ResetPassword() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <p className="text-gray-400 text-xs leading-relaxed">
-                Digite a nova senha para a sua conta de proprietário e usuário administrador da loja.
+                Digite a nova senha para restabelecer o acesso seguro à sua conta no iTech ERP.
               </p>
 
               <div>
@@ -117,7 +117,7 @@ export default function ResetPassword() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="proprietario@email.com"
+                  placeholder="seu.email@exemplo.com"
                   className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
                 />
               </div>

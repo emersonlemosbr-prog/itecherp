@@ -74,18 +74,53 @@ async function save(req, res) {
         throw new Error('Permissões inválidas.');
       }
 
+      // Validação e normalização de e-mail individual
+      let cleanEmail = null;
+      if (req.body.email !== undefined) {
+        const rawEmail = String(req.body.email || '').trim().toLowerCase();
+        if (rawEmail) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(rawEmail) || rawEmail.length > 255) {
+            throw new Error('Informe um endereço de e-mail válido.');
+          }
+
+          // 1. Verificar conflito com o e-mail de proprietário de qualquer loja
+          const storeConflict = await tx.queryOne('SELECT id, name FROM stores WHERE LOWER(owner_email) = $1', [rawEmail]);
+          if (storeConflict) {
+            const err = new Error('Este endereço de e-mail já está em uso como e-mail de proprietário de loja.');
+            err.statusCode = 409;
+            throw err;
+          }
+
+          // 2. Verificar duplicidade com outro usuário (na mesma loja ou em outra loja)
+          const userConflict = await tx.queryOne(
+            'SELECT id, store_id FROM users WHERE LOWER(TRIM(email)) = $1 AND id <> $2',
+            [rawEmail, id || -1]
+          );
+          if (userConflict) {
+            const err = new Error('Este endereço de e-mail já está cadastrado para outro usuário.');
+            err.statusCode = 409;
+            throw err;
+          }
+
+          cleanEmail = rawEmail;
+        }
+      } else if (old) {
+        cleanEmail = old.email || null;
+      }
+
       const hash = b.password ? bcrypt.hashSync(b.password, 12) : old.password_hash;
       let userId = id;
 
       if (old) {
         await tx.query(
-          'UPDATE users SET full_name = $1, username = $2, role = $3, active = $4, job_title = $5, permissions = $6, password_hash = $7, session_version = session_version + 1 WHERE id = $8 AND store_id = $9',
-          [b.full_name.trim(), b.username, role, active, String(b.job_title || '').slice(0, 100), JSON.stringify(permissions), hash, id, storeId]
+          'UPDATE users SET full_name = $1, username = $2, role = $3, active = $4, job_title = $5, permissions = $6, password_hash = $7, email = $8, session_version = session_version + 1 WHERE id = $9 AND store_id = $10',
+          [b.full_name.trim(), b.username, role, active, String(b.job_title || '').slice(0, 100), JSON.stringify(permissions), hash, cleanEmail, id, storeId]
         );
       } else {
         const insertRes = await tx.queryOne(
-          'INSERT INTO users (store_id, full_name, username, role, active, job_title, permissions, password_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-          [storeId, b.full_name.trim(), b.username, role, active, String(b.job_title || '').slice(0, 100), JSON.stringify(permissions), hash]
+          'INSERT INTO users (store_id, full_name, username, role, active, job_title, permissions, password_hash, email) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+          [storeId, b.full_name.trim(), b.username, role, active, String(b.job_title || '').slice(0, 100), JSON.stringify(permissions), hash, cleanEmail]
         );
         userId = insertRes.id;
       }
@@ -101,8 +136,16 @@ async function save(req, res) {
 
     res.status(id ? 200 : 201).json(result);
   } catch (error) {
+    let message = error.message;
+    if (String(error.message).includes('unique') || String(error.message).includes('UNIQUE')) {
+      if (String(error.message).toLowerCase().includes('email')) {
+        message = 'Este endereço de e-mail já está em uso por outro usuário.';
+      } else {
+        message = 'Já existe um usuário com esse nome de usuário.';
+      }
+    }
     res.status(error.statusCode || (String(error.message).includes('unique') || String(error.message).includes('UNIQUE') ? 409 : 400)).json({
-      error: String(error.message).includes('unique') || String(error.message).includes('UNIQUE') ? 'Já existe um usuário com esse nome de usuário.' : error.message
+      error: message
     });
   }
 }

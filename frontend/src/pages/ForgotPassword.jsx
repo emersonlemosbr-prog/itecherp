@@ -87,12 +87,12 @@ export default function ForgotPassword() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <p className="text-gray-400 text-xs leading-relaxed">
-                Informe o e-mail cadastrado como proprietário da sua loja para receber as instruções e o link seguro de redefinição.
+                Informe o e-mail cadastrado na sua conta para receber as instruções de redefinição de senha.
               </p>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">
-                  E-mail do Proprietário
+                  E-mail cadastrado
                 </label>
                 <div className="relative">
                   <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500" />
