@@ -32,6 +32,7 @@ const CreditAccounts = lazy(() => import('./pages/CreditAccounts'))
 const PagbankCalculator = lazy(() => import('./pages/PagbankCalculator'))
 const FrontalsCalculator = lazy(() => import('./pages/FrontalsCalculator'))
 const DeviceSale = lazy(() => import('./pages/DeviceSale'))
+const DeviceSalePOS = lazy(() => import('./pages/DeviceSalePOS'))
 const Devices = lazy(() => import('./pages/Devices'))
 const Sales = lazy(() => import('./pages/Sales'))
 const InventoryControl = lazy(() => import('./pages/InventoryControl'))
@@ -156,8 +157,9 @@ export default function App() {
                   <Route path="/calculo-peca" element={<Navigate to="/valor-frontais" replace />} />
                   <Route path="/valor-frontais" element={<FrontalsCalculator />} />
                   <Route path="/peliculas-compativeis" element={<CompatibleScreenProtectors />} />
-                  <Route path="/venda-aparelho" element={<DeviceSale />} />
+                  <Route path="/venda-aparelho" element={<DeviceSalePOS />} />
                   <Route path="/venda-aparelho/:id" element={<DeviceSale />} />
+                  <Route path="/pdv" element={<DeviceSalePOS />} />
                   <Route path="/aparelhos" element={<Devices />} />
                   <Route path="/vendas" element={<Sales />} />
                   <Route path="/estoque" element={<InventoryControl />} />

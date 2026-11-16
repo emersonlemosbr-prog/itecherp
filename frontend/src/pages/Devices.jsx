@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Smartphone, Plus, Search, Filter, ArrowUpDown, Clock,
   DollarSign, TrendingUp, AlertTriangle, CheckCircle2, ChevronRight,
-  Eye, RefreshCw, Layers, ShieldCheck
+  Eye, RefreshCw, Layers, ShieldCheck, ShoppingCart
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/client';
@@ -480,13 +480,25 @@ export default function Devices() {
 
                       {/* Ações */}
                       <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleOpenDetail(dev)}
-                          className="p-1.5 text-slate-400 hover:text-brand-600 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-ink-800 transition-colors"
-                          title="Ver detalhes"
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {dev.status === 'in_stock' && (
+                            <button
+                              onClick={() => handleSellNow(dev)}
+                              className="px-2.5 py-1 btn-primary text-xs font-bold rounded-lg flex items-center gap-1 shadow-sm"
+                              title="Vender este aparelho no PDV"
+                            >
+                              <ShoppingCart className="w-3.5 h-3.5" />
+                              Vender
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleOpenDetail(dev)}
+                            className="p-1.5 text-slate-400 hover:text-brand-600 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-ink-800 transition-colors"
+                            title="Ver detalhes"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

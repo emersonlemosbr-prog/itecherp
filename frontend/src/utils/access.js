@@ -34,6 +34,7 @@ export function canAccess(user, path) {
   if (cleanPath === '/taxa-de-juros' || cleanPath === '/calculadora-maquininha' || cleanPath === '/pagbank-calculadora') return true
   if (cleanPath === '/valor-frontais' || cleanPath === '/calculo-peca') return true
   if (cleanPath === '/peliculas-compativeis') return true
+  if (cleanPath === '/pdv' || cleanPath.startsWith('/venda-aparelho')) return true
 
   // Verificações específicas de impressão e edição
   if (/imprimir/.test(cleanPath) && !p.printing) return false

@@ -18,7 +18,6 @@ const menuItems = [
   { to: '/taxa-de-juros', label: 'Taxa de Juros' },
   { to: '/valor-frontais', label: 'Peças' },
   { to: '/peliculas-compativeis', label: 'Películas Compatíveis' },
-  { to: '/venda-aparelho', label: 'Venda de Aparelho' },
   { to: '/vendas', label: 'Venda de Caixa' },
   { to: '/estoque', label: 'Controle de Estoque' },
   { to: '/anotacoes', label: 'Anotações' },
