@@ -100,6 +100,8 @@ api.interceptors.response.use(
       if (!window.location.pathname.startsWith('/login') &&
           !window.location.pathname.startsWith('/cadastro') &&
           !window.location.pathname.startsWith('/recuperar-senha') &&
+          !window.location.pathname.startsWith('/redefinir-senha') &&
+          !window.location.pathname.startsWith('/reset-password') &&
           !window.location.pathname.startsWith('/admin-plataforma')) {
         localStorage.removeItem('itech_token')
         localStorage.removeItem('itech_user')

@@ -126,7 +126,7 @@ function getOfficialLogoUrl() {
   if (envLogo && envLogo.trim()) {
     return envLogo.trim();
   }
-  return `${getAppBaseUrl()}/itech-logo.png`;
+  return `${getAppBaseUrl()}/assets/itech-logo-DFKQ73Sa.png`;
 }
 
 module.exports = {

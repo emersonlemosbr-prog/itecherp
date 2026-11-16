@@ -121,6 +121,7 @@ export default function App() {
         <Route path="/loja-suspensa" element={<SuspendedStore />} />
         <Route path="/recuperar-senha" element={<ForgotPassword />} />
         <Route path="/redefinir-senha" element={<ResetPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/admin-plataforma" element={<PlatformAdmin />} />
         <Route path="/politica-privacidade" element={<PrivacyPolicy />} />
 

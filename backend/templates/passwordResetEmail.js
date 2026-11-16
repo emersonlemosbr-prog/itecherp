@@ -15,7 +15,7 @@
 function renderPasswordResetEmail({
   userName = '',
   resetUrl = 'https://erp.itechcelulareinformatica.com.br/redefinir-senha?token=DEMO_TOKEN',
-  logoUrl = 'https://erp.itechcelulareinformatica.com.br/itech-logo.png',
+  logoUrl = 'https://erp.itechcelulareinformatica.com.br/assets/itech-logo-DFKQ73Sa.png',
   systemName = 'iTech ERP',
   validityText = '60 minutos'
 } = {}) {

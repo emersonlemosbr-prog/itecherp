@@ -108,19 +108,21 @@ export default function ResetPassword() {
                 Digite a nova senha para restabelecer o acesso seguro à sua conta no iTech ERP.
               </p>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">
-                  E-mail Cadastrado
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seu.email@exemplo.com"
-                  className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
-                />
-              </div>
+              {(!tokenFromUrl || !emailFromUrl) && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-1.5 tracking-wide">
+                    E-mail Cadastrado
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="seu.email@exemplo.com"
+                    className="w-full bg-[#1a1a1a] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#FFBE0B] focus:ring-1 focus:ring-[#FFBE0B] transition-all"
+                  />
+                </div>
+              )}
 
               {!tokenFromUrl && (
                 <div>
