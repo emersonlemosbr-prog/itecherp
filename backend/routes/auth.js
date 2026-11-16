@@ -14,6 +14,8 @@ const {
   getPlatformContactInfo
 } = require('../services/multiTenantService');
 const googleAuthService = require('../services/googleAuthService');
+const { renderPasswordResetEmail } = require('../templates/passwordResetEmail');
+const { sendEmail, getAppBaseUrl, getOfficialLogoUrl } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -40,6 +42,37 @@ function loginRateLimit(req, res, next) {
     const retrySec = Math.ceil((record.reset - now) / 1000);
     res.set('Retry-After', String(retrySec));
     return res.status(429).json({ error: `Muitas tentativas de login. Tente novamente em ${retrySec} segundos.` });
+  }
+
+  next();
+}
+
+// Rate limiting para solicitação de recuperação de senha por IP (5 requisições por 15 minutos)
+const forgotAttempts = new Map();
+// Rate limiting por conta/e-mail para evitar bombardeio e DoS de caixa de entrada (3 solicitações ativas a cada 10 minutos)
+const accountForgotAttempts = new Map();
+
+function forgotPasswordRateLimit(req, res, next) {
+  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000; // 15 minutos
+  const maxAttempts = 5;
+
+  for (const [key, val] of forgotAttempts) {
+    if (val.reset <= now) forgotAttempts.delete(key);
+  }
+
+  let record = forgotAttempts.get(ip);
+  if (!record) {
+    record = { count: 0, reset: now + windowMs };
+    forgotAttempts.set(ip, record);
+  }
+
+  record.count += 1;
+  if (record.count > maxAttempts) {
+    const retrySec = Math.ceil((record.reset - now) / 1000);
+    res.set('Retry-After', String(retrySec));
+    return res.status(429).json({ error: `Muitas solicitações de recuperação. Tente novamente em ${Math.ceil(retrySec / 60)} minutos.` });
   }
 
   next();
@@ -360,7 +393,7 @@ router.post('/google', async (req, res) => {
 /**
  * Solicitação de recuperação de senha segura
  */
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email || !email.trim()) {
@@ -368,41 +401,91 @@ router.post('/forgot-password', async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const store = await db.queryOne('SELECT id, name, owner_name, owner_email FROM stores WHERE LOWER(owner_email) = $1', [cleanEmail]);
-
-    if (!store) {
-      // Por segurança, retorna mensagem genérica para não revelar existência de e-mail
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      // Retorna a mesma mensagem genérica por segurança
       return res.json({
         success: true,
-        message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram geradas.'
+        message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
       });
     }
 
-    // Gerar token criptográfico com validade de 1 hora
+    const store = await db.queryOne('SELECT id, name, owner_name, owner_email FROM stores WHERE LOWER(owner_email) = $1', [cleanEmail]);
+
+    if (!store) {
+      // Por segurança, retorna mensagem genérica para não revelar existência de e-mail (timing mitigado)
+      return res.json({
+        success: true,
+        message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
+      });
+    }
+
+    // Rate limiting por conta: evita que um atacante bombardeie o e-mail da vítima
+    const now = Date.now();
+    for (const [key, val] of accountForgotAttempts) {
+      if (val.reset <= now) accountForgotAttempts.delete(key);
+    }
+    const acctRecord = accountForgotAttempts.get(cleanEmail);
+    if (acctRecord && acctRecord.count >= 3 && acctRecord.reset > now) {
+      // Retorna sucesso genérico para não vazar a existência da conta
+      return res.json({
+        success: true,
+        message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
+      });
+    }
+    if (!acctRecord) {
+      accountForgotAttempts.set(cleanEmail, { count: 1, reset: now + 10 * 60 * 1000 });
+    } else {
+      acctRecord.count += 1;
+    }
+
+    // Gerar token criptograficamente seguro com validade estrita de 30 minutos
     const resetToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hora
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutos
 
-    // Invalidar tokens antigos deste e-mail
+    // Invalidar tokens antigos pendentes deste e-mail
     await db.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE LOWER(email) = $1 AND used_at IS NULL', [cleanEmail]);
 
-    // Salvar novo token
+    // Salvar novo token (apenas o hash SHA-256)
     await db.execute(`
       INSERT INTO password_reset_tokens (email, token_hash, target_type, target_id, expires_at)
       VALUES ($1, $2, 'owner', $3, $4)
     `, [cleanEmail, tokenHash, store.id, expiresAt]);
 
-    // Log para testes e conferência quando SMTP não configurado
-    const resetLink = `http://localhost:5174/recuperar-senha?token=${resetToken}`;
-    console.log('========================================================');
-    console.log(`[RECUPERAÇÃO DE ACESSO] E-mail: ${cleanEmail}`);
-    console.log(`[RECUPERAÇÃO DE ACESSO] Loja: ${store.name}`);
-    console.log(`[RECUPERAÇÃO DE ACESSO] Link de Redefinição: ${resetLink}`);
-    console.log('========================================================');
+    // Montar URL pública oficial para redefinição
+    const appBaseUrl = getAppBaseUrl();
+    const resetUrl = `${appBaseUrl}/redefinir-senha?token=${resetToken}&email=${encodeURIComponent(cleanEmail)}`;
+    const logoUrl = getOfficialLogoUrl();
+
+    // Renderizar template oficial aprovado (HTML + Texto Puro)
+    const { html, text } = renderPasswordResetEmail({
+      userName: store.owner_name || store.name,
+      resetUrl,
+      logoUrl,
+      systemName: 'iTech ERP',
+      validityText: '30 minutos'
+    });
+
+    // Enviar e-mail de forma assíncrona/segura via Resend
+    const sendResult = await sendEmail({
+      to: cleanEmail,
+      subject: 'Redefinição de senha — iTech ERP',
+      html,
+      text
+    });
+
+    if (!sendResult.success) {
+      console.error('[FORGOT_PASSWORD_EMAIL_FAILURE]', {
+        email: cleanEmail,
+        error: sendResult.error
+      });
+      // Não expor o erro detalhado ao solicitante para evitar enumeração e vazamento
+    }
 
     res.json({
       success: true,
-      message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram geradas.'
+      message: 'Se o e-mail informado estiver cadastrado, as instruções para redefinição foram enviadas.'
     });
   } catch (err) {
     console.error('[FORGOT_PASSWORD_ERROR]', err);
@@ -415,18 +498,24 @@ router.post('/forgot-password', async (req, res) => {
  */
 router.post('/reset-password', async (req, res) => {
   try {
-    const { token, newPassword, confirmPassword } = req.body;
-    if (!token || !newPassword) {
+    const { token, newPassword, confirmPassword, new_password } = req.body;
+    const finalPassword = newPassword || new_password;
+
+    if (!token || !finalPassword) {
       return res.status(400).json({ error: 'Dados incompletos para redefinição.' });
     }
-    if (newPassword.length < 8) {
+
+    if (finalPassword.length < 8) {
       return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres.' });
     }
-    if (newPassword !== confirmPassword) {
+
+    if (confirmPassword && finalPassword !== confirmPassword) {
       return res.status(400).json({ error: 'A confirmação de senha não confere.' });
     }
 
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const cleanToken = String(token).trim();
+    const tokenHash = crypto.createHash('sha256').update(cleanToken).digest('hex');
+
     const resetRecord = await db.queryOne(`
       SELECT * FROM password_reset_tokens
       WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
@@ -436,18 +525,30 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'Link de redefinição expirado ou inválido.' });
     }
 
-    const hash = bcrypt.hashSync(newPassword, 12);
+    const hash = bcrypt.hashSync(finalPassword, 12);
 
     await db.transaction(async (tx) => {
-      // Atualizar senha do proprietário e do usuário master do ERP daquela loja
-      if (resetRecord.target_type === 'owner') {
-        await tx.execute('UPDATE stores SET owner_password_hash = $1 WHERE id = $2', [hash, resetRecord.target_id]);
-        // Atualiza a senha do usuário master correspondente no ERP
-        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE store_id = $2 AND is_master = 1', [hash, resetRecord.target_id]);
+      // Re-verificar atomicamente dentro da transação para impedir concorrência/reutilização simultânea
+      const checkAtomic = await tx.queryOne(`
+        SELECT id, target_type, target_id FROM password_reset_tokens
+        WHERE id = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+      `, [resetRecord.id]);
+
+      if (!checkAtomic) {
+        throw new Error('TOKEN_ALREADY_USED');
       }
 
-      // Marcar token como utilizado
-      await tx.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [resetRecord.id]);
+      // Atualizar senha do proprietário e do usuário master do ERP daquela loja
+      if (checkAtomic.target_type === 'owner') {
+        await tx.execute('UPDATE stores SET owner_password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, checkAtomic.target_id]);
+        // Atualiza a senha do usuário master e invalida sessões anteriores via session_version
+        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP WHERE store_id = $2 AND is_master = 1', [hash, checkAtomic.target_id]);
+      } else if (checkAtomic.target_type === 'user') {
+        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, checkAtomic.target_id]);
+      }
+
+      // Consumir o token marcando used_at
+      await tx.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [checkAtomic.id]);
     });
 
     res.json({
@@ -455,9 +556,13 @@ router.post('/reset-password', async (req, res) => {
       message: 'Senha redefinida com sucesso! Você já pode acessar o sistema.'
     });
   } catch (err) {
+    if (err.message === 'TOKEN_ALREADY_USED') {
+      return res.status(400).json({ error: 'Este link de redefinição já foi utilizado ou expirou.' });
+    }
     console.error('[RESET_PASSWORD_ERROR]', err);
     res.status(400).json({ error: 'Erro ao redefinir senha.' });
   }
+});
 });
 
 /**
