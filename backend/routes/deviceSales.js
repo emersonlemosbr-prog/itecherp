@@ -177,12 +177,21 @@ async function createOrUpdateStoreSaleReference({ deviceSaleId, paymentMethod, t
     const unitPrice = Number(item.unit_price) || 0
     const subtotal = quantity * unitPrice
 
-    if (!product || quantity <= 0) continue
+    if (quantity <= 0) continue
+
+    let costPrice = 0
+    if (product) {
+      costPrice = Number(product.cost_price) || 0
+    } else if (item.device_id) {
+      const devRow = await db.queryOne('SELECT cost_price FROM devices WHERE id = $1 AND store_id = $2', [item.device_id, storeId])
+      if (devRow) costPrice = Number(devRow.cost_price) || 0
+    }
 
     itemRows.push({
-      product_id: product.id,
-      product_name: String(product.name || item.product || '').trim() || 'Aparelho',
-      product_code: String(product.code || ''),
+      product_id: product ? product.id : null,
+      product_name: String(product?.name || item.product || '').trim() || 'Aparelho',
+      product_code: String(product?.code || (item.device_id ? `DEV-${item.device_id}` : '')),
+      cost_price: costPrice,
       quantity,
       unit_price: unitPrice,
       subtotal,
@@ -207,8 +216,8 @@ async function createOrUpdateStoreSaleReference({ deviceSaleId, paymentMethod, t
     for (const item of itemRows) {
       await db.execute(`
         INSERT INTO store_sale_items (store_id, sale_id, product_id, product_name, product_code, cost_price, unit_price, quantity, subtotal, is_canceled)
-        VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, 0)
-      `, [storeId, existingStoreSale.id, item.product_id, item.product_name, item.product_code, item.unit_price, item.quantity, item.subtotal])
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0)
+      `, [storeId, existingStoreSale.id, item.product_id, item.product_name, item.product_code, item.cost_price, item.unit_price, item.quantity, item.subtotal])
     }
 
     return existingStoreSale.id
@@ -236,8 +245,8 @@ async function createOrUpdateStoreSaleReference({ deviceSaleId, paymentMethod, t
     await db.execute(`
       INSERT INTO store_sale_items (
         store_id, sale_id, product_id, product_name, product_code, cost_price, unit_price, quantity, subtotal, is_canceled
-      ) VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, 0)
-    `, [storeId, saleInfo.id, item.product_id, item.product_name, item.product_code, item.unit_price, item.quantity, item.subtotal])
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0)
+    `, [storeId, saleInfo.id, item.product_id, item.product_name, item.product_code, item.cost_price, item.unit_price, item.quantity, item.subtotal])
   }
 
   return saleInfo.id

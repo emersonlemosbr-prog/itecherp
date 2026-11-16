@@ -480,7 +480,7 @@ CREATE TABLE IF NOT EXISTS store_sale_items (
     id SERIAL PRIMARY KEY,
     store_id INT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
     sale_id INT NOT NULL REFERENCES store_sales(id) ON DELETE CASCADE,
-    product_id INT NOT NULL REFERENCES stock_products(id),
+    product_id INT REFERENCES stock_products(id) ON DELETE SET NULL,
     product_name VARCHAR(255) NOT NULL,
     product_code VARCHAR(64),
     cost_price NUMERIC(12,2) NOT NULL DEFAULT 0.00,

@@ -67,14 +67,24 @@ async function cancelSaleWithReversal({ saleId, trustedNow, cancelReason, user }
     if (!sale) throw new Error('SALE_NOT_FOUND');
     if (Number(sale.is_canceled) === 1) throw new Error('SALE_ALREADY_CANCELED');
 
+    const isDeviceSale = typeof sale.notes === 'string' && sale.notes.startsWith('device_sale:');
+    let deviceSaleId = null;
+    if (isDeviceSale) {
+      deviceSaleId = parseInt(sale.notes.replace('device_sale:', ''), 10) || null;
+    }
+
     const items = await tx.query(`
       SELECT * FROM store_sale_items
       WHERE sale_id = $1 AND COALESCE(is_canceled, 0) = 0
       ORDER BY id ASC
     `, [saleId]);
-    if (!items.length) throw new Error('SALE_ITEMS_NOT_FOUND');
+
+    // Se não houver itens em store_sale_items e não for device_sale, erro
+    if (!items.length && !deviceSaleId) throw new Error('SALE_ITEMS_NOT_FOUND');
 
     for (const item of items) {
+      if (!item.product_id) continue;
+
       let stockLevel = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [item.product_id]);
       if (!stockLevel) {
         // Se o produto existir mas não tiver registro em stock_levels, inicializa com 0
@@ -102,12 +112,58 @@ async function cancelSaleWithReversal({ saleId, trustedNow, cancelReason, user }
         `Estorno de venda ${sale.sale_number}${cancelReason ? ` - ${cancelReason}` : ''}`,
         saleId,
         user.id,
-        user.full_name,
+        user.full_name || user.name || 'Sistema',
         trustedNow
       ]);
     }
 
-    await tx.execute('UPDATE store_sale_items SET is_canceled = 1, canceled_at = $1 WHERE sale_id = $2', [trustedNow, saleId]);
+    // Se a venda for originada de uma venda de aparelhos (device_sale), reverte os aparelhos físicos vinculados
+    if (deviceSaleId) {
+      const linkedDevices = await tx.query(`
+        SELECT id, model, brand, imei1
+        FROM devices
+        WHERE sale_id = $1 AND store_id = $2
+      `, [deviceSaleId, storeId]);
+
+      for (const dev of linkedDevices) {
+        await tx.execute(`
+          UPDATE devices
+          SET
+            status = 'in_stock',
+            sale_id = NULL,
+            sale_order_number = NULL,
+            sale_customer_name = NULL,
+            sale_price_sold = NULL,
+            sold_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1 AND store_id = $2
+        `, [dev.id, storeId]);
+
+        await tx.execute(`
+          INSERT INTO device_history (
+            device_id, store_id, user_id, user_name, action_type, description, details
+          ) VALUES ($1, $2, $3, $4, 'sale_cancelled', $5, $6)
+        `, [
+          dev.id,
+          storeId,
+          user.id,
+          user.full_name || user.name || 'Administrador',
+          `Venda ${sale.sale_number} estornada — aparelho devolvido ao estoque disponível`,
+          JSON.stringify({ store_sale_id: sale.id, device_sale_id: deviceSaleId, sale_number: sale.sale_number, reason: cancelReason })
+        ]);
+      }
+
+      // Remove os movimentos de estoque originados dessa device_sale
+      await tx.execute("DELETE FROM stock_movements WHERE reference_type = 'device_sale' AND reference_id = $1 AND store_id = $2", [deviceSaleId, storeId]);
+
+      // Remove a venda de aparelho correspondente para manter paridade com DELETE /api/device-sales/:id
+      await tx.execute('DELETE FROM device_sales WHERE id = $1 AND store_id = $2', [deviceSaleId, storeId]);
+    }
+
+    if (items.length) {
+      await tx.execute('UPDATE store_sale_items SET is_canceled = 1, canceled_at = $1 WHERE sale_id = $2', [trustedNow, saleId]);
+    }
+
     await tx.execute(`
       UPDATE store_sales
       SET is_canceled = 1, canceled_at = $1, canceled_by = $2, cancel_reason = $3
@@ -368,6 +424,7 @@ router.post('/finalize', async (req, res, next) => {
 
 router.post('/:id/cancel', requireRole('admin'), async (req, res, next) => {
   try {
+    const storeId = req.user.store_id || 1;
     const saleId = sanitizeInt(req.params.id, 0);
     if (!saleId) return res.status(400).json({ error: 'ID da venda inválido.' });
 

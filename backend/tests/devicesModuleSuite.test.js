@@ -368,7 +368,86 @@ test('Suíte Completa: Módulo Aparelhos e Controle Individual de Estoque', asyn
     assert.equal(hist.length, 1);
   });
 
-  await t.test('13. Isolamento multi-tenant: Loja 2 não enxerga nem altera aparelhos da Loja 1', async () => {
+  await t.test('13. Estorno de venda de aparelho através do fluxo StoreSales (POST /api/store-sales/:id/cancel)', async () => {
+    const storeSalesRouter = require('../routes/storeSales');
+
+    // 1. Vende o aparelho novamente
+    const salePayload = {
+      customer_name: 'Cliente Reestorno Teste',
+      phone: '11988887777',
+      seller_name: 'Vendedor Teste',
+      payment_method: 'pix',
+      items: [
+        {
+          item: '1',
+          product: 'iPhone 17 Pro 256GB Reestorno',
+          quantity: 1,
+          unit_price: 4800,
+          subtotal: 4800,
+          device_id: createdDeviceId1
+        }
+      ],
+      total_amount: 4800
+    };
+
+    const saved = await deviceSalesRouter.persistDeviceSale({
+      user: { id: 1, name: 'Admin', role: 'admin', store_id: 1 },
+      payload: salePayload
+    });
+
+    assert.ok(saved.id);
+
+    // Encontra o store_sales gerado
+    const storeSale = await db.queryOne("SELECT * FROM store_sales WHERE notes = $1 AND store_id = 1", [`device_sale:${saved.id}`]);
+    assert.ok(storeSale, 'store_sales espelho deve existir');
+
+    // Confere que store_sale_items foi gravado para o item
+    const storeItems = await db.query('SELECT * FROM store_sale_items WHERE sale_id = $1', [storeSale.id]);
+    assert.equal(storeItems.length, 1);
+    assert.equal(storeItems[0].product_name, 'iPhone 17 Pro 256GB Reestorno');
+    assert.equal(Number(storeItems[0].unit_price), 4800);
+
+    // 2. Executa o estorno chamando o endpoint de StoreSales (POST /api/store-sales/:id/cancel)
+    const { req, res } = createReqRes({
+      method: 'POST',
+      params: { id: storeSale.id },
+      body: { reason: 'Estorno via Histórico de Vendas' },
+      user: { id: 1, name: 'Admin', full_name: 'Administrador', role: 'admin', store_id: 1 }
+    });
+
+    const routeCancel = storeSalesRouter.stack.find(r => r.route && r.route.path === '/:id/cancel' && r.route.methods.post);
+    const cancelHandler = routeCancel.route.stack[routeCancel.route.stack.length - 1].handle;
+
+    await cancelHandler(req, res, (err) => {
+      if (err) throw err;
+    });
+
+    assert.equal(res.statusCode, 200);
+
+    // 3. Valida se o aparelho retornou a 'in_stock'
+    const revertedDevice = await db.queryOne('SELECT * FROM devices WHERE id = $1', [createdDeviceId1]);
+    assert.equal(revertedDevice.status, 'in_stock');
+    assert.equal(revertedDevice.sale_id, null);
+    assert.equal(revertedDevice.sale_order_number, null);
+
+    // 4. Valida se store_sales e store_sale_items foram marcados como cancelados
+    const cancelledStoreSale = await db.queryOne('SELECT * FROM store_sales WHERE id = $1', [storeSale.id]);
+    assert.equal(Number(cancelledStoreSale.is_canceled), 1);
+    assert.equal(cancelledStoreSale.cancel_reason, 'Estorno via Histórico de Vendas');
+
+    const cancelledStoreItems = await db.query('SELECT * FROM store_sale_items WHERE sale_id = $1', [storeSale.id]);
+    assert.equal(Number(cancelledStoreItems[0].is_canceled), 1);
+
+    // 5. Valida se a venda de aparelho correspondente foi excluída
+    const devSaleAfter = await db.queryOne('SELECT * FROM device_sales WHERE id = $1', [saved.id]);
+    assert.equal(devSaleAfter, null);
+
+    // 6. Valida registro no histórico do aparelho
+    const historyEntries = await db.query('SELECT * FROM device_history WHERE device_id = $1 AND action_type = $2 ORDER BY id DESC', [createdDeviceId1, 'sale_cancelled']);
+    assert.ok(historyEntries.length >= 2);
+  });
+
+  await t.test('14. Isolamento multi-tenant: Loja 2 não enxerga nem altera aparelhos da Loja 1', async () => {
     const { req, res } = createReqRes({
       method: 'GET',
       user: { id: 2, name: 'User Loja 2', role: 'admin', store_id: 2 }
