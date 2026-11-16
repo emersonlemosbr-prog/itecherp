@@ -624,9 +624,9 @@ router.post('/reset-password', async (req, res) => {
       if (checkAtomic.target_type === 'owner') {
         await tx.execute('UPDATE stores SET owner_password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, checkAtomic.target_id]);
         // Atualiza a senha do usuário master e invalida sessões anteriores via session_version
-        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP WHERE store_id = $2 AND is_master = 1', [hash, checkAtomic.target_id]);
+        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE store_id = $2 AND is_master = 1', [hash, checkAtomic.target_id]);
       } else if (checkAtomic.target_type === 'user') {
-        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, checkAtomic.target_id]);
+        await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE id = $2', [hash, checkAtomic.target_id]);
       }
 
       // Consumir o token marcando used_at
