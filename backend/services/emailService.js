@@ -35,15 +35,15 @@ function getResendClient() {
  * @returns {Promise<{ success: boolean, id?: string, simulated?: boolean, error?: string }>}
  */
 async function sendEmail({ to, subject, html, text, from }) {
-  const defaultFrom = process.env.EMAIL_FROM || 'iTech ERP <noreply@itechcelulareinformatica.com.br>';
+  const defaultFrom = process.env.EMAIL_FROM || 'iTech ERP <atendimento@itechcelulareinformatica.com.br>';
   const sender = (from && from.trim()) || defaultFrom;
 
   const client = getResendClient();
 
   // Modo Simulado: se a chave do Resend não estiver configurada ou for ambiente de teste/simulação explícita
   if (!client || process.env.NODE_ENV === 'test' || process.env.RESEND_SIMULATE === 'true') {
-    // Alerta de segurança: se estiver em produção real e a chave não estiver configurada, registrar erro crítico
-    if (process.env.NODE_ENV === 'production' && !process.env.RESEND_SIMULATE) {
+    // Alerta de segurança: em produção real, NUNCA considerar o modo simulado como envio bem-sucedido
+    if (process.env.NODE_ENV === 'production') {
       console.error('[CRITICAL_EMAIL_CONFIG] RESEND_API_KEY não configurada no ambiente de produção. O e-mail não pôde ser enviado externamente.');
       return {
         success: false,
@@ -75,10 +75,11 @@ async function sendEmail({ to, subject, html, text, from }) {
       text: text || undefined
     };
 
+    console.log('[EMAIL_SERVICE] Disparando envio via Resend para:', Array.isArray(to) ? to.join(', ') : to, '| Remetente:', sender);
     const response = await client.emails.send(payload);
 
     if (response.error) {
-      console.error('[EMAIL_SERVICE_RESEND_ERROR]', {
+      console.error('[EMAIL_SERVICE_RESEND_ERROR] Erro retornado pela API do Resend:', {
         message: response.error.message,
         name: response.error.name
       });
@@ -88,12 +89,13 @@ async function sendEmail({ to, subject, html, text, from }) {
       };
     }
 
+    console.log('[EMAIL_SERVICE] E-mail aceito pelo Resend com sucesso. ID da mensagem:', response.data?.id);
     return {
       success: true,
       id: response.data?.id
     };
   } catch (err) {
-    console.error('[EMAIL_SERVICE_UNEXPECTED_ERROR]', {
+    console.error('[EMAIL_SERVICE_UNEXPECTED_ERROR] Exceção na comunicação com o Resend:', {
       message: err.message,
       code: err.code
     });

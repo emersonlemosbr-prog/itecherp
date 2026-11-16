@@ -490,9 +490,11 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
       acctRecord.count += 1;
     }
 
+    console.log('[AUTH_FORGOT_PWD] Solicitação recebida para:', cleanEmail);
     const accounts = await findAccountsByEmail(cleanEmail);
 
     if (accounts.length === 0) {
+      console.log('[AUTH_FORGOT_PWD] Nenhuma conta ativa encontrada para o e-mail informado.');
       // Por segurança, retorna mensagem genérica para não revelar existência de e-mail (timing mitigado)
       return res.json({
         success: true,
@@ -504,7 +506,7 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
       // Ambiguidade detectada (múltiplas contas com o mesmo e-mail por dados legados/inconsistentes)
       // Por segurança extrema, rejeita a geração do token para evitar comprometer a conta errada,
       // loga o alerta interno e retorna a mesma resposta genérica ao solicitante.
-      console.warn('[FORGOT_PASSWORD_AMBIGUITY] Ambiguidade na recuperação de senha:', {
+      console.warn('[AUTH_FORGOT_PWD_AMBIGUITY] Ambiguidade na recuperação de senha:', {
         email: cleanEmail,
         count: accounts.length
       });
@@ -515,6 +517,7 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
     }
 
     const targetAccount = accounts[0];
+    console.log(`[AUTH_FORGOT_PWD] Conta localizada: tipo=${targetAccount.type}, id=${targetAccount.id}, storeId=${targetAccount.storeId || targetAccount.id}`);
 
     // Gerar token criptograficamente seguro com validade estrita de 30 minutos
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -558,6 +561,8 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
         error: sendResult.error
       });
       // Não expor o erro detalhado ao solicitante para evitar enumeração e vazamento
+    } else {
+      console.log('[AUTH_FORGOT_PWD] Fluxo de envio concluído com sucesso. ID:', sendResult.id);
     }
 
     res.json({
@@ -639,7 +644,6 @@ router.post('/reset-password', async (req, res) => {
     console.error('[RESET_PASSWORD_ERROR]', err);
     res.status(400).json({ error: 'Erro ao redefinir senha.' });
   }
-});
 });
 
 /**
