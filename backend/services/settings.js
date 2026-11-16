@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS = {
     whatsapp: '',
     address: { street: '', number: '', complement: '', district: '', city: '', state: '', zip: '' },
     logo: '',
+    print_logo: '',
   },
   documents: {
     receipt_terms: 'Agradecemos a preferência! Garantia legal de 90 dias.',

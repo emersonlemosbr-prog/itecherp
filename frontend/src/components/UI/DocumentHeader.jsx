@@ -24,11 +24,14 @@ export default function DocumentHeader({ number, orderNumber, emittedAt }) {
   const streetLine = [s?.street, s?.number, s?.complement].filter(Boolean).join(', ')
   const cityLine = [s?.district, (s?.city && s?.state ? `${s.city}/${s.state}` : (s?.city || s?.state)), s?.zip].filter(Boolean).join(' - ')
 
+  // Logo para impressões: usa print_logo se existir, senão fallback para logo do sistema
+  const printLogo = s?.print_logo || s?.logo
+
   return (
     <header className="service-order-print-header">
-      {Boolean(d.logo) && s.logo && (
+      {Boolean(d.logo) && printLogo && (
         <div className="service-order-print-brand">
-          <img src={s.logo} alt={s.name} className="service-order-print-logo" />
+          <img src={printLogo} alt={s.name} className="service-order-print-logo" />
         </div>
       )}
 

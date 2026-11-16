@@ -5,7 +5,8 @@ import React from 'react'
 export function buildVirusRemovalReportHtml(reportData, settings) {
   if (!reportData || !settings) return ''
   const escape = value => String(value || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
-  const logo = settings.documents.logo ? settings.store.logo : ''
+  const printLogo = settings.store?.print_logo || settings.store?.logo || ''
+  const logo = settings.documents?.logo ? printLogo : ''
 
   const rows = Array.isArray(reportData.removedApps) ? reportData.removedApps : []
 
@@ -251,7 +252,8 @@ export function buildVirusRemovalReportHtml(reportData, settings) {
 
 export default function VirusRemovalReportPrint({ reportData }) {
   const { settings } = useSettings()
-  const logo = settings.documents.logo ? settings.store.logo : ""
+  const printLogo = settings.store?.print_logo || settings.store?.logo || ''
+  const logo = settings.documents?.logo ? printLogo : ''
   if (!reportData) return null
 
   const rows = Array.isArray(reportData.removedApps) ? reportData.removedApps : []

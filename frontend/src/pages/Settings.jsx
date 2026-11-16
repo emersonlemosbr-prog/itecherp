@@ -38,6 +38,7 @@ export default function Settings() {
  const [notice,setNotice] = useState('')
  const [backup,setBackup] = useState(null)
  const logoInput = useRef(null)
+ const printLogoInput = useRef(null)
  const tablist = useRef(null)
  const dirty = JSON.stringify(draft)!==JSON.stringify(context.settings) || JSON.stringify(seq)!==JSON.stringify(context.sequences)
  useEffect(() => { const warn=e=>{if(dirty){e.preventDefault(); e.returnValue=''}}; window.addEventListener('beforeunload',warn); return ()=>window.removeEventListener('beforeunload',warn) },[dirty])
@@ -46,6 +47,7 @@ export default function Settings() {
  async function save(e) { e.preventDefault(); if (isSuspended) { setNotice('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.'); return; } setBusy(true); setNotice(''); try { const {data}=await api.put('/settings',{settings:draft,sequences:seq,version}); context.setData({...context,...data}); setVersion(data.version); setDraft(structuredClone(data.settings)); setSeq(data.sequences); setNotice('Alterações salvas com sucesso.') } catch(e){setNotice(e.response?.data?.error || 'Não foi possível salvar.')} finally{setBusy(false)} }
  async function reset(ratesOnly=false) { if (isSuspended) { setNotice('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.'); return; } if(!window.confirm(ratesOnly?'Restaurar taxas padrão PagBank? Aplique com Salvar Alterações.':'Restaurar todas as configurações padrão? Os usuários e a numeração serão preservados. Aplique com Salvar Alterações.')) return; try{const {data}=await api.get('/settings/defaults'); if(ratesOnly)change('finance','rates',data.finance.rates);else setDraft(data);setNotice('Padrões carregados. Clique em Salvar Alterações para aplicar.')}catch{setNotice('Não foi possível carregar os padrões.')} }
  function uploadLogo(e) { const file=e.target.files?.[0]; if(!file)return; if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)||file.size>2000000){setNotice('Envie PNG, JPG, JPEG, WEBP ou SVG de até 2 MB.');return} const reader=new FileReader();reader.onload=()=>change('store','logo',reader.result);reader.readAsDataURL(file);e.target.value='' }
+ function uploadPrintLogo(e) { const file=e.target.files?.[0]; if(!file)return; if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)||file.size>2000000){setNotice('Envie PNG, JPG, JPEG, WEBP ou SVG de até 2 MB.');return} const reader=new FileReader();reader.onload=()=>change('store','print_logo',reader.result);reader.readAsDataURL(file);e.target.value='' }
  function field(section,[key,label,type]) {
    const rawValue = draft[section][key];
    const id = `setting-${section}-${key}`;
@@ -66,7 +68,56 @@ export default function Settings() {
  {notice&&<p role="status" className="card p-3 text-sm">{notice}</p>}
  <div ref={tablist} role="tablist" aria-label="Configurações" className="flex max-w-full touch-pan-x snap-x snap-mandatory overflow-x-auto scroll-smooth overscroll-x-contain border-b border-slate-200 dark:border-white/10 gap-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{tabs.map(([key,label,Icon])=><button data-tab={key} type="button" role="tab" aria-selected={tab===key} aria-controls={`panel-${key}`} id={`tab-${key}`} key={key} onClick={()=>setTab(key)} className={`flex shrink-0 snap-start items-center gap-2 whitespace-nowrap px-4 py-4 text-xs font-semibold uppercase border-b-2 ${tab===key?(key==='danger'?'border-rose-500 text-rose-500':'border-[var(--brand-primary)] text-[var(--brand-primary)]'):'border-transparent text-slate-500 dark:text-zinc-400'}`}><Icon size={16}/>{label}</button>)}</div>
  {tab!=='users'&&tab!=='danger'&&<div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="space-y-5">
- {tab==='store'&&<section className="card p-5 flex flex-wrap items-center gap-5"><div className="h-24 w-32 rounded-xl border border-white/10 flex items-center justify-center overflow-hidden">{draft.store.logo?<img src={draft.store.logo} alt="Logo atual" className="max-h-full max-w-full object-contain"/>:<Store size={32}/>}</div><div className="space-y-2"><p className="font-semibold">Logo da empresa</p><p className="text-xs text-slate-400">PNG, JPG, JPEG, WEBP ou SVG · Até 2 MB</p><div className="flex gap-2 flex-wrap"><button type="button" className="btn-secondary" onClick={()=>logoInput.current.click()}>Alterar Logo</button><button type="button" className="btn-ghost" onClick={()=>change('store','logo','')}>Remover logo</button></div><input ref={logoInput} hidden type="file" accept=".png,.jpg,.jpeg,.webp,.svg" onChange={uploadLogo}/></div></section>}
+ {tab==='store'&&<section className="card p-5 space-y-6">
+  {/* Logo do Sistema */}
+  <div className="flex flex-wrap items-center gap-5">
+    <div className="h-24 w-32 rounded-xl border border-slate-200 dark:border-white/10 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-black/20">
+      {draft.store.logo ? <img src={draft.store.logo} alt="Logo do sistema atual" className="max-h-full max-w-full object-contain" /> : <Store size={32} className="text-slate-400" />}
+    </div>
+    <div className="space-y-2 flex-1 min-w-[240px]">
+      <div>
+        <p className="font-semibold text-slate-900 dark:text-white">Logo do sistema</p>
+        <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Utilizada na interface do ERP, menu lateral, cabeçalho, login e demais elementos visuais do sistema.</p>
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">PNG, JPG, JPEG, WEBP ou SVG · Até 2 MB</p>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <button type="button" className="btn-secondary text-xs" onClick={()=>logoInput.current.click()}>Alterar Logo</button>
+        <button type="button" className="btn-ghost text-xs" onClick={()=>change('store','logo','')}>Remover logo</button>
+      </div>
+      <input ref={logoInput} hidden type="file" accept=".png,.jpg,.jpeg,.webp,.svg" onChange={uploadLogo}/>
+    </div>
+  </div>
+
+  <hr className="border-slate-200 dark:border-white/10" />
+
+  {/* Logo para Impressões */}
+  <div className="flex flex-wrap items-center gap-5">
+    <div className="h-24 w-32 rounded-xl border border-slate-200 dark:border-white/10 flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-black/20">
+      {draft.store.print_logo ? (
+        <img src={draft.store.print_logo} alt="Logo de impressão atual" className="max-h-full max-w-full object-contain" />
+      ) : draft.store.logo ? (
+        <div className="relative h-full w-full flex items-center justify-center">
+          <img src={draft.store.logo} alt="Logo do sistema (alternativa)" className="max-h-full max-w-full object-contain opacity-50" />
+          <span className="absolute bottom-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded">Usando alternativa</span>
+        </div>
+      ) : (
+        <Printer size={32} className="text-slate-400" />
+      )}
+    </div>
+    <div className="space-y-2 flex-1 min-w-[240px]">
+      <div>
+        <p className="font-semibold text-slate-900 dark:text-white">Logo para impressões</p>
+        <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">Utilizada nos documentos impressos da loja, como Ordens de Serviço, recibos, comprovantes, relatórios e documentos financeiros.</p>
+        <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">PNG, JPG, JPEG, WEBP ou SVG · Até 2 MB</p>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <button type="button" className="btn-secondary text-xs" onClick={()=>printLogoInput.current.click()}>Alterar Logo</button>
+        <button type="button" className="btn-ghost text-xs" onClick={()=>change('store','print_logo','')}>Remover logo</button>
+      </div>
+      <input ref={printLogoInput} hidden type="file" accept=".png,.jpg,.jpeg,.webp,.svg" onChange={uploadPrintLogo}/>
+    </div>
+  </div>
+</section>}
  {tab==='finance'&&<section className="card p-5 space-y-4"><h3 className="font-semibold uppercase text-sm">Taxas da Calculadora PagBank por Parcela</h3><p className="text-sm text-slate-400">Taxas percentuais descontadas pela adquirente PagBank para cada número de parcelas no crédito.</p><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">{draft.finance.rates.map((rate,i)=><label key={i} className="min-w-0"><span className="label">{i+1}x (%)</span><input type="number" min="0" max="99.99" step="0.01" className="input" value={rate} onChange={e=>change('finance','rates',draft.finance.rates.map((r,n)=>n===i?Number(e.target.value):r))}/></label>)}</div><button type="button" className="btn-secondary" onClick={()=>reset(true)}><RotateCcw size={15}/>Restaurar taxas padrão PagBank</button></section>}
  {(groups[tab]||[]).map(([title,fields])=><section key={title} className="card p-5 sm:p-6 space-y-5"><h3 className="text-sm uppercase font-semibold tracking-wide">{title}</h3><div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">{fields.map(f=>field(tab,f))}</div></section>)}
  {tab==='finance'&&<section className="card p-5 space-y-4"><h3 className="text-sm uppercase font-semibold">Meios de Pagamento Aceitos</h3><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">{Object.entries({pix:'PIX',cash:'Dinheiro',credit_card:'Cartão de Crédito',debit_card:'Cartão de Débito',credit_account:'Fiado / A Prazo'}).map(([key,label])=><label key={key} className="flex items-center gap-3 text-sm"><input type="checkbox" checked={draft.finance.payments[key]} onChange={e=>change('finance','payments',{...draft.finance.payments,[key]:e.target.checked})}/>{label}</label>)}</div><p className="text-xs text-slate-400">Preço sugerido: custo × (1 + margem) × (1 + risco) + mão de obra + insumos + película.</p></section>}
