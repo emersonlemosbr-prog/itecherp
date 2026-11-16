@@ -579,22 +579,28 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
  * Validação e redefinição de senha com token
  */
 router.post('/reset-password', async (req, res) => {
+  const opId = crypto.randomBytes(4).toString('hex');
+  let currentStage = 'initial_validation';
   try {
     const { token, newPassword, confirmPassword, new_password } = req.body;
     const finalPassword = newPassword || new_password;
 
     if (!token || !finalPassword) {
+      console.warn(`[AUTH_RESET_PWD_${opId}] Dados incompletos: token ou senha ausente.`);
       return res.status(400).json({ error: 'Dados incompletos para redefinição.' });
     }
 
     if (finalPassword.length < 8) {
+      console.warn(`[AUTH_RESET_PWD_${opId}] Senha informada possui menos de 8 caracteres.`);
       return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres.' });
     }
 
     if (confirmPassword && finalPassword !== confirmPassword) {
+      console.warn(`[AUTH_RESET_PWD_${opId}] Confirmação de senha divergente.`);
       return res.status(400).json({ error: 'A confirmação de senha não confere.' });
     }
 
+    currentStage = 'hash_and_query_token';
     const cleanToken = String(token).trim();
     const tokenHash = crypto.createHash('sha256').update(cleanToken).digest('hex');
 
@@ -604,11 +610,14 @@ router.post('/reset-password', async (req, res) => {
     `, [tokenHash]);
 
     if (!resetRecord) {
+      console.warn(`[AUTH_RESET_PWD_${opId}] Token não localizado, expirado ou já utilizado.`);
       return res.status(400).json({ error: 'Link de redefinição expirado ou inválido.' });
     }
 
+    currentStage = 'generate_bcrypt_hash';
     const hash = bcrypt.hashSync(finalPassword, 12);
 
+    currentStage = 'transaction_execution';
     await db.transaction(async (tx) => {
       // Re-verificar atomicamente dentro da transação para impedir concorrência/reutilização simultânea
       const checkAtomic = await tx.queryOne(`
@@ -622,26 +631,39 @@ router.post('/reset-password', async (req, res) => {
 
       // Atualizar senha do proprietário e do usuário master do ERP daquela loja
       if (checkAtomic.target_type === 'owner') {
+        currentStage = 'update_owner_store_password';
         await tx.execute('UPDATE stores SET owner_password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, checkAtomic.target_id]);
-        // Atualiza a senha do usuário master e invalida sessões anteriores via session_version
+        
+        currentStage = 'update_owner_master_user_password';
         await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE store_id = $2 AND is_master = 1', [hash, checkAtomic.target_id]);
       } else if (checkAtomic.target_type === 'user') {
+        currentStage = 'update_individual_user_password';
         await tx.execute('UPDATE users SET password_hash = $1, session_version = session_version + 1 WHERE id = $2', [hash, checkAtomic.target_id]);
       }
 
       // Consumir o token marcando used_at
+      currentStage = 'consume_reset_token';
       await tx.execute('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [checkAtomic.id]);
     });
 
+    console.log(`[AUTH_RESET_PWD_${opId}] Senha redefinida com sucesso. TargetType: ${resetRecord.target_type}, TargetId: ${resetRecord.target_id}`);
     res.json({
       success: true,
       message: 'Senha redefinida com sucesso! Você já pode acessar o sistema.'
     });
   } catch (err) {
     if (err.message === 'TOKEN_ALREADY_USED') {
+      console.warn(`[AUTH_RESET_PWD_${opId}] Token já utilizado ou expirado na etapa atômica.`);
       return res.status(400).json({ error: 'Este link de redefinição já foi utilizado ou expirou.' });
     }
-    console.error('[RESET_PASSWORD_ERROR]', err);
+    console.error(`[AUTH_RESET_PWD_${opId}_ERROR] Falha na etapa '${currentStage}':`, {
+      name: err.name,
+      message: err.message,
+      code: err.code || null,
+      detail: err.detail || null,
+      routine: err.routine || null,
+      stage: currentStage
+    });
     res.status(400).json({ error: 'Erro ao redefinir senha.' });
   }
 });
