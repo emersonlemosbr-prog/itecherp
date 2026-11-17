@@ -3,9 +3,8 @@ const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
-router.use(authenticate);
 
-router.get('/meta', async (req, res) => {
+router.get('/meta', authenticate, async (req, res) => {
   try {
     const colors = await db.query('SELECT * FROM note_colors ORDER BY id ASC');
     const labels = await db.query('SELECT id, name FROM labels WHERE user_id = $1 ORDER BY name ASC', [req.user.id]);
@@ -39,7 +38,7 @@ router.get('/meta', async (req, res) => {
   }
 });
 
-router.get('/notifications', async (req, res) => {
+router.get('/notifications', authenticate, async (req, res) => {
   try {
     const rows = await db.query(`
       SELECT nr.id as reminder_id, nr.remind_at, n.id as note_id, n.title, n.content
@@ -60,7 +59,7 @@ router.get('/notifications', async (req, res) => {
   }
 });
 
-router.post('/notifications/:id/ack', async (req, res) => {
+router.post('/notifications/:id/ack', authenticate, async (req, res) => {
   try {
     const row = await db.queryOne(`
       SELECT nr.id

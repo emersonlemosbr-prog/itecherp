@@ -104,6 +104,10 @@ app.use(morgan('dev'));
 
 // Rotas da API Administrativa e Operacional
 app.use('/api/auth', require('./routes/auth'));
+
+// Acompanhamento público de Ordens de Serviço (rotas públicas sem exigência de autenticação do ERP)
+attachPublicTracking(app, db);
+
 app.use('/api/platform', require('./routes/platform'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/danger-zone', require('./routes/dangerZone'));
@@ -181,9 +185,6 @@ app.get('/api/health', async (req, res) => {
 
 app.use('/api', require('./routes/notesAliases'));
 
-// Acompanhamento público de Ordens de Serviço (disponível em https://itechcloud.app/acompanhamento/:token)
-attachPublicTracking(app, db);
-
 // Serve o frontend estático se ele existir (hospedagem híbrida opcional)
 const frontendDist = path.join(__dirname, 'public');
 if (fs.existsSync(frontendDist)) {
@@ -214,38 +215,42 @@ app.use((err, req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 4001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('==============================================');
-  console.log('  iTech Celular e Informática — Backend Online');
-  console.log(`  Porta: ${PORT}`);
-  console.log(`  Banco: ${process.env.DATABASE_URL ? 'PostgreSQL (Supabase/Cloud)' : 'Local'}`);
-  console.log('==============================================');
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log('==============================================');
+    console.log('  iTech Celular e Informática — Backend Online');
+    console.log(`  Porta: ${PORT}`);
+    console.log(`  Banco: ${process.env.DATABASE_URL ? 'PostgreSQL (Supabase/Cloud)' : 'Local'}`);
+    console.log('==============================================');
 
-  if (process.env.DATABASE_URL) {
-    db.initSchema()
-      .then(() => {
-        console.log('[DATABASE] Esquema PostgreSQL pronto.');
+    if (process.env.DATABASE_URL) {
+      db.initSchema()
+        .then(() => {
+          console.log('[DATABASE] Esquema PostgreSQL pronto.');
+        })
+        .catch((err) => {
+          console.error('[DATABASE] Falha ao verificar esquema PostgreSQL:', err.message);
+        });
+    }
+
+    ensureFinancialHistoryUpToDate()
+      .then(({ createdMonths }) => {
+        if (createdMonths && createdMonths.length > 0) {
+          console.log(`[FINANCIAL_HISTORY] ${createdMonths.length} fechamento(s) mensal(is) criado(s).`);
+        }
       })
-      .catch((err) => {
-        console.error('[DATABASE] Falha ao verificar esquema PostgreSQL:', err.message);
+      .catch((error) => {
+        console.error('[FINANCIAL_HISTORY] Falha ao processar fechamento mensal:', error.message);
       });
-  }
 
-  ensureFinancialHistoryUpToDate()
-    .then(({ createdMonths }) => {
-      if (createdMonths && createdMonths.length > 0) {
-        console.log(`[FINANCIAL_HISTORY] ${createdMonths.length} fechamento(s) mensal(is) criado(s).`);
-      }
-    })
-    .catch((error) => {
-      console.error('[FINANCIAL_HISTORY] Falha ao processar fechamento mensal:', error.message);
-    });
+    try {
+      const { startSubscriptionReminderScheduler } = require('./services/subscriptionReminderService');
+      startSubscriptionReminderScheduler();
+      console.log('[SUBSCRIPTION_REMINDERS] Agendador de lembretes de mensalidade iniciado.');
+    } catch (reminderErr) {
+      console.error('[SUBSCRIPTION_REMINDERS] Falha ao inicializar lembretes:', reminderErr.message);
+    }
+  });
+}
 
-  try {
-    const { startSubscriptionReminderScheduler } = require('./services/subscriptionReminderService');
-    startSubscriptionReminderScheduler();
-    console.log('[SUBSCRIPTION_REMINDERS] Agendador de lembretes de mensalidade iniciado.');
-  } catch (reminderErr) {
-    console.error('[SUBSCRIPTION_REMINDERS] Falha ao inicializar lembretes:', reminderErr.message);
-  }
-});
+module.exports = app;

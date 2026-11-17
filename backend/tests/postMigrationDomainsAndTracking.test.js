@@ -1,9 +1,18 @@
+process.env.NODE_ENV = 'test';
+delete process.env.DATABASE_URL;
+delete process.env.POSTGRES_URL;
+delete process.env.TEST_DATABASE_URL;
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const express = require('express');
+
+delete process.env.DATABASE_URL;
+delete process.env.POSTGRES_URL;
+
 const Database = require('better-sqlite3');
 const { getAppBaseUrl, getOfficialLogoUrl } = require('../services/emailService');
 const { generateTracking, hashToken, getPublicOrder } = require('../services/publicTracking');
@@ -208,4 +217,82 @@ test('Pós-Migração — Problema 2: Acompanhamento Público no servidor Expres
     if (originalTrackingUrl !== undefined) process.env.PUBLIC_TRACKING_URL = originalTrackingUrl;
     else delete process.env.PUBLIC_TRACKING_URL;
   }
+});
+
+test('Pós-Migração — Problema 3: Rotas públicas /api/public/* não podem sofrer 401 Unauthorized de middlewares do ERP', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-test-auth-bypass-'));
+  const filename = path.join(dir, 'test.db');
+  const db = new Database(filename);
+  db.pragma('journal_mode = WAL');
+
+  db.exec(`
+    CREATE TABLE customers(id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, address TEXT);
+    CREATE TABLE system_settings(store_id INTEGER PRIMARY KEY, value TEXT);
+    CREATE TABLE service_orders(
+      id INTEGER PRIMARY KEY, store_id INTEGER, customer_id INTEGER, order_number TEXT,
+      brand TEXT, model TEXT, status TEXT, entry_date TEXT, updated_at TEXT, created_at TEXT,
+      expected_delivery_date TEXT, notes TEXT, profit REAL, public_token_hash TEXT
+    );
+    INSERT INTO customers VALUES(1, 'Public', 'User', 'Rua Publica, 1');
+    INSERT INTO system_settings VALUES(1, '{"store":{"name":"Loja Teste","cnpj":"11.222.333/0001-44"}}');
+    INSERT INTO service_orders VALUES(
+      1, 1, 1, 'OS-9999', 'Motorola', 'G84', 'ready',
+      '2026-11-17', '2026-11-17 14:00:00', '2026-11-17 14:00:00', NULL, NULL, 100, NULL
+    );
+  `);
+  require('../db/trackingSchema')(db);
+
+  const gen = await generateTracking(db, 1);
+  const token = gen.url.split('/')[4];
+
+  // Simula o servidor Express completo com attachPublicTracking e notesAliases
+  const app = express();
+  app.use(express.json());
+
+  // Rotas públicas de acompanhamento montadas no topo
+  attachPublicTracking(app, db, { pollMs: 20 });
+
+  // Rotas privadas do ERP
+  app.use('/api', require('../routes/notesAliases'));
+  app.use('/api/service-orders', require('../routes/serviceOrders'));
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(r => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  t.after(() => {
+    server.close();
+    server.closeAllConnections();
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // 1. /api/public/service-order/:token DEVE retornar 200 SEM token de autorização
+  const pubRes = await fetch(`${base}/api/public/service-order/${token}`);
+  assert.equal(pubRes.status, 200, 'A rota pública REST não pode exigir autenticação do ERP (esperado 200, não 401)');
+  const pubData = await pubRes.json();
+  assert.equal(pubData.order_number, 'OS-9999');
+  assert.equal(pubData.status, 'ready');
+
+  // 2. /api/public/service-order/:token/events (SSE) DEVE retornar 200 SEM autenticação
+  const sseController = new AbortController();
+  const sseRes = await fetch(`${base}/api/public/service-order/${token}/events`, { signal: sseController.signal });
+  assert.equal(sseRes.status, 200, 'A rota pública SSE não pode exigir autenticação do ERP (esperado 200, não 401)');
+  sseController.abort();
+
+  // 3. /api/meta (rota privada de notas) DEVE continuar exigindo autenticação (401)
+  const metaRes = await fetch(`${base}/api/meta`);
+  assert.equal(metaRes.status, 401, 'Rota privada /api/meta deve continuar exigindo autenticação (401)');
+
+  // 4. /api/notifications (rota privada de notificações) DEVE continuar exigindo autenticação (401)
+  const notifRes = await fetch(`${base}/api/notifications`);
+  assert.equal(notifRes.status, 401, 'Rota privada /api/notifications deve continuar exigindo autenticação (401)');
+
+  // 5. /api/service-orders (rota privada de OS) DEVE continuar exigindo autenticação (401)
+  const privateSoRes = await fetch(`${base}/api/service-orders`);
+  assert.equal(privateSoRes.status, 401, 'Rota privada do ERP deve continuar exigindo autenticação (401)');
+
+  // 6. Token inválido na rota pública DEVE retornar 404 (sem vazar dados nem exigir login)
+  const badTokenRes = await fetch(`${base}/api/public/service-order/${'f'.repeat(64)}`);
+  assert.equal(badTokenRes.status, 404, 'Token inexistente deve responder 404');
 });
