@@ -118,11 +118,12 @@ function getPublicOrder(db, token) {
   const tokenH = hashToken(token);
   const query = `
     SELECT so.id, so.order_number, c.first_name,
-      TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')) AS customer_name, so.brand, so.model,
+      TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')) AS customer_name,
+      so.brand, so.model,
       so.status, so.entry_date, so.updated_at, so.expected_delivery_date,
       ss.value AS store_settings_raw
     FROM service_orders so
-    JOIN customers c ON c.id = so.customer_id
+    LEFT JOIN customers c ON c.id = so.customer_id
     LEFT JOIN system_settings ss ON ss.store_id = so.store_id
     WHERE so.public_token_hash = $1
   `;
@@ -137,22 +138,45 @@ function getPublicOrder(db, token) {
       order.company_cnpj = company.company_cnpj;
       order.company_logo = company.company_logo;
       order.first_name = (order.first_name || '').trim().split(/\s+/)[0];
-      order.history = await db.query('SELECT status, created_at FROM service_order_status_history WHERE service_order_id = $1 ORDER BY id', [id]);
+      const history = await db.query('SELECT status, created_at FROM service_order_status_history WHERE service_order_id = $1 ORDER BY id', [id]);
+      order.history = Array.isArray(history) && history.length > 0
+        ? history
+        : [{ status: order.status, created_at: order.entry_date || order.updated_at || new Date().toISOString() }];
       return order;
     })();
   }
 
   // SQLite direto (síncrono)
-  const sqliteQuery = query.replace(/\$1/g, '?');
-  const row = db.prepare(sqliteQuery).get(tokenH);
+  let row = null;
+  let hasStoreSettings = true;
+  try {
+    const sqliteQuery = query.replace(/\$1/g, '?');
+    row = db.prepare(sqliteQuery).get(tokenH);
+  } catch (_err) {
+    hasStoreSettings = false;
+    const fallbackSqliteQuery = `
+      SELECT so.id, so.order_number, c.first_name,
+        TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')) AS customer_name, so.brand, so.model,
+        so.status, so.entry_date, so.updated_at, so.expected_delivery_date
+      FROM service_orders so
+      JOIN customers c ON c.id = so.customer_id
+      WHERE so.public_token_hash = ?
+    `;
+    row = db.prepare(fallbackSqliteQuery).get(tokenH);
+  }
   if (!row) return null;
   const { id, store_settings_raw, unlock_password, unlock_pattern, unlock_type, ...order } = row;
-  const company = extractPublicCompanyInfo(store_settings_raw);
-  order.company_name = company.company_name;
-  order.company_cnpj = company.company_cnpj;
-  order.company_logo = company.company_logo;
+  if (hasStoreSettings) {
+    const company = extractPublicCompanyInfo(store_settings_raw);
+    order.company_name = company.company_name;
+    order.company_cnpj = company.company_cnpj;
+    order.company_logo = company.company_logo;
+  }
   order.first_name = (order.first_name || '').trim().split(/\s+/)[0];
-  order.history = db.prepare('SELECT status, created_at FROM service_order_status_history WHERE service_order_id = ? ORDER BY id').all(id);
+  const history = db.prepare('SELECT status, created_at FROM service_order_status_history WHERE service_order_id = ? ORDER BY id').all(id);
+  order.history = Array.isArray(history) && history.length > 0
+    ? history
+    : [{ status: order.status, created_at: order.entry_date || order.updated_at || new Date().toISOString() }];
   return order;
 }
 

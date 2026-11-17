@@ -119,7 +119,7 @@ test('Pós-Migração — Problema 2: Acompanhamento Público no servidor Expres
       fs.rmSync(dir, { recursive: true, force: true });
     });
 
-    // 3. Consulta com token VÁLIDO: deve responder 200 com HTML do acompanhamento
+    // 3. Consulta com token VÁLIDO: deve responder 200 com HTML do acompanhamento e dados embutidos
     const validRes = await fetch(`${base}/acompanhamento/${token}`);
     assert.equal(validRes.status, 200);
     assert.equal(validRes.headers.get('content-type'), 'text/html; charset=utf-8');
@@ -129,16 +129,59 @@ test('Pós-Migração — Problema 2: Acompanhamento Público no servidor Expres
     assert.ok(validHtml.includes('Acompanhe seu reparo'));
     assert.ok(validHtml.includes('iTech Oficial'), 'Deve exibir nome da loja no rodapé');
     assert.ok(validHtml.includes('58.710.025/0001-69'), 'Deve exibir CNPJ da loja no rodapé');
+    assert.ok(validHtml.includes('<script id="initial-order-data" type="application/json">'), 'Deve embutir dados iniciais para carga instantânea');
+    assert.ok(validHtml.includes('OS-1042'), 'Dados embutidos devem conter o número da OS');
     assert.ok(!validHtml.includes('Nota confidencial'), 'NÃO pode vazar notas internas da OS');
 
-    // 4. Consulta com token INVÁLIDO (inexistente): deve retornar 404
+    // 3.1. Endpoint REST público para carga inicial sem autenticação
+    const restRes = await fetch(`${base}/api/public/service-order/${token}`);
+    assert.equal(restRes.status, 200);
+    assert.equal(restRes.headers.get('content-type'), 'application/json; charset=utf-8');
+    const restData = await restRes.json();
+    assert.equal(restData.order_number, 'OS-1042');
+    assert.equal(restData.brand, 'Apple');
+    assert.equal(restData.model, 'iPhone 13');
+    assert.equal(restData.status, 'repairing');
+    assert.equal(restData.company_name, 'iTech Oficial');
+    assert.equal(restData.company_cnpj, '58.710.025/0001-69');
+    assert.equal(restData.profit, undefined, 'NÃO deve expor profit');
+    assert.equal(restData.notes, undefined, 'NÃO deve expor notas confidenciais');
+    assert.ok(Array.isArray(restData.history) && restData.history.length > 0);
+
+    // 4. Consulta com token INVÁLIDO (inexistente): deve retornar 404 tanto na página quanto na API REST
     const invalidToken = '0'.repeat(64);
     const invalidRes = await fetch(`${base}/acompanhamento/${invalidToken}`);
     assert.equal(invalidRes.status, 404);
+    const invalidRestRes = await fetch(`${base}/api/public/service-order/${invalidToken}`);
+    assert.equal(invalidRestRes.status, 404);
 
     // 5. Consulta com token MALFORMADO (não hex 64 chars): deve retornar 404
     const malformedRes = await fetch(`${base}/acompanhamento/token-invalido-123`);
     assert.equal(malformedRes.status, 404);
+    const malformedRestRes = await fetch(`${base}/api/public/service-order/token-invalido-123`);
+    assert.equal(malformedRestRes.status, 404);
+
+    // 5.1. Conexão SSE recebe evento inicial order imediatamente (com padding descarregado)
+    const controller = new AbortController();
+    const sseRes = await fetch(`${base}/api/public/service-order/${token}/events`, { signal: controller.signal });
+    assert.equal(sseRes.status, 200);
+    assert.match(sseRes.headers.get('content-type'), /text\/event-stream/);
+    const streamReader = sseRes.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuffer = '';
+    const readTimeout = setTimeout(() => controller.abort(), 3000);
+    try {
+      while (!sseBuffer.includes('event: order')) {
+        const { value, done } = await streamReader.read();
+        if (done) break;
+        sseBuffer += decoder.decode(value);
+      }
+    } finally {
+      clearTimeout(readTimeout);
+      controller.abort();
+    }
+    assert.ok(sseBuffer.includes('event: order'));
+    assert.ok(sseBuffer.includes('OS-1042'));
 
     // 6. PWA manifest: deve retornar 200 com tipo application/manifest+json
     const manifestRes = await fetch(`${base}/acompanhamento/${token}/manifest.webmanifest`);

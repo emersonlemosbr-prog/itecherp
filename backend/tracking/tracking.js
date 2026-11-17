@@ -49,7 +49,43 @@ if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
 } else {
   let hasConnected = false;
   let connectionFailedCount = 0;
-  const source = new EventSource(`/api/public/service-order/${encodeURIComponent(token)}/events`);
+
+  function applyOrder(order) {
+    if (!order || (!order.order_number && !order.status)) return;
+    hasConnected = true;
+    clearTimeout(initialConnectionTimeout);
+    element('connection').textContent = 'Atualização automática conectada';
+    element('connection').dataset.state = 'connected';
+    element('order').hidden = false;
+    updateCompanyBranding(order);
+    element('number').textContent = formatOrderNumber(order.order_number);
+    element('device').textContent = [order.brand, order.model].filter(Boolean).join(' ') || 'Aparelho';
+    element('customer').textContent = order.customer_name || '—';
+    element('updated').textContent = date(order.updated_at);
+    element('status-card').dataset.status = order.status;
+    element('status').textContent = labels[order.status] || 'Em atendimento';
+    element('details').replaceChildren();
+    for (const [label, value] of [['Data de entrada', date(order.entry_date)], ...(order.expected_delivery_date ? [['Previsão de conclusão', date(order.expected_delivery_date)]] : [])]) {
+      const dt = document.createElement('dt'); dt.textContent = label;
+      const dd = document.createElement('dd'); dd.textContent = value || '—';
+      const group = document.createElement('div'); group.append(dt, dd);
+      element('details').append(group);
+    }
+    const historyList = Array.isArray(order.history) && order.history.length > 0
+      ? order.history
+      : [{ status: order.status, created_at: order.entry_date || order.updated_at }];
+    element('history').replaceChildren(...historyList.map((item, index) => {
+      const li = document.createElement('li');
+      const title = document.createElement('strong'); title.textContent = labels[item.status] || 'Em atendimento';
+      const time = document.createElement('time'); time.textContent = date(item.created_at);
+      li.append(title, time);
+      if (index === historyList.length - 1) {
+        li.setAttribute('aria-current', 'step');
+        const badge = document.createElement('span'); badge.className = 'current-label'; badge.textContent = 'Status atual'; li.append(badge);
+      }
+      return li;
+    }));
+  }
 
   const initialConnectionTimeout = setTimeout(() => {
     if (!hasConnected) {
@@ -58,39 +94,44 @@ if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
     }
   }, 10000);
 
+  // 1. Carga instantânea via script embutido pelo servidor
+  const initialScript = element('initial-order-data');
+  if (initialScript && initialScript.textContent) {
+    try {
+      const initialData = JSON.parse(initialScript.textContent);
+      applyOrder(initialData);
+    } catch (_) {}
+  }
+
+  // 2. Carga imediata via endpoint REST público (independe de buffers SSE e proxies)
+  if (!hasConnected) {
+    fetch(`/api/public/service-order/${encodeURIComponent(token)}`)
+      .then(res => {
+        if (res.ok) return res.json();
+        if (res.status === 404) {
+          hasConnected = true;
+          clearTimeout(initialConnectionTimeout);
+          element('order').hidden = true;
+          element('connection').dataset.state = 'unavailable';
+          element('connection').textContent = 'Este link não está mais disponível.';
+        }
+        return null;
+      })
+      .then(order => {
+        if (order) applyOrder(order);
+      })
+      .catch(err => {
+        console.warn('[TRACKING] Falha no fetch inicial REST, aguardando SSE:', err);
+      });
+  }
+
+  // 3. Conexão SSE para atualizações em tempo real
+  const source = new EventSource(`/api/public/service-order/${encodeURIComponent(token)}/events`);
+
   source.addEventListener('order', event => {
-    hasConnected = true;
-    clearTimeout(initialConnectionTimeout);
     try {
       const order = JSON.parse(event.data);
-      element('connection').textContent = 'Atualização automática conectada';
-      element('connection').dataset.state = 'connected';
-      element('order').hidden = false;
-      updateCompanyBranding(order);
-      element('number').textContent = formatOrderNumber(order.order_number);
-      element('device').textContent = [order.brand, order.model].filter(Boolean).join(' ') || 'Aparelho';
-      element('customer').textContent = order.customer_name || '—';
-      element('updated').textContent = date(order.updated_at);
-      element('status-card').dataset.status = order.status;
-      element('status').textContent = labels[order.status] || 'Em atendimento';
-      element('details').replaceChildren();
-      for (const [label, value] of [['Data de entrada', date(order.entry_date)], ...(order.expected_delivery_date ? [['Previsão de conclusão', date(order.expected_delivery_date)]] : [])]) {
-        const dt = document.createElement('dt'); dt.textContent = label;
-        const dd = document.createElement('dd'); dd.textContent = value || '—';
-        const group = document.createElement('div'); group.append(dt, dd);
-        element('details').append(group);
-      }
-      element('history').replaceChildren(...order.history.map((item, index) => {
-        const li = document.createElement('li');
-        const title = document.createElement('strong'); title.textContent = labels[item.status] || 'Em atendimento';
-        const time = document.createElement('time'); time.textContent = date(item.created_at);
-        li.append(title, time);
-        if (index === order.history.length - 1) {
-          li.setAttribute('aria-current', 'step');
-          const badge = document.createElement('span'); badge.className = 'current-label'; badge.textContent = 'Status atual'; li.append(badge);
-        }
-        return li;
-      }));
+      applyOrder(order);
     } catch (parseErr) {
       console.error('[TRACKING] Falha ao processar dados da OS:', parseErr);
     }

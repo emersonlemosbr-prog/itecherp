@@ -29,6 +29,20 @@ function formatCnpjLine(cnpj) {
   return /^cnpj\s*:/i.test(clean) ? clean : `CNPJ: ${clean}`;
 }
 
+function stripNulls(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(stripNulls);
+  }
+  if (obj !== null && typeof obj === 'object') {
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => [k, stripNulls(v)])
+    );
+  }
+  return obj;
+}
+
 function renderTrackingHtml(order) {
   const companyName = typeof order?.company_name === 'string' ? order.company_name.trim() : '';
   const companyCnpj = formatCnpjLine(order?.company_cnpj);
@@ -45,10 +59,15 @@ function renderTrackingHtml(order) {
     ? `<footer id="company-cnpj">${escapeHtml(companyCnpj)}</footer>`
     : '<footer id="company-cnpj" hidden></footer>';
 
+  const cleanOrder = stripNulls(order);
+  const safeJson = JSON.stringify(cleanOrder).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+  const initialDataScript = `<script id="initial-order-data" type="application/json">${safeJson}</script>`;
+
   return trackingHtmlTemplate
     .replace('<img id="company-logo" class="logo" src="" alt="Logo da empresa" width="220" height="98" hidden>', logoMarkup)
     .replace('<footer id="company-name" hidden></footer>', nameFooter)
-    .replace('<footer id="company-cnpj" hidden></footer>', cnpjFooter);
+    .replace('<footer id="company-cnpj" hidden></footer>', cnpjFooter)
+    .replace('</head>', `${initialDataScript}</head>`);
 }
 
 /**
@@ -124,6 +143,11 @@ function attachPublicTracking(app, db, { limit = 60, windowMs = 60000, pollMs = 
     res.type('html').send(renderTrackingHtml(res.locals.order));
   });
 
+  // Endpoint REST público para obter dados completos da OS (carga inicial e clientes de API)
+  app.get('/api/public/service-order/:token', trackingSecurityHeaders, find, (_req, res) => {
+    res.json(res.locals.order);
+  });
+
   // Endpoints de SSE (Live Updates) e Push Notifications
   app.get('/api/public/service-order/:token/events', trackingSecurityHeaders, find, (req, res) => {
     if (streams.size >= 500 || [...streams].filter(s => s.ip === req.ip).length >= 5) {
@@ -151,6 +175,8 @@ function attachPublicTracking(app, db, { limit = 60, windowMs = 60000, pollMs = 
     res.on('error', error => closeStream('response error', error));
     res.on('close', () => closeStream('closed'));
     try {
+      // Padding inicial para forçar descarte imediato do buffer em proxies intermediários (Nginx, Cloudflare)
+      res.write(`: ${' '.repeat(2048)}\n\n`);
       res.write(`retry: 5000\nevent: order\ndata: ${stream.previous}\n\n`);
     } catch (error) {
       closeStream('initial write failed', error);
@@ -228,10 +254,10 @@ function createPublicApp(db, { limit = 60, windowMs = 60000, pollMs = 1000, trus
   // Do not trust arbitrary X-Forwarded-For headers. Loopback proxy only, when explicitly configured.
   if (trustProxy === 'loopback') app.set('trust proxy', 'loopback');
 
-  app.get('/', (_req, res) => res.json({ status: 'online' }));
-
   const cleanup = attachPublicTracking(app, actualDb, { limit, windowMs, pollMs, standalone: true });
   app.locals.close = cleanup;
+
+  app.get('/', (_req, res) => res.json({ status: 'online' }));
 
   app.use((_req, res) => res.status(404).json({ error: 'Não encontrado.' }));
   app.use((err, req, res, _next) => {
