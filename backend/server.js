@@ -6,6 +6,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const { ensureFinancialHistoryUpToDate } = require('./utils/financialHistory');
 const db = require('./db/database');
+const { attachPublicTracking } = require('./publicTrackingServer');
 
 const app = express();
 
@@ -20,6 +21,15 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '0');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// Redirecionamento 301 do domínio legado para o novo domínio oficial definitivo
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').toLowerCase().split(':')[0];
+  if (host === 'erp.itechcelulareinformatica.com.br') {
+    return res.redirect(301, `https://itechcloud.app${req.originalUrl}`);
+  }
   next();
 });
 
@@ -170,6 +180,9 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.use('/api', require('./routes/notesAliases'));
+
+// Acompanhamento público de Ordens de Serviço (disponível em https://itechcloud.app/acompanhamento/:token)
+attachPublicTracking(app, db);
 
 // Serve o frontend estático se ele existir (hospedagem híbrida opcional)
 const frontendDist = path.join(__dirname, 'public');

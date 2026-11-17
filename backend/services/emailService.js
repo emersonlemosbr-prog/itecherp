@@ -113,7 +113,12 @@ async function sendEmail({ to, subject, html, text, from }) {
 function getAppBaseUrl() {
   const envUrl = process.env.APP_BASE_URL;
   if (envUrl && envUrl.trim()) {
-    return envUrl.trim().replace(/\/+$/, '');
+    const clean = envUrl.trim().replace(/\/+$/, '');
+    // Se a variável de ambiente ainda contiver o domínio legado descontinuado:
+    if (clean.includes('erp.itechcelulareinformatica.com.br') || clean.includes('itechcelulareinformatica.com.br')) {
+      return 'https://itechcloud.app';
+    }
+    return clean;
   }
   return 'https://itechcloud.app';
 }
@@ -124,7 +129,11 @@ function getAppBaseUrl() {
 function getOfficialLogoUrl() {
   const envLogo = process.env.APP_LOGO_URL;
   if (envLogo && envLogo.trim()) {
-    return envLogo.trim();
+    const cleanLogo = envLogo.trim();
+    if (cleanLogo.includes('erp.itechcelulareinformatica.com.br') || cleanLogo.includes('itechcelulareinformatica.com.br')) {
+      return `${getAppBaseUrl()}/assets/itech-logo-DFKQ73Sa.png`;
+    }
+    return cleanLogo;
   }
   return `${getAppBaseUrl()}/assets/itech-logo-DFKQ73Sa.png`;
 }

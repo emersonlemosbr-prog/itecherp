@@ -104,7 +104,8 @@ api.interceptors.response.use(
           !window.location.pathname.startsWith('/recuperar-senha') &&
           !window.location.pathname.startsWith('/redefinir-senha') &&
           !window.location.pathname.startsWith('/reset-password') &&
-          !window.location.pathname.startsWith('/admin-plataforma')) {
+          !window.location.pathname.startsWith('/admin-plataforma') &&
+          !window.location.pathname.startsWith('/acompanhamento')) {
         localStorage.removeItem('itech_token')
         localStorage.removeItem('itech_user')
         window.location.href = '/login'
