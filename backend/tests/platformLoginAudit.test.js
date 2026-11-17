@@ -112,6 +112,8 @@ test('CORS Policy: Preflight OPTIONS and Origin authorization', async (t) => {
     if (normalized.endsWith('.pages.dev')) return true;
     if (normalized.endsWith('.onrender.com')) return true;
     if (
+      normalized === 'https://itechcloud.app' ||
+      normalized === 'https://www.itechcloud.app' ||
       normalized === 'https://erp.itechcelulareinformatica.com.br' ||
       normalized === 'https://acompanhar.itechcelulareinformatica.com.br' ||
       normalized === 'https://itechcelulareinformatica.com.br' ||
@@ -168,6 +170,14 @@ test('CORS Policy: Preflight OPTIONS and Origin authorization', async (t) => {
   });
   assert.equal(erpPostRes.status, 200);
   assert.equal(erpPostRes.headers['access-control-allow-origin'], 'https://erp.itechcelulareinformatica.com.br');
+
+  // Teste de Origem Autorizada Novo Domínio Oficial de Produção (itechcloud.app)
+  const itechCloudPostRes = await requestHttp(server, 'POST', '/api/platform/login', {
+    'Origin': 'https://itechcloud.app',
+    'Content-Type': 'application/json'
+  });
+  assert.equal(itechCloudPostRes.status, 200);
+  assert.equal(itechCloudPostRes.headers['access-control-allow-origin'], 'https://itechcloud.app');
 
   // Teste de Origem NÃO Autorizada (deve NÃO receber cabeçalho Access-Control-Allow-Origin)
   const unauthRes = await requestHttp(server, 'POST', '/api/platform/login', {

@@ -311,7 +311,7 @@ async function handleForgotPassword(mockDb, rawEmail, options = {}) {
 
   const { html, text } = renderPasswordResetEmail({
     userName: targetAccount.name,
-    resetUrl: `https://erp.itechcelulareinformatica.com.br/redefinir-senha?token=${resetToken}&email=${encodeURIComponent(cleanEmail)}`,
+    resetUrl: `https://itechcloud.app/redefinir-senha?token=${resetToken}&email=${encodeURIComponent(cleanEmail)}`,
     systemName: 'iTech ERP',
     validityText: '30 minutos'
   });

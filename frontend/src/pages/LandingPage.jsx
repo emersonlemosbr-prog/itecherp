@@ -192,7 +192,7 @@ function LandingHero({ scrollTo }) {
                 <div className="lp-mockup-dots">
                   <span /><span /><span />
                 </div>
-                <div className="lp-mockup-url">erp.itechcelulareinformatica.com.br</div>
+                <div className="lp-mockup-url">itechcloud.app</div>
               </div>
               <div className="lp-mockup-body">
                 <div className="lp-mockup-header">

@@ -2,12 +2,12 @@ import axios from 'axios'
 
 /**
  * Resolve a URL-base da API com resiliência para todos os ambientes:
- * 1. Quando o frontend e o backend estão na mesma origem (Shard Cloud em erp.itechcelulareinformatica.com.br,
- *    domínio principal, localhost ou rede local LAN), utiliza '/api' relativo sobre o mesmo protocolo/porta (HTTPS).
+ * 1. Quando o frontend e o backend estão na mesma origem (Shard Cloud em itechcloud.app,
+ *    localhost ou rede local LAN), utiliza '/api' relativo sobre o mesmo protocolo/porta (HTTPS).
  * 2. Em ambientes externos/separados (ex: Cloudflare Pages *.pages.dev), utiliza VITE_API_URL normalizada
- *    ou faz fallback para a URL oficial da API na Shard Cloud (https://erp.itechcelulareinformatica.com.br/api).
+ *    ou faz fallback para a URL oficial da API na Shard Cloud (https://itechcloud.app/api).
  */
-export const DEFAULT_API_URL = 'https://erp.itechcelulareinformatica.com.br/api'
+export const DEFAULT_API_URL = 'https://itechcloud.app/api'
 export const DEFAULT_RENDER_API_URL = DEFAULT_API_URL
 
 export function resolveApiBaseUrl() {
@@ -22,6 +22,8 @@ export function resolveApiBaseUrl() {
 
     // Domínios oficiais em que frontend e backend são servidos na mesma origem
     const isSameOriginDomain =
+      hostname === 'itechcloud.app' ||
+      hostname === 'www.itechcloud.app' ||
       hostname === 'erp.itechcelulareinformatica.com.br' ||
       hostname === 'itechcelulareinformatica.com.br' ||
       hostname === 'www.itechcelulareinformatica.com.br' ||

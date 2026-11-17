@@ -115,7 +115,7 @@ function getAppBaseUrl() {
   if (envUrl && envUrl.trim()) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  return 'https://erp.itechcelulareinformatica.com.br';
+  return 'https://itechcloud.app';
 }
 
 /**
