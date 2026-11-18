@@ -189,7 +189,7 @@ export default function DangerZone({ onBackup }) {
     return (
       <div className="card p-10 flex flex-col items-center justify-center gap-3 text-slate-400">
         <RefreshCw className="animate-spin text-amber-500" size={28} />
-        <span className="font-medium text-sm">Consultando banco de dados real do iTech ERP...</span>
+        <span className="font-medium text-sm">Consultando banco de dados real do iTechCloud...</span>
         <span className="text-xs text-slate-500">Lendo contagens e dependências de clientes, ordens de serviço e estoque.</span>
       </div>
     )

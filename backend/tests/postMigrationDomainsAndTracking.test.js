@@ -49,7 +49,7 @@ test('Pós-Migração — Problema 1: Recuperação de Senha deve apontar exclus
       userName: 'Emerson',
       resetUrl,
       logoUrl: getOfficialLogoUrl(),
-      systemName: 'iTech ERP'
+      systemName: 'iTechCloud'
     });
 
     assert.ok(html.includes('https://itechcloud.app/redefinir-senha?token=abc123def45678901234567890123456&amp;email=cliente%40exemplo.com.br') ||
@@ -57,6 +57,8 @@ test('Pós-Migração — Problema 1: Recuperação de Senha deve apontar exclus
     assert.ok(text.includes('https://itechcloud.app/redefinir-senha?token=abc123def45678901234567890123456&email=cliente%40exemplo.com.br'));
     assert.ok(!html.includes('erp.itechcelulareinformatica.com.br'));
     assert.ok(!text.includes('erp.itechcelulareinformatica.com.br'));
+    assert.ok(html.includes('iTechCloud'));
+    assert.ok(text.includes('iTechCloud'));
   } finally {
     if (originalBase !== undefined) process.env.APP_BASE_URL = originalBase;
     else delete process.env.APP_BASE_URL;

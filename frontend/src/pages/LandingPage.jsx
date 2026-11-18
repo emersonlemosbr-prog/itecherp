@@ -5,7 +5,7 @@ import itechCloudIcon from '../assets/itechcloud-icon.svg'
 import './LandingPage.css'
 
 /* ================================================================
-   iTech ERP — Landing Page Institucional
+   iTechCloud — Landing Page Institucional
    ================================================================ */
 
 // ── Dados dos módulos ────────────────────────────────────────────
@@ -28,7 +28,7 @@ const MODULES = [
 const FAQ_ITEMS = [
   {
     q: 'O sistema funciona sem internet?',
-    a: 'O iTech ERP é um sistema baseado em nuvem. Você precisa de conexão com a internet para acessá-lo, mas o acesso pode ser feito de qualquer dispositivo com navegador — celular, tablet ou computador.',
+    a: 'O iTechCloud é um sistema baseado em nuvem. Você precisa de conexão com a internet para acessá-lo, mas o acesso pode ser feito de qualquer dispositivo com navegador — celular, tablet ou computador.',
   },
   {
     q: 'Quantos usuários podem acessar simultaneamente?',
@@ -52,7 +52,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Posso acessar pelo celular?',
-    a: 'Sim. O iTech ERP é totalmente responsivo e funciona em dispositivos móveis. A interface se adapta automaticamente à tela do smartphone.',
+    a: 'Sim. O iTechCloud é totalmente responsivo e funciona em dispositivos móveis. A interface se adapta automaticamente à tela do smartphone.',
   },
   {
     q: 'Como funciona o controle financeiro?',
@@ -500,14 +500,14 @@ function LandingBenefits() {
             <span className="lp-section-label">Benefícios</span>
             <h2 className="lp-section-title">Chega de planilha e papel</h2>
             <p className="lp-section-sub">
-              Veja a diferença entre gerenciar sua loja no modo antigo e com o iTech ERP.
+              Veja a diferença entre gerenciar sua loja no modo antigo e com o iTechCloud.
             </p>
             <table className="lp-compare-table" style={{ marginTop: 32 }}>
               <thead>
                 <tr>
                   <th>Situação</th>
                   <th className="bad">Sem sistema</th>
-                  <th className="good">Com iTech ERP</th>
+                  <th className="good">Com iTechCloud</th>
                 </tr>
               </thead>
               <tbody>
@@ -562,7 +562,7 @@ function LandingSecurity() {
             <span className="lp-section-label">Segurança</span>
             <h2 className="lp-section-title">Seus dados protegidos e isolados</h2>
             <p className="lp-section-sub">
-              O iTech ERP foi construído com segurança como prioridade, garantindo que os dados de cada loja fiquem completamente isolados.
+              O iTechCloud foi construído com segurança como prioridade, garantindo que os dados de cada loja fiquem completamente isolados.
             </p>
             <div className="lp-security-features">
               {[
@@ -635,7 +635,7 @@ function LandingFAQ() {
             <span className="lp-section-label">Perguntas frequentes</span>
             <h2 className="lp-section-title">Dúvidas comuns</h2>
             <p className="lp-section-sub">
-              Encontre respostas para as perguntas mais comuns sobre o iTech ERP.
+              Encontre respostas para as perguntas mais comuns sobre o iTechCloud.
             </p>
           </div>
 
@@ -678,7 +678,7 @@ function LandingCTA() {
             Sua loja merece um sistema profissional
           </h2>
           <p className="lp-cta-sub">
-            Comece a organizar suas ordens de serviço, clientes e financeiro com o iTech ERP. Acesso imediato, sem complicação.
+            Comece a organizar suas ordens de serviço, clientes e financeiro com o iTechCloud. Acesso imediato, sem complicação.
           </p>
           <div className="lp-cta-actions">
             <Link to={destination} className="lp-btn-primary">
@@ -756,6 +756,10 @@ export default function LandingPage() {
   }, [user, navigate])
 
   if (user) return null
+
+  useEffect(() => {
+    document.title = 'iTechCloud — Sistema de Gestão para Lojas de Celulares e Informática'
+  }, [])
 
   const scrollTo = (id) => {
     const el = document.getElementById(id)

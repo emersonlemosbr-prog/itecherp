@@ -87,7 +87,7 @@ router.get('/branding', async (req, res) => {
     const settings = await readSettings(storeId);
     res.json({ name: settings.store.name, logo: settings.store.logo });
   } catch {
-    res.json({ name: 'iTech ERP', logo: '' });
+    res.json({ name: 'iTechCloud', logo: '' });
   }
 });
 
@@ -543,14 +543,14 @@ router.post('/forgot-password', forgotPasswordRateLimit, async (req, res) => {
       userName: targetAccount.name,
       resetUrl,
       logoUrl,
-      systemName: 'iTech ERP',
+      systemName: 'iTechCloud',
       validityText: '30 minutos'
     });
 
     // Enviar e-mail de forma assíncrona/segura via Resend
     const sendResult = await sendEmail({
       to: cleanEmail,
-      subject: 'Redefinição de senha — iTech ERP',
+      subject: 'Redefinição de senha — iTechCloud',
       html,
       text
     });

@@ -567,7 +567,7 @@ export default function PlatformAdmin() {
               </div>
               <h1 className="font-display font-extrabold text-2xl text-white">Painel da Plataforma</h1>
               <p className="text-slate-400 text-xs">
-                Acesso restrito exclusivo para Administradores da Plataforma iTech ERP.
+                Acesso restrito exclusivo para Administradores da Plataforma iTechCloud.
               </p>
             </div>
 
@@ -649,7 +649,7 @@ export default function PlatformAdmin() {
                 </span>
               </div>
               <p className="text-slate-400 text-xs mt-0.5">
-                Gestão central de assinaturas, lojas e clientes iTech ERP
+                Gestão central de assinaturas, lojas e clientes iTechCloud
               </p>
             </div>
           </div>

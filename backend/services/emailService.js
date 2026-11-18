@@ -6,8 +6,8 @@ const { Resend } = require('resend');
  *
  * Variáveis de ambiente utilizadas:
  * - RESEND_API_KEY: Chave de API do Resend (obrigatória para envio real)
- * - EMAIL_FROM: Remetente configurado (ex: "iTech ERP <noreply@seudominio.com.br>")
- * - APP_BASE_URL: URL base pública do ERP (ex: "https://erp.itechcelulareinformatica.com.br")
+ * - EMAIL_FROM: Remetente configurado (ex: "iTechCloud <noreply@seudominio.com.br>")
+ * - APP_BASE_URL: URL base pública do ERP (ex: "https://itechcloud.app")
  */
 
 let resendClient = null;
@@ -35,7 +35,11 @@ function getResendClient() {
  * @returns {Promise<{ success: boolean, id?: string, simulated?: boolean, error?: string }>}
  */
 async function sendEmail({ to, subject, html, text, from }) {
-  const defaultFrom = process.env.EMAIL_FROM || 'iTech ERP <atendimento@itechcelulareinformatica.com.br>';
+  let defaultFrom = process.env.EMAIL_FROM || 'iTechCloud <atendimento@itechcelulareinformatica.com.br>';
+  // Se EMAIL_FROM ainda contiver a nomenclatura legada "iTech ERP", substitui preservando o endereço
+  if (defaultFrom.includes('iTech ERP')) {
+    defaultFrom = defaultFrom.replace('iTech ERP', 'iTechCloud');
+  }
   const sender = (from && from.trim()) || defaultFrom;
 
   const client = getResendClient();

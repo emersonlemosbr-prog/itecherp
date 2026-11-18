@@ -729,7 +729,7 @@ export default function RegisterStore() {
                   >
                     Política de Privacidade (LGPD)
                   </Link>
-                  {' '}do iTech ERP, autorizando o tratamento técnico dos dados cadastrais necessários à operação da plataforma.
+                  {' '}do iTechCloud, autorizando o tratamento técnico dos dados cadastrais necessários à operação da plataforma.
                 </span>
               </label>
             </div>
@@ -760,7 +760,7 @@ export default function RegisterStore() {
             <p>
               Já possui uma loja cadastrada?{' '}
               <Link to="/login" className="text-[#FFBE0B] hover:text-[#f5b400] font-semibold transition-colors">
-                Fazer login no iTech ERP
+                Fazer login no iTechCloud
               </Link>
             </p>
             <p>

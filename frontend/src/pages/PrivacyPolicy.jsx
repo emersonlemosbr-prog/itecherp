@@ -14,7 +14,7 @@ export default function PrivacyPolicy() {
               <span>Privacidade e Proteção de Dados</span>
             </div>
             <h1 className="text-3xl font-extrabold text-white tracking-tight">POLÍTICA DE PRIVACIDADE</h1>
-            <p className="text-xs text-slate-400">iTech ERP — Última atualização: 07 de novembro de 2026</p>
+            <p className="text-xs text-slate-400">iTechCloud — Última atualização: 07 de novembro de 2026</p>
           </div>
           <Link
             to="/login"
@@ -35,7 +35,7 @@ export default function PrivacyPolicy() {
               QUEM SOMOS
             </h2>
             <p>
-              O <strong>iTech ERP</strong> é uma plataforma de gestão empresarial desenvolvida e operada pela empresa <strong>iTech Celular e Informática</strong>, que também atua no segmento de manutenção de celulares, computadores e comercialização de acessórios.
+              O <strong>iTechCloud</strong> é uma plataforma de gestão empresarial desenvolvida e operada pela empresa <strong>iTech Celular e Informática</strong>, que também atua no segmento de manutenção de celulares, computadores e comercialização de acessórios.
             </p>
             <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-2 text-xs text-slate-300">
               <p className="font-semibold text-amber-400">Responsável pela plataforma:</p>
@@ -59,7 +59,7 @@ export default function PrivacyPolicy() {
               </div>
             </div>
             <p>
-              Esta Política de Privacidade explica como tratamos dados pessoais de usuários, administradores, funcionários e demais pessoas que interagem com o iTech ERP. O tratamento de dados pessoais é realizado em conformidade com a <strong>Lei nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais — LGPD)</strong>, observadas as demais normas aplicáveis.
+              Esta Política de Privacidade explica como tratamos dados pessoais de usuários, administradores, funcionários e demais pessoas que interagem com o iTechCloud. O tratamento de dados pessoais é realizado em conformidade com a <strong>Lei nº 13.709/2018 (Lei Geral de Proteção de Dados Pessoais — LGPD)</strong>, observadas as demais normas aplicáveis.
             </p>
           </section>
 
@@ -69,7 +69,7 @@ export default function PrivacyPolicy() {
               <span className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center text-xs">2</span>
               NOSSO COMPROMISSO COM A PRIVACIDADE
             </h2>
-            <p>O iTech ERP busca respeitar a privacidade e proteger os dados pessoais tratados por meio da plataforma. Adotamos como princípios fundamentais:</p>
+            <p>O iTechCloud busca respeitar a privacidade e proteger os dados pessoais tratados por meio da plataforma. Adotamos como princípios fundamentais:</p>
             <ul className="grid sm:grid-cols-2 gap-2 pt-2 text-xs">
               {[
                 'Coletar somente os dados necessários para as finalidades informadas.',
@@ -108,8 +108,8 @@ export default function PrivacyPolicy() {
 
               <div className="bg-slate-950/60 border border-slate-800/70 p-4 rounded-xl space-y-1.5">
                 <h3 className="font-bold text-amber-400 text-sm">3.3. Dados dos clientes das lojas</h3>
-                <p>O iTech ERP permite que cada estabelecimento registre informações necessárias à prestação de seus serviços (Nome do cliente, Telefone/WhatsApp, CPF/CNPJ, Endereço, Aparelhos, Histórico de OS, Fotos e Garantias). A senha de desbloqueio de aparelhos, quando cadastrada, recebe tratamento especial com criptografia AES-256-GCM.</p>
-                <p className="text-amber-300/90 pt-1"><strong>Importante:</strong> os dados dos clientes cadastrados pelas lojas pertencem ao contexto de atendimento e operação de cada estabelecimento. A loja é, em regra, responsável por definir as finalidades e os meios desse tratamento (Controladora), enquanto o iTech ERP atua como operador quando processa essas informações seguindo as instruções da loja.</p>
+                <p>O iTechCloud permite que cada estabelecimento registre informações necessárias à prestação de seus serviços (Nome do cliente, Telefone/WhatsApp, CPF/CNPJ, Endereço, Aparelhos, Histórico de OS, Fotos e Garantias). A senha de desbloqueio de aparelhos, quando cadastrada, recebe tratamento especial com criptografia AES-256-GCM.</p>
+                <p className="text-amber-300/90 pt-1"><strong>Importante:</strong> os dados dos clientes cadastrados pelas lojas pertencem ao contexto de atendimento e operação de cada estabelecimento. A loja é, em regra, responsável por definir as finalidades e os meios desse tratamento (Controladora), enquanto o iTechCloud atua como operador quando processa essas informações seguindo as instruções da loja.</p>
               </div>
 
               <div className="bg-slate-950/60 border border-slate-800/70 p-4 rounded-xl space-y-1.5">
@@ -174,7 +174,7 @@ export default function PrivacyPolicy() {
               <span className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center text-xs">6</span>
               COMPARTILHAMENTO DE DADOS
             </h2>
-            <p><strong>O iTech ERP não comercializa dados pessoais.</strong> Entretanto, poderá compartilhar informações estritamente necessárias com fornecedores e prestadores de serviços envolvidos na operação da plataforma:</p>
+            <p><strong>O iTechCloud não comercializa dados pessoais.</strong> Entretanto, poderá compartilhar informações estritamente necessárias com fornecedores e prestadores de serviços envolvidos na operação da plataforma:</p>
             <div className="grid sm:grid-cols-2 gap-3 text-xs pt-1">
               <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
                 <strong className="text-amber-400">Google Identity Services</strong>
@@ -292,7 +292,7 @@ export default function PrivacyPolicy() {
               </a>
             </div>
             <p className="text-[11px] text-slate-400">
-              <strong>Nota aos clientes das lojas:</strong> Caso você seja cliente final de uma assistência técnica usuária do iTech ERP, procure inicialmente a loja responsável pelo seu atendimento (Controladora). O iTech ERP atua como operador e prestará todo o suporte técnico necessário à loja para viabilizar o atendimento.
+              <strong>Nota aos clientes das lojas:</strong> Caso você seja cliente final de uma assistência técnica usuária do iTechCloud, procure inicialmente a loja responsável pelo seu atendimento (Controladora). O iTechCloud atua como operador e prestará todo o suporte técnico necessário à loja para viabilizar o atendimento.
             </p>
           </section>
 
@@ -300,12 +300,12 @@ export default function PrivacyPolicy() {
           <div className="space-y-4 text-xs">
             <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-1">
               <h3 className="font-bold text-white text-sm">14. Responsabilidades das Lojas Contratantes</h3>
-              <p>Cada loja usuária do iTech ERP é autônoma e responsável pela regularidade dos dados que cadastra de seus clientes e colaboradores, devendo utilizar bases legais idôneas e atender seus respectivos clientes.</p>
+              <p>Cada loja usuária do iTechCloud é autônoma e responsável pela regularidade dos dados que cadastra de seus clientes e colaboradores, devendo utilizar bases legais idôneas e atender seus respectivos clientes.</p>
             </div>
 
             <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-1">
               <h3 className="font-bold text-white text-sm">15. Dados de Crianças e Adolescentes</h3>
-              <p>O iTech ERP destina-se ao ambiente corporativo. Caso a loja registre dados de menores em ordens de serviço, deverá observar as regras de representação/assistência e o melhor interesse do menor conforme a legislação brasileira.</p>
+              <p>O iTechCloud destina-se ao ambiente corporativo. Caso a loja registre dados de menores em ordens de serviço, deverá observar as regras de representação/assistência e o melhor interesse do menor conforme a legislação brasileira.</p>
             </div>
 
             <div className="bg-slate-900/40 p-4 rounded-xl border border-slate-800 space-y-1">

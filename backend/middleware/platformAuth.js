@@ -13,7 +13,7 @@ async function authenticatePlatformAdmin(req, res, next) {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     if (payload.role !== 'platform_admin' || payload.type !== 'platform') {
-      return res.status(403).json({ error: 'Acesso exclusivo para administradores da plataforma iTech ERP.' });
+      return res.status(403).json({ error: 'Acesso exclusivo para administradores da plataforma iTechCloud.' });
     }
 
     const admin = await db.queryOne('SELECT id, name, email, role, active, session_version FROM platform_users WHERE id = $1', [payload.id]);

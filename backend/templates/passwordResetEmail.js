@@ -1,5 +1,5 @@
 /**
- * Template de E-mail de Recuperação de Senha — iTech ERP
+ * Template de E-mail de Recuperação de Senha — iTechCloud
  *
  * Módulo reutilizável e isolado para renderização do layout HTML e versão texto puro.
  * Compatível com os principais clientes de e-mail (Gmail, Outlook, Apple Mail, Thunderbird).
@@ -8,7 +8,7 @@
  * @param {string} [params.userName] - Nome do usuário ou proprietário da loja
  * @param {string} [params.resetUrl] - Link seguro para redefinição de senha
  * @param {string} [params.logoUrl] - URL absoluta pública ou data URI da logo oficial
- * @param {string} [params.systemName] - Nome institucional do sistema (padrão: "iTech ERP")
+ * @param {string} [params.systemName] - Nome institucional do sistema (padrão: "iTechCloud")
  * @param {string} [params.validityText] - Texto informativo sobre validade (ex: "60 minutos")
  * @returns {{ html: string, text: string }}
  */
@@ -16,7 +16,7 @@ function renderPasswordResetEmail({
   userName = '',
   resetUrl = 'https://itechcloud.app/redefinir-senha?token=DEMO_TOKEN',
   logoUrl = 'https://itechcloud.app/assets/itech-logo-DFKQ73Sa.png',
-  systemName = 'iTech ERP',
+  systemName = 'iTechCloud',
   validityText = '60 minutos'
 } = {}) {
   const greeting = userName && String(userName).trim()

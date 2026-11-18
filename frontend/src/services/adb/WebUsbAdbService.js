@@ -1,9 +1,9 @@
-﻿import { Adb, AdbDaemonTransport } from '@yume-chan/adb'
+import { Adb, AdbDaemonTransport } from '@yume-chan/adb'
 import { AdbDaemonWebUsbDeviceManager, AdbDaemonWebUsbDevice } from '@yume-chan/adb-daemon-webusb'
 import AdbWebCredentialStore from '@yume-chan/adb-credential-web'
 
 // One browser-local identity and one USB session for the application.
-const credentials = new AdbWebCredentialStore('iTech ERP')
+const credentials = new AdbWebCredentialStore('iTechCloud')
 const manager = AdbDaemonWebUsbDeviceManager.BROWSER
 const listeners = new Set()
 let state = { status: 'idle', device: null, error: null }

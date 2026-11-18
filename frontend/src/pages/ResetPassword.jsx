@@ -105,7 +105,7 @@ export default function ResetPassword() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <p className="text-gray-400 text-xs leading-relaxed">
-                Digite a nova senha para restabelecer o acesso seguro à sua conta no iTech ERP.
+                Digite a nova senha para restabelecer o acesso seguro à sua conta no iTechCloud.
               </p>
 
               {(!tokenFromUrl || !emailFromUrl) && (
