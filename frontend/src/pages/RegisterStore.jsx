@@ -375,7 +375,7 @@ export default function RegisterStore() {
             />
           </Link>
           <h1 className="font-['Sora',sans-serif] font-extrabold text-2xl sm:text-3xl tracking-tight text-white">
-            Criar Conta no iTechCloud
+            Criar Conta no iTech<span className="text-[#FFBE0B]">Cloud</span>
           </h1>
           <p className="text-gray-400 text-xs sm:text-sm mt-2 max-w-md">
             Cadastre sua assistência técnica e gerencie clientes, ordens de serviço, vendas e estoque em uma plataforma completa.

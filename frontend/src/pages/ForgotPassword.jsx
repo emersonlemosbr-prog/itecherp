@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, ArrowLeft, CheckCircle2, AlertCircle, KeyRound, Loader2 } from 'lucide-react'
 import api from '../api/client'
-import itechLogo from '../assets/itech-logo.png'
+import itechCloudIcon from '../assets/itechcloud-icon.svg'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -39,15 +39,15 @@ export default function ForgotPassword() {
       <div className="w-full max-w-sm relative z-10">
         {/* Cabeçalho com Logo Nova Oficial */}
         <div className="flex flex-col items-center mb-6 text-center">
-          <Link to="/" className="inline-block transition-transform hover:scale-105 mb-3" title="iTech ERP">
+          <Link to="/" className="inline-block transition-transform hover:scale-105 mb-3" title="iTechCloud">
             <img
-              src={itechLogo}
-              alt="iTech ERP"
+              src={itechCloudIcon}
+              alt="iTechCloud"
               className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-[0_8px_24px_rgba(255,190,11,0.25)] rounded-2xl"
             />
           </Link>
           <h1 className="font-['Sora',sans-serif] font-extrabold text-2xl tracking-tight text-white">
-            iTech <span className="text-[#FFBE0B]">ERP</span>
+            iTech<span className="text-[#FFBE0B]">Cloud</span>
           </h1>
           <p className="text-gray-400 text-xs mt-1">Recuperação de Acesso</p>
         </div>
