@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import itechCloudIcon from '../assets/itechcloud-icon.svg'
 import './LandingPage.css'
 
 /* ================================================================
@@ -88,8 +89,11 @@ function LandingNav({ onSectionClick }) {
       <nav className={`lp-nav${scrolled ? ' scrolled' : ''}`}>
         <div className="lp-nav-inner">
           <a href="#inicio" className="lp-nav-logo" onClick={(e) => { e.preventDefault(); onSectionClick('inicio') }}>
-            <div className="lp-nav-logo-mark">iT</div>
-            <div className="lp-nav-logo-text">iTech <span>ERP</span></div>
+            <img
+              src={itechCloudIcon}
+              alt="iTechCloud"
+              className="lp-nav-brand-icon"
+            />
           </a>
 
           <ul className="lp-nav-links">
@@ -695,8 +699,11 @@ function LandingFooter({ scrollTo }) {
         <div className="lp-footer-top">
           <div>
             <div className="lp-nav-logo" style={{ display: 'inline-flex', marginBottom: 0 }}>
-              <div className="lp-nav-logo-mark">iT</div>
-              <div className="lp-nav-logo-text">iTech <span>ERP</span></div>
+              <img
+                src={itechCloudIcon}
+                alt="iTechCloud"
+                className="lp-nav-brand-icon"
+              />
             </div>
             <p className="lp-footer-brand-desc">
               Sistema de gestão desenvolvido especialmente para lojas de celulares, informática e assistência técnica. Organização, controle e profissionalismo em um só lugar.

@@ -3,7 +3,7 @@ import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Lock, User, AlertCircle, Store } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import itechLogo from '../assets/itech-logo.png'
+import itechCloudIcon from '../assets/itechcloud-icon.svg'
 
 export default function Login() {
   const { login } = useAuth()
@@ -63,18 +63,15 @@ export default function Login() {
       />
 
       <div className="w-full max-w-sm relative z-10">
-        {/* Cabeçalho com Logo Nova Oficial */}
+        {/* Cabeçalho com Logo Nova Oficial iTechCloud */}
         <div className="flex flex-col items-center mb-6 text-center">
-          <Link to="/" className="inline-block transition-transform hover:scale-105 mb-3" title="iTech ERP">
+          <Link to="/" className="inline-block transition-transform hover:scale-105 mb-2" title="iTechCloud">
             <img
-              src={itechLogo}
-              alt="iTech ERP"
-              className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-[0_8px_24px_rgba(255,190,11,0.25)] rounded-2xl"
+              src={itechCloudIcon}
+              alt="iTechCloud"
+              className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_8px_24px_rgba(255,190,11,0.25)] rounded-2xl"
             />
           </Link>
-          <h1 className="font-['Sora',sans-serif] font-extrabold text-2xl tracking-tight text-white">
-            iTech <span className="text-[#FFBE0B]">ERP</span>
-          </h1>
           <p className="text-gray-400 text-xs mt-1">Acesso ao Sistema de Gestão</p>
         </div>
 

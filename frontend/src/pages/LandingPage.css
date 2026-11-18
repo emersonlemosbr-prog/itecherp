@@ -93,6 +93,20 @@
   text-decoration: none;
 }
 
+.lp-nav-brand-icon {
+  height: 42px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  display: block;
+  transition: transform 0.2s ease;
+  filter: drop-shadow(0 2px 8px rgba(255, 190, 11, 0.2));
+}
+
+.lp-nav-logo:hover .lp-nav-brand-icon {
+  transform: scale(1.04);
+}
+
 .lp-nav-logo-mark {
   width: 36px;
   height: 36px;
