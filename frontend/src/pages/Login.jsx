@@ -139,7 +139,7 @@ export default function Login() {
                   <span>Entrando...</span>
                 </>
               ) : (
-                <span>Entrar no iTech ERP</span>
+                <span>Entrar</span>
               )}
             </button>
 

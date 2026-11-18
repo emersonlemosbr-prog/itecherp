@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Store, User, Mail, Lock, Phone, CheckCircle2, XCircle, AlertCircle, ArrowRight, ShieldCheck, KeyRound } from 'lucide-react'
 import api from '../api/client'
-import itechLogo from '../assets/itech-logo.png'
+import itechCloudIcon from '../assets/itechcloud-icon.svg'
 
 export default function RegisterStore() {
   const navigate = useNavigate()
@@ -367,15 +367,15 @@ export default function RegisterStore() {
       <div className="w-full max-w-xl relative z-10">
         {/* Cabeçalho */}
         <div className="flex flex-col items-center mb-6 text-center text-white">
-          <Link to="/" className="inline-block transition-transform hover:scale-105 mb-3" title="iTech ERP">
+          <Link to="/" className="inline-block transition-transform hover:scale-105 mb-3" title="iTechCloud">
             <img
-              src={itechLogo}
-              alt="iTech ERP"
+              src={itechCloudIcon}
+              alt="iTechCloud"
               className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-[0_8px_24px_rgba(255,190,11,0.25)] rounded-2xl"
             />
           </Link>
           <h1 className="font-['Sora',sans-serif] font-extrabold text-2xl sm:text-3xl tracking-tight text-white">
-            Criar Conta no iTech <span className="text-[#FFBE0B]">ERP</span>
+            Criar Conta no iTechCloud
           </h1>
           <p className="text-gray-400 text-xs sm:text-sm mt-2 max-w-md">
             Cadastre sua assistência técnica e gerencie clientes, ordens de serviço, vendas e estoque em uma plataforma completa.
