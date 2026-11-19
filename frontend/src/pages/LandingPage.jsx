@@ -97,7 +97,7 @@ function LandingNav({ onSectionClick }) {
           </a>
 
           <ul className="lp-nav-links">
-            {[['modulos','Módulos'],['funcionalidades','Funcionalidades'],['como-funciona','Como Funciona'],['seguranca','Segurança'],['faq','FAQ']].map(([id, label]) => (
+            {[['modulos', 'Módulos'], ['funcionalidades', 'Funcionalidades'], ['como-funciona', 'Como Funciona'], ['seguranca', 'Segurança'], ['faq', 'FAQ']].map(([id, label]) => (
               <li key={id}>
                 <a href={`#${id}`} onClick={(e) => { e.preventDefault(); handleLink(id) }}>{label}</a>
               </li>
@@ -127,7 +127,7 @@ function LandingNav({ onSectionClick }) {
       </nav>
 
       <div className={`lp-mobile-menu${mobileOpen ? ' open' : ''}`}>
-        {[['modulos','Módulos'],['funcionalidades','Funcionalidades'],['como-funciona','Como Funciona'],['seguranca','Segurança'],['faq','FAQ']].map(([id, label]) => (
+        {[['modulos', 'Módulos'], ['funcionalidades', 'Funcionalidades'], ['como-funciona', 'Como Funciona'], ['seguranca', 'Segurança'], ['faq', 'FAQ']].map(([id, label]) => (
           <a key={id} href={`#${id}`} onClick={(e) => { e.preventDefault(); handleLink(id) }}>{label}</a>
         ))}
         <Link to={destination} onClick={() => setMobileOpen(false)}>
@@ -393,7 +393,7 @@ function LandingFeatures() {
             <div style={{ fontSize: 48, marginBottom: 8 }}>📲</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 4 }}>Acompanhamento da OS #1042</div>
             <div style={{ fontSize: 12, color: '#6b7280', fontFamily: 'monospace' }}>
-              acompanhar.itechcelulareinformatica.com.br/os/1042
+              itechcloud.app/acompanhamento/os/1042
             </div>
           </div>
           <div className="lp-fv-status-row">
