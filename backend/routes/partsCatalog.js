@@ -8,18 +8,23 @@ router.use(authenticate, requireRole('admin'));
 
 const key = value => String(value || '').trim().toLocaleLowerCase('pt-BR');
 const fail = (message, status = 400) => { const e = new Error(message); e.status = status; throw e; };
+const getStoreId = req => req.user?.store_id || req.store?.id || 1;
+
 const wrap = fn => async (req, res) => {
   try {
     await fn(req, res);
   } catch (e) {
+    if (!e.status) {
+      console.error('❌ [PARTS_CATALOG_ERROR]', e);
+    }
     res.status(e.status || 500).json({ error: e.status ? e.message : 'Não foi possível concluir a operação.' });
   }
 };
 
-const option = async (id, user, kind) =>
+const option = async (id, user, storeId, kind) =>
   db.queryOne('SELECT * FROM parts_options WHERE id = $1 AND user_id = $2 AND kind = $3', [id, user, kind]);
 
-const entries = async user =>
+const entries = async (user, storeId) =>
   db.query(`
     SELECT p.*, p.sale_price AS price, c.name AS category, c.show_assembly,
            q.name AS quality
@@ -30,7 +35,7 @@ const entries = async user =>
     ORDER BY p.created_at DESC, p.id DESC
   `, [user]);
 
-const models = async user =>
+const models = async (user, storeId) =>
   db.query(`
     SELECT m.*, b.name AS brand
     FROM parts_models m
@@ -39,7 +44,7 @@ const models = async user =>
     ORDER BY b.name, m.name
   `, [user]);
 
-const modelById = async (id, user) =>
+const modelById = async (id, user, storeId) =>
   db.queryOne(`
     SELECT m.*, b.name AS brand, b.name_key AS brand_key
     FROM parts_models m
@@ -47,13 +52,13 @@ const modelById = async (id, user) =>
     WHERE m.id = $1 AND m.user_id = $2
   `, [id, user]);
 
-const modelUsage = async model => {
+const modelUsage = async (model, storeId) => {
   const allList = await db.query('SELECT id, brand, model FROM frontals_price_list WHERE user_id = $1', [model.user_id]);
   return allList.filter(p => key(p.brand) === model.brand_key && key(p.model) === model.name_key);
 };
 
-async function modelPayload(body, user) {
-  const brand = await option(body.brand_id, user, 'brand');
+async function modelPayload(body, user, storeId) {
+  const brand = await option(body.brand_id, user, storeId, 'brand');
   if (!brand) fail('Selecione uma marca válida.');
   if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 1000) {
     fail('Informe um modelo de até 1000 caracteres.');
@@ -62,7 +67,8 @@ async function modelPayload(body, user) {
 }
 
 router.post('/models', wrap(async (req, res) => {
-  const value = await modelPayload(req.body, req.user.id);
+  const storeId = getStoreId(req);
+  const value = await modelPayload(req.body, req.user.id, storeId);
   const exists = await db.queryOne(
     'SELECT id FROM parts_models WHERE user_id = $1 AND brand_id = $2 AND name_key = $3',
     [req.user.id, value.brand.id, value.name_key]
@@ -70,24 +76,25 @@ router.post('/models', wrap(async (req, res) => {
   if (exists) fail('Este modelo já está cadastrado para esta marca.', 409);
 
   const result = await db.execute(
-    'INSERT INTO parts_models(user_id, brand_id, name, name_key) VALUES($1, $2, $3, $4) RETURNING id',
-    [req.user.id, value.brand.id, value.name, value.name_key]
+    'INSERT INTO parts_models(store_id, user_id, brand_id, name, name_key) VALUES($1, $2, $3, $4, $5) RETURNING id',
+    [storeId, req.user.id, value.brand.id, value.name, value.name_key]
   );
-  res.status(201).json(await modelById(Number(result.id), req.user.id));
+  res.status(201).json(await modelById(Number(result.id), req.user.id, storeId));
 }));
 
 router.put('/models/:id', wrap(async (req, res) => {
+  const storeId = getStoreId(req);
   await db.transaction(async (tx) => {
-    const old = await modelById(req.params.id, req.user.id);
+    const old = await modelById(req.params.id, req.user.id, storeId);
     if (!old) fail('Modelo não encontrado.', 404);
-    const value = await modelPayload(req.body, req.user.id);
+    const value = await modelPayload(req.body, req.user.id, storeId);
     const duplicate = await tx.queryOne(
       'SELECT id FROM parts_models WHERE user_id = $1 AND brand_id = $2 AND name_key = $3 AND id <> $4',
       [req.user.id, value.brand.id, value.name_key, old.id]
     );
     if (duplicate) fail('Este modelo já está cadastrado para esta marca.', 409);
 
-    const used = await modelUsage(old);
+    const used = await modelUsage(old, storeId);
     if (used.length && old.brand_id !== value.brand.id) {
       fail(`Este modelo está sendo utilizado por ${used.length} peças. Altere os vínculos antes de mudar a marca.`, 409);
     }
@@ -99,14 +106,15 @@ router.put('/models/:id', wrap(async (req, res) => {
       await tx.execute('UPDATE frontals_price_list SET model = $1 WHERE id = $2', [value.name, row.id]);
     }
   });
-  res.json(await modelById(req.params.id, req.user.id));
+  res.json(await modelById(req.params.id, req.user.id, storeId));
 }));
 
 router.delete('/models/:id', wrap(async (req, res) => {
+  const storeId = getStoreId(req);
   await db.transaction(async (tx) => {
-    const old = await modelById(req.params.id, req.user.id);
+    const old = await modelById(req.params.id, req.user.id, storeId);
     if (!old) fail('Modelo não encontrado.', 404);
-    const used = (await modelUsage(old)).length;
+    const used = (await modelUsage(old, storeId)).length;
     if (used) fail(`Este modelo está sendo utilizado por ${used} peças. Altere os vínculos antes de excluir.`, 409);
     await tx.execute('DELETE FROM parts_models WHERE id = $1 AND user_id = $2', [old.id, req.user.id]);
   });
@@ -115,12 +123,13 @@ router.delete('/models/:id', wrap(async (req, res) => {
 
 router.get('/', wrap(async (req, res) => {
   const user = req.user.id;
+  const storeId = getStoreId(req);
   await db.transaction(async (tx) => {
     const uncat = await tx.queryOne('SELECT id FROM frontals_price_list WHERE user_id = $1 AND category_id IS NULL', [user]);
     if (uncat) {
       await tx.execute(
-        "INSERT INTO parts_options(user_id, kind, name, name_key, show_assembly) VALUES($1, 'category', 'Frontais', 'frontais', 1) ON CONFLICT DO NOTHING",
-        [user]
+        "INSERT INTO parts_options(store_id, user_id, kind, name, name_key, show_assembly) VALUES($1, $2, 'category', 'Frontais', 'frontais', 1) ON CONFLICT DO NOTHING",
+        [storeId, user]
       );
       const category = await tx.queryOne(
         "SELECT id FROM parts_options WHERE user_id = $1 AND kind = 'category' AND name_key = 'frontais'",
@@ -134,8 +143,8 @@ router.get('/', wrap(async (req, res) => {
     for (const row of brands) {
       if (row.brand) {
         await tx.execute(
-          "INSERT INTO parts_options(user_id, kind, name, name_key) VALUES($1, 'brand', $2, $3) ON CONFLICT DO NOTHING",
-          [user, row.brand, key(row.brand)]
+          "INSERT INTO parts_options(store_id, user_id, kind, name, name_key) VALUES($1, $2, 'brand', $3, $4) ON CONFLICT DO NOTHING",
+          [storeId, user, row.brand, key(row.brand)]
         );
       }
     }
@@ -143,9 +152,9 @@ router.get('/', wrap(async (req, res) => {
 
   await importModels(db, req.user.id);
 
-  const entryList = await entries(req.user.id);
+  const entryList = await entries(req.user.id, storeId);
   const optList = await db.query('SELECT * FROM parts_options WHERE user_id = $1 ORDER BY LOWER(name)', [req.user.id]);
-  const modelList = await models(req.user.id);
+  const modelList = await models(req.user.id, storeId);
 
   res.json({ entries: entryList, options: optList, models: modelList });
 }));
@@ -160,6 +169,7 @@ function validateOption(body) {
 router.post('/options', wrap(async (req, res) => {
   validateOption(req.body);
   const { kind, name, show_assembly } = req.body;
+  const storeId = getStoreId(req);
   const exists = await db.queryOne(
     'SELECT id FROM parts_options WHERE user_id = $1 AND kind = $2 AND name_key = $3',
     [req.user.id, kind, key(name)]
@@ -167,13 +177,14 @@ router.post('/options', wrap(async (req, res) => {
   if (exists) fail('Este nome já está cadastrado.', 409);
 
   const result = await db.execute(
-    'INSERT INTO parts_options(user_id, kind, name, name_key, show_assembly) VALUES($1, $2, $3, $4, $5) RETURNING id',
-    [req.user.id, kind, name.trim(), key(name), kind === 'category' && show_assembly ? 1 : 0]
+    'INSERT INTO parts_options(store_id, user_id, kind, name, name_key, show_assembly) VALUES($1, $2, $3, $4, $5, $6) RETURNING id',
+    [storeId, req.user.id, kind, name.trim(), key(name), kind === 'category' && show_assembly ? 1 : 0]
   );
   res.status(201).json({ id: Number(result.id) });
 }));
 
 router.put('/options/:id', wrap(async (req, res) => {
+  const storeId = getStoreId(req);
   const old = await db.queryOne('SELECT * FROM parts_options WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
   if (!old) fail('Cadastro não encontrado.', 404);
   validateOption({ ...req.body, kind: old.kind });
@@ -203,10 +214,11 @@ router.put('/options/:id', wrap(async (req, res) => {
 }));
 
 router.delete('/options/:id', wrap(async (req, res) => {
+  const storeId = getStoreId(req);
   const old = await db.queryOne('SELECT * FROM parts_options WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
   if (!old) fail('Cadastro não encontrado.', 404);
 
-  const allEntries = await entries(req.user.id);
+  const allEntries = await entries(req.user.id, storeId);
   const used = allEntries.some(p =>
     old.kind === 'category' ? p.category_id === old.id :
     old.kind === 'quality' ? p.quality_id === old.id :
@@ -223,23 +235,23 @@ router.delete('/options/:id', wrap(async (req, res) => {
   res.json({ success: true });
 }));
 
-async function payload(body, user) {
-  const cat = await option(body.category_id, user, 'category');
+async function payload(body, user, storeId) {
+  const cat = await option(body.category_id, user, storeId, 'category');
   if (!cat) fail('Selecione uma categoria válida.');
-  if (body.quality_id && !(await option(body.quality_id, user, 'quality'))) {
+  if (body.quality_id && !(await option(body.quality_id, user, storeId, 'quality'))) {
     fail('Selecione uma qualidade válida.');
   }
   const brandOpt = await db.queryOne(
-    "SELECT id FROM parts_options WHERE user_id = $1 AND kind = 'brand' AND name_key = $2",
-    [user, key(body.brand)]
+    "SELECT id FROM parts_options WHERE (store_id = $1 OR user_id = $2) AND kind = 'brand' AND name_key = $3",
+    [storeId, user, key(body.brand)]
   );
   if (typeof body.brand !== 'string' || !brandOpt) fail('Selecione uma marca cadastrada.');
   if (typeof body.model !== 'string' || !body.model.trim()) fail('Informe o modelo.');
 
   if (body.model_id != null) {
     const model = await db.queryOne(
-      'SELECT m.*, b.name_key AS brand_key FROM parts_models m JOIN parts_options b ON b.id = m.brand_id WHERE m.id = $1 AND m.user_id = $2',
-      [body.model_id, user]
+      'SELECT m.*, b.name_key AS brand_key FROM parts_models m JOIN parts_options b ON b.id = m.brand_id WHERE m.id = $1 AND (m.store_id = $2 OR m.user_id = $3)',
+      [body.model_id, storeId, user]
     );
     if (!model || model.brand_key !== key(body.brand) || model.name_key !== key(body.model)) {
       fail('Selecione um modelo cadastrado para a marca escolhida.');
@@ -269,22 +281,24 @@ async function payload(body, user) {
 }
 
 router.post('/entries', wrap(async (req, res) => {
-  const data = await payload(req.body, req.user.id);
-  const cols = Object.keys(data);
-  const placeholders = cols.map((_, i) => `$${i + 2}`).join(',');
+  const storeId = getStoreId(req);
+  const data = await payload(req.body, req.user.id, storeId);
+  const cols = ['store_id', 'user_id', ...Object.keys(data)];
+  const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
   const result = await db.execute(
-    `INSERT INTO frontals_price_list(user_id, ${cols.join(',')}) VALUES($1, ${placeholders}) RETURNING id`,
-    [req.user.id, ...Object.values(data)]
+    `INSERT INTO frontals_price_list(${cols.join(',')}) VALUES(${placeholders}) RETURNING id`,
+    [storeId, req.user.id, ...Object.values(data)]
   );
-  const allEntries = await entries(req.user.id);
+  const allEntries = await entries(req.user.id, storeId);
   res.status(201).json(allEntries.find(p => p.id === Number(result.id)));
 }));
 
 router.put('/entries/:id', wrap(async (req, res) => {
+  const storeId = getStoreId(req);
   const exists = await db.queryOne('SELECT id FROM frontals_price_list WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
   if (!exists) fail('Peça não encontrada.', 404);
 
-  const data = await payload(req.body, req.user.id);
+  const data = await payload(req.body, req.user.id, storeId);
   const cols = Object.keys(data);
   const setClauses = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
   const params = [...Object.values(data), req.params.id, req.user.id];
@@ -293,7 +307,7 @@ router.put('/entries/:id', wrap(async (req, res) => {
     `UPDATE frontals_price_list SET ${setClauses} WHERE id = $${cols.length + 1} AND user_id = $${cols.length + 2}`,
     params
   );
-  const allEntries = await entries(req.user.id);
+  const allEntries = await entries(req.user.id, storeId);
   res.json(allEntries.find(p => p.id === Number(req.params.id)));
 }));
 

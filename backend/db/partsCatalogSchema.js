@@ -11,6 +11,28 @@ function getUniqueBackupPath(dir, prefix) {
 }
 
 module.exports = function migratePartsCatalog(db) {
+  // Cria parts_options se não existir
+  db.exec(`CREATE TABLE IF NOT EXISTS parts_options (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER DEFAULT 1,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('category','brand','quality')),
+    name TEXT NOT NULL, name_key TEXT NOT NULL,
+    show_assembly INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(user_id,kind,name_key), UNIQUE(id,user_id)
+  );`);
+
+  // Cria parts_models se não existir
+  db.exec(`CREATE TABLE IF NOT EXISTS parts_models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    store_id INTEGER DEFAULT 1,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    brand_id INTEGER NOT NULL REFERENCES parts_options(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    UNIQUE(user_id,brand_id,name_key)
+  );`);
+
   if (db.prepare('PRAGMA table_info(frontals_price_list)').all().some(c => c.name === 'category_id')) return;
   // VACUUM INTO includes committed WAL data and fails closed if the backup cannot be made.
   if (db.name && db.name !== ':memory:') {
@@ -20,14 +42,7 @@ module.exports = function migratePartsCatalog(db) {
     db.prepare('VACUUM INTO ?').run(backupPath);
   }
   db.transaction(() => {
-    db.exec(`CREATE TABLE parts_options (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      kind TEXT NOT NULL CHECK(kind IN ('category','brand','quality')),
-      name TEXT NOT NULL, name_key TEXT NOT NULL,
-      show_assembly INTEGER NOT NULL DEFAULT 0,
-      UNIQUE(user_id,kind,name_key), UNIQUE(id,user_id)
-    );
+    db.exec(`
     ALTER TABLE frontals_price_list ADD COLUMN category_id INTEGER REFERENCES parts_options(id);
     ALTER TABLE frontals_price_list ADD COLUMN quality_id INTEGER REFERENCES parts_options(id);
     ALTER TABLE frontals_price_list ADD COLUMN description TEXT NOT NULL DEFAULT '';
