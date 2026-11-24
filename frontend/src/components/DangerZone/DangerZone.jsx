@@ -18,6 +18,7 @@ import {
   Square,
   Sliders,
   History,
+  Trash2,
 } from 'lucide-react'
 import api from '../../api/client'
 import ModalFrame from '../UI/ModalFrame'
@@ -36,6 +37,59 @@ export default function DangerZone({ onBackup }) {
 
   // Seleção de usuários para remoção
   const [selectedUserIds, setSelectedUserIds] = useState([])
+
+  // Modal de listagem e exclusão individual de fornecedores
+  const [suppliersModalOpen, setSuppliersModalOpen] = useState(false)
+  const [suppliersList, setSuppliersList] = useState([])
+  const [suppliersLoading, setSuppliersLoading] = useState(false)
+  const [suppliersError, setSuppliersError] = useState(null)
+  const [supplierToDelete, setSupplierToDelete] = useState(null)
+  const [deletingSupplierId, setDeletingSupplierId] = useState(null)
+
+  const openSuppliersModal = useCallback(async () => {
+    setSuppliersModalOpen(true)
+    setSuppliersLoading(true)
+    setSuppliersError(null)
+    setSupplierToDelete(null)
+    try {
+      const { data } = await api.get('/danger-zone/suppliers')
+      setSuppliersList(data?.suppliers || [])
+    } catch (err) {
+      setSuppliersError(err.response?.data?.error || 'Erro ao carregar a lista de fornecedores.')
+    } finally {
+      setSuppliersLoading(false)
+    }
+  }, [])
+
+  const handleDeleteSupplier = async (supplier) => {
+    if (!supplier) return
+    setDeletingSupplierId(supplier.id)
+    setSuppliersError(null)
+    try {
+      const { data } = await api.delete(`/danger-zone/suppliers/${supplier.id}`)
+      setSuppliersList((prev) => prev.filter((item) => item.id !== supplier.id))
+      setSupplierToDelete(null)
+      setNotice({
+        type: 'success',
+        message: data?.message || `Fornecedor "${supplier.name}" excluído com sucesso.`,
+      })
+      await loadStats()
+    } catch (err) {
+      const status = err.response?.status
+      const errData = err.response?.data
+      const msg = errData?.message || errData?.error || 'Erro ao excluir fornecedor.'
+      setSupplierToDelete(null)
+      if (status === 409 && errData?.blocked) {
+        setSuppliersError(msg)
+        setNotice({ type: 'blocked', message: msg, details: errData?.dependencies })
+      } else {
+        setSuppliersError(msg)
+        setNotice({ type: 'error', message: msg })
+      }
+    } finally {
+      setDeletingSupplierId(null)
+    }
+  }
 
   const loadStats = useCallback(async () => {
     try {
@@ -490,9 +544,19 @@ export default function DangerZone({ onBackup }) {
                 </div>
                 <h4 className="font-semibold text-base">Fornecedores</h4>
               </div>
-              <span className={`badge-slate font-mono text-xs ${stats?.suppliers?.count > 0 ? 'text-emerald-400 font-semibold' : 'text-slate-400'}`}>
+              <button
+                type="button"
+                onClick={openSuppliersModal}
+                disabled={busy || !stats}
+                title="Clique para visualizar e gerenciar os fornecedores cadastrados"
+                className={`badge-slate font-mono text-xs transition-colors ${
+                  stats?.suppliers?.count > 0
+                    ? 'text-emerald-600 dark:text-emerald-400 font-semibold hover:bg-emerald-500/15 cursor-pointer'
+                    : 'text-slate-400 hover:bg-slate-500/10 cursor-pointer'
+                }`}
+              >
                 {stats?.suppliers?.count > 0 ? `${stats.suppliers.count} fornecedor(es)` : '0 cadastrado(s) (Nenhum no banco)'}
-              </span>
+              </button>
             </div>
             <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
               Excluir fornecedores cadastrados que não possuam produtos, ordens de serviço ou retiradas de caixa vinculadas.
@@ -844,6 +908,152 @@ export default function DangerZone({ onBackup }) {
               </button>
             </div>
           </form>
+        </ModalFrame>
+      )}
+
+      {/* Modal de Listagem e Exclusão Individual de Fornecedores */}
+      {suppliersModalOpen && (
+        <ModalFrame
+          title="Fornecedores Cadastrados"
+          subtitle="Gerencie os fornecedores da loja. Apenas fornecedores sem vínculos ativos podem ser excluídos."
+          onClose={() => {
+            if (!deletingSupplierId) {
+              setSuppliersModalOpen(false)
+              setSupplierToDelete(null)
+            }
+          }}
+          maxWidth="max-w-2xl"
+        >
+          <div className="space-y-4">
+            {suppliersError && (
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300 flex items-start gap-2">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                <span>{suppliersError}</span>
+              </div>
+            )}
+
+            {supplierToDelete && (
+              <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                  <div className="space-y-1 text-xs">
+                    <p className="font-semibold text-rose-600 dark:text-rose-300 text-sm">
+                      Confirmar exclusão de "{supplierToDelete.name}"?
+                    </p>
+                    <p className="text-slate-600 dark:text-zinc-300">
+                      Esta ação removerá permanentemente o fornecedor selecionado e não pode ser desfeita.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs py-1.5 px-3"
+                    disabled={!!deletingSupplierId}
+                    onClick={() => setSupplierToDelete(null)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary !bg-rose-600 hover:!bg-rose-700 text-xs py-1.5 px-3"
+                    disabled={!!deletingSupplierId}
+                    onClick={() => handleDeleteSupplier(supplierToDelete)}
+                  >
+                    {deletingSupplierId === supplierToDelete.id ? 'Excluindo...' : 'Confirmar exclusão'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {suppliersLoading ? (
+              <div className="py-10 text-center text-sm text-slate-500 dark:text-zinc-400">
+                Carregando fornecedores...
+              </div>
+            ) : suppliersList.length === 0 ? (
+              <div className="py-10 text-center text-sm text-slate-500 dark:text-zinc-400">
+                Nenhum fornecedor cadastrado nesta loja.
+              </div>
+            ) : (
+              <div className="max-h-[55vh] overflow-y-auto divide-y divide-slate-200 dark:divide-white/10 rounded-xl border border-slate-200 dark:border-white/10">
+                {suppliersList.map((s) => {
+                  const deps = s.dependencies || {}
+                  const hasDeps = Boolean(deps.hasDependencies)
+                  const depParts = []
+                  if (deps.products > 0) depParts.push(`${deps.products} produto(s)`)
+                  if (deps.service_orders > 0) depParts.push(`${deps.service_orders} OS`)
+                  if (deps.cash_withdrawals > 0) depParts.push(`${deps.cash_withdrawals} retirada(s)`)
+
+                  return (
+                    <div
+                      key={s.id}
+                      className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-zinc-900/40"
+                    >
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">
+                            {s.name}
+                          </span>
+                          {!s.is_active && (
+                            <span className="badge-slate text-[10px]">Inativo</span>
+                          )}
+                        </div>
+
+                        {(s.contact_info || s.notes) && (
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 truncate">
+                            {[s.contact_info, s.notes].filter(Boolean).join(' • ')}
+                          </p>
+                        )}
+
+                        {hasDeps ? (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
+                            <AlertTriangle size={12} className="shrink-0" />
+                            <span>Bloqueado: {depParts.join(', ')}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
+                            <CheckCircle2 size={12} className="shrink-0" />
+                            <span>Sem vínculos (pode excluir)</span>
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 flex justify-end">
+                        <button
+                          type="button"
+                          disabled={hasDeps || !!deletingSupplierId}
+                          title={
+                            hasDeps
+                              ? `Exclusão bloqueada: possui ${depParts.join(', ')} vinculados.`
+                              : `Excluir fornecedor ${s.name}`
+                          }
+                          onClick={() => setSupplierToDelete(s)}
+                          className="btn-ghost text-rose-500 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold px-2.5 py-1.5 flex items-center gap-1.5"
+                        >
+                          <Trash2 size={14} />
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={!!deletingSupplierId}
+                onClick={() => {
+                  setSuppliersModalOpen(false)
+                  setSupplierToDelete(null)
+                }}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </ModalFrame>
       )}
     </div>

@@ -738,6 +738,126 @@ router.post('/clear/suppliers', async (req, res, next) => {
   }
 });
 
+// GET /api/danger-zone/suppliers
+router.get('/suppliers', async (req, res, next) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const rows = await db.query(
+      `SELECT s.id, s.name, s.contact_info, s.notes, s.is_active,
+        (SELECT COUNT(*) FROM stock_products p WHERE p.supplier_id = s.id AND (p.store_id = ? OR (? = 1 AND p.store_id IS NULL))) AS product_count,
+        (SELECT COUNT(*) FROM service_orders so WHERE so.supplier_id = s.id AND (so.store_id = ? OR (? = 1 AND so.store_id IS NULL))) AS service_order_count,
+        (SELECT COUNT(*) FROM cash_withdrawals w WHERE w.supplier_id = s.id AND (w.store_id = ? OR (? = 1 AND w.store_id IS NULL))) AS withdrawal_count
+      FROM stock_suppliers s
+      WHERE s.store_id = ? OR (? = 1 AND s.store_id IS NULL)
+      ORDER BY LOWER(s.name)`,
+      [storeId, storeId, storeId, storeId, storeId, storeId, storeId, storeId]
+    );
+
+    const suppliers = (rows || []).map((row) => {
+      const products = parseInt(row.product_count, 10) || 0;
+      const serviceOrders = parseInt(row.service_order_count, 10) || 0;
+      const cashWithdrawals = parseInt(row.withdrawal_count, 10) || 0;
+      const totalLinks = products + serviceOrders + cashWithdrawals;
+      return {
+        id: row.id,
+        name: row.name,
+        contact_info: row.contact_info || null,
+        notes: row.notes || null,
+        is_active: row.is_active !== 0 && row.is_active !== false,
+        dependencies: {
+          products,
+          service_orders: serviceOrders,
+          cash_withdrawals: cashWithdrawals,
+          total: totalLinks,
+          hasDependencies: totalLinks > 0,
+        },
+      };
+    });
+
+    res.json({ suppliers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/danger-zone/suppliers/:id
+router.delete('/suppliers/:id', async (req, res, next) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const supplierId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(supplierId) || supplierId <= 0) {
+      return res.status(400).json({ error: 'ID do fornecedor inválido.' });
+    }
+
+    const existing = await db.queryOne(
+      'SELECT id, name FROM stock_suppliers WHERE id = ? AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+      [supplierId, storeId, storeId]
+    );
+    if (!existing) {
+      return res.status(404).json({ error: 'Fornecedor não encontrado nesta loja.' });
+    }
+
+    const [spRow, soRow, cwRow] = await Promise.all([
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM stock_products WHERE supplier_id = ? AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [supplierId, storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM service_orders WHERE supplier_id = ? AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [supplierId, storeId, storeId]
+      ),
+      db.queryOne(
+        'SELECT COUNT(*) AS n FROM cash_withdrawals WHERE supplier_id = ? AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [supplierId, storeId, storeId]
+      ),
+    ]);
+
+    const linkedProducts = parseInt(spRow?.n, 10) || 0;
+    const linkedOrders = parseInt(soRow?.n, 10) || 0;
+    const linkedWithdrawals = parseInt(cwRow?.n, 10) || 0;
+
+    if (linkedProducts > 0 || linkedOrders > 0 || linkedWithdrawals > 0) {
+      const parts = [];
+      if (linkedProducts > 0) parts.push(`${linkedProducts} produto(s)`);
+      if (linkedOrders > 0) parts.push(`${linkedOrders} ordem(ns) de serviço`);
+      if (linkedWithdrawals > 0) parts.push(`${linkedWithdrawals} retirada(s) de caixa`);
+
+      return res.status(409).json({
+        error: `Não foi possível excluir o fornecedor "${existing.name}": existem vínculos ativos.`,
+        blocked: true,
+        dependencies: {
+          products: linkedProducts,
+          service_orders: linkedOrders,
+          cash_withdrawals: linkedWithdrawals,
+        },
+        message: `Não foi possível excluir o fornecedor "${existing.name}" porque existem vínculos ativos: ${parts.join(', ')}. Para preservar o histórico de compras e custos operacionais, a exclusão foi bloqueada.`,
+      });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        'DELETE FROM stock_suppliers WHERE id = ? AND (store_id = ? OR (? = 1 AND store_id IS NULL))',
+        [supplierId, storeId, storeId]
+      );
+      await logAction({
+        user: req.user,
+        action: 'danger_zone_delete_supplier',
+        recordType: 'stock_suppliers',
+        recordId: String(supplierId),
+        details: { name: existing.name, store_id: storeId },
+      });
+    });
+
+    res.json({
+      success: true,
+      id: supplierId,
+      message: `Fornecedor "${existing.name}" excluído com sucesso.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/danger-zone/clear/categories
 router.post('/clear/categories', async (req, res, next) => {
   try {
