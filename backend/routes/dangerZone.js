@@ -741,16 +741,22 @@ router.post('/clear/suppliers', async (req, res, next) => {
 // GET /api/danger-zone/suppliers
 router.get('/suppliers', async (req, res, next) => {
   try {
-    const storeId = req.user.store_id || 1;
+    const storeId = parseInt(req.user.store_id, 10) || 1;
+    const isMainStore = storeId === 1;
+    const supplierWhere = isMainStore ? '(s.store_id = ? OR s.store_id IS NULL)' : 's.store_id = ?';
+    const prodWhere = isMainStore ? '(p.store_id = ? OR p.store_id IS NULL)' : 'p.store_id = ?';
+    const soWhere = isMainStore ? '(so.store_id = ? OR so.store_id IS NULL)' : 'so.store_id = ?';
+    const cwWhere = isMainStore ? '(w.store_id = ? OR w.store_id IS NULL)' : 'w.store_id = ?';
+
     const rows = await db.query(
       `SELECT s.id, s.name, s.contact_info, s.notes, s.is_active,
-        (SELECT COUNT(*) FROM stock_products p WHERE p.supplier_id = s.id AND (p.store_id = ? OR (? = 1 AND p.store_id IS NULL))) AS product_count,
-        (SELECT COUNT(*) FROM service_orders so WHERE so.supplier_id = s.id AND (so.store_id = ? OR (? = 1 AND so.store_id IS NULL))) AS service_order_count,
-        (SELECT COUNT(*) FROM cash_withdrawals w WHERE w.supplier_id = s.id AND (w.store_id = ? OR (? = 1 AND w.store_id IS NULL))) AS withdrawal_count
+        (SELECT COUNT(*) FROM stock_products p WHERE p.supplier_id = s.id AND ${prodWhere}) AS product_count,
+        (SELECT COUNT(*) FROM service_orders so WHERE so.supplier_id = s.id AND ${soWhere}) AS service_order_count,
+        (SELECT COUNT(*) FROM cash_withdrawals w WHERE w.supplier_id = s.id AND ${cwWhere}) AS withdrawal_count
       FROM stock_suppliers s
-      WHERE s.store_id = ? OR (? = 1 AND s.store_id IS NULL)
+      WHERE ${supplierWhere}
       ORDER BY LOWER(s.name)`,
-      [storeId, storeId, storeId, storeId, storeId, storeId, storeId, storeId]
+      [storeId, storeId, storeId, storeId]
     );
 
     const suppliers = (rows || []).map((row) => {
