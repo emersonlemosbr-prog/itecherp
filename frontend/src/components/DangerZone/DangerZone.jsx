@@ -914,133 +914,159 @@ export default function DangerZone({ onBackup }) {
       {/* Modal de Listagem e Exclusão Individual de Fornecedores */}
       {suppliersModalOpen && (
         <ModalFrame
-          title="Fornecedores Cadastrados"
-          subtitle="Gerencie os fornecedores da loja. Apenas fornecedores sem vínculos ativos podem ser excluídos."
-          onClose={() => {
+          busy={!!deletingSupplierId}
+          onClick={() => {
             if (!deletingSupplierId) {
               setSuppliersModalOpen(false)
               setSupplierToDelete(null)
             }
           }}
-          maxWidth="max-w-2xl"
         >
-          <div className="space-y-4">
-            {suppliersError && (
-              <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300 flex items-start gap-2">
-                <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-                <span>{suppliersError}</span>
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-[#111111] border border-slate-200 dark:border-white/10 shadow-2xl overflow-hidden">
+            {/* Cabeçalho do Modal */}
+            <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-slate-200 dark:border-white/10 shrink-0">
+              <div className="space-y-1">
+                <h3 className="font-semibold text-base text-slate-900 dark:text-zinc-100">
+                  Fornecedores Cadastrados
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                  Gerencie os fornecedores da loja. Apenas fornecedores sem vínculos ativos podem ser excluídos.
+                </p>
               </div>
-            )}
+              <button
+                type="button"
+                disabled={!!deletingSupplierId}
+                onClick={() => {
+                  setSuppliersModalOpen(false)
+                  setSupplierToDelete(null)
+                }}
+                aria-label="Fechar modal"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors disabled:opacity-40"
+              >
+                <XCircle size={18} />
+              </button>
+            </div>
 
-            {supplierToDelete && (
-              <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 space-y-3">
-                <div className="flex items-start gap-2.5">
-                  <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
-                  <div className="space-y-1 text-xs">
-                    <p className="font-semibold text-rose-600 dark:text-rose-300 text-sm">
-                      Confirmar exclusão de "{supplierToDelete.name}"?
-                    </p>
-                    <p className="text-slate-600 dark:text-zinc-300">
-                      Esta ação removerá permanentemente o fornecedor selecionado e não pode ser desfeita.
-                    </p>
+            {/* Corpo com rolagem própria */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {suppliersError && (
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-600 dark:text-rose-300 flex items-start gap-2">
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                  <span>{suppliersError}</span>
+                </div>
+              )}
+
+              {supplierToDelete && (
+                <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                    <div className="space-y-1 text-xs">
+                      <p className="font-semibold text-rose-600 dark:text-rose-300 text-sm">
+                        Confirmar exclusão de "{supplierToDelete.name}"?
+                      </p>
+                      <p className="text-slate-600 dark:text-zinc-300">
+                        Esta ação removerá permanentemente o fornecedor selecionado e não pode ser desfeita.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs py-1.5 px-3"
+                      disabled={!!deletingSupplierId}
+                      onClick={() => setSupplierToDelete(null)}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-primary !bg-rose-600 hover:!bg-rose-700 text-xs py-1.5 px-3"
+                      disabled={!!deletingSupplierId}
+                      onClick={() => handleDeleteSupplier(supplierToDelete)}
+                    >
+                      {deletingSupplierId === supplierToDelete.id ? 'Excluindo...' : 'Confirmar exclusão'}
+                    </button>
                   </div>
                 </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    className="btn-secondary text-xs py-1.5 px-3"
-                    disabled={!!deletingSupplierId}
-                    onClick={() => setSupplierToDelete(null)}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-primary !bg-rose-600 hover:!bg-rose-700 text-xs py-1.5 px-3"
-                    disabled={!!deletingSupplierId}
-                    onClick={() => handleDeleteSupplier(supplierToDelete)}
-                  >
-                    {deletingSupplierId === supplierToDelete.id ? 'Excluindo...' : 'Confirmar exclusão'}
-                  </button>
+              )}
+
+              {suppliersLoading ? (
+                <div className="py-10 text-center text-sm text-slate-500 dark:text-zinc-400">
+                  Carregando fornecedores...
                 </div>
-              </div>
-            )}
+              ) : suppliersList.length === 0 ? (
+                <div className="py-10 text-center text-sm text-slate-500 dark:text-zinc-400">
+                  Nenhum fornecedor cadastrado nesta loja.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200 dark:divide-white/10 rounded-xl border border-slate-200 dark:border-white/10 overflow-hidden">
+                  {suppliersList.map((s) => {
+                    const deps = s.dependencies || {}
+                    const hasDeps = Boolean(deps.hasDependencies)
+                    const depParts = []
+                    if (deps.products > 0) depParts.push(`${deps.products} produto(s)`)
+                    if (deps.service_orders > 0) depParts.push(`${deps.service_orders} OS`)
+                    if (deps.cash_withdrawals > 0) depParts.push(`${deps.cash_withdrawals} retirada(s)`)
 
-            {suppliersLoading ? (
-              <div className="py-10 text-center text-sm text-slate-500 dark:text-zinc-400">
-                Carregando fornecedores...
-              </div>
-            ) : suppliersList.length === 0 ? (
-              <div className="py-10 text-center text-sm text-slate-500 dark:text-zinc-400">
-                Nenhum fornecedor cadastrado nesta loja.
-              </div>
-            ) : (
-              <div className="max-h-[55vh] overflow-y-auto divide-y divide-slate-200 dark:divide-white/10 rounded-xl border border-slate-200 dark:border-white/10">
-                {suppliersList.map((s) => {
-                  const deps = s.dependencies || {}
-                  const hasDeps = Boolean(deps.hasDependencies)
-                  const depParts = []
-                  if (deps.products > 0) depParts.push(`${deps.products} produto(s)`)
-                  if (deps.service_orders > 0) depParts.push(`${deps.service_orders} OS`)
-                  if (deps.cash_withdrawals > 0) depParts.push(`${deps.cash_withdrawals} retirada(s)`)
+                    return (
+                      <div
+                        key={s.id}
+                        className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#161616]"
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">
+                              {s.name}
+                            </span>
+                            {!s.is_active && (
+                              <span className="badge-slate text-[10px]">Inativo</span>
+                            )}
+                          </div>
 
-                  return (
-                    <div
-                      key={s.id}
-                      className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-zinc-900/40"
-                    >
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-slate-800 dark:text-zinc-100 truncate">
-                            {s.name}
-                          </span>
-                          {!s.is_active && (
-                            <span className="badge-slate text-[10px]">Inativo</span>
+                          {(s.contact_info || s.notes) && (
+                            <p className="text-xs text-slate-500 dark:text-zinc-400 truncate">
+                              {[s.contact_info, s.notes].filter(Boolean).join(' • ')}
+                            </p>
+                          )}
+
+                          {hasDeps ? (
+                            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
+                              <AlertTriangle size={12} className="shrink-0" />
+                              <span>Bloqueado: {depParts.join(', ')}</span>
+                            </p>
+                          ) : (
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
+                              <CheckCircle2 size={12} className="shrink-0" />
+                              <span>Sem vínculos (pode excluir)</span>
+                            </p>
                           )}
                         </div>
 
-                        {(s.contact_info || s.notes) && (
-                          <p className="text-xs text-slate-500 dark:text-zinc-400 truncate">
-                            {[s.contact_info, s.notes].filter(Boolean).join(' • ')}
-                          </p>
-                        )}
-
-                        {hasDeps ? (
-                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 font-medium">
-                            <AlertTriangle size={12} className="shrink-0" />
-                            <span>Bloqueado: {depParts.join(', ')}</span>
-                          </p>
-                        ) : (
-                          <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium">
-                            <CheckCircle2 size={12} className="shrink-0" />
-                            <span>Sem vínculos (pode excluir)</span>
-                          </p>
-                        )}
+                        <div className="shrink-0 flex justify-end">
+                          <button
+                            type="button"
+                            disabled={hasDeps || !!deletingSupplierId}
+                            title={
+                              hasDeps
+                                ? `Exclusão bloqueada: possui ${depParts.join(', ')} vinculados.`
+                                : `Excluir fornecedor ${s.name}`
+                            }
+                            onClick={() => setSupplierToDelete(s)}
+                            className="btn-ghost text-rose-500 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold px-2.5 py-1.5 flex items-center gap-1.5"
+                          >
+                            <Trash2 size={14} />
+                            Excluir
+                          </button>
+                        </div>
                       </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
 
-                      <div className="shrink-0 flex justify-end">
-                        <button
-                          type="button"
-                          disabled={hasDeps || !!deletingSupplierId}
-                          title={
-                            hasDeps
-                              ? `Exclusão bloqueada: possui ${depParts.join(', ')} vinculados.`
-                              : `Excluir fornecedor ${s.name}`
-                          }
-                          onClick={() => setSupplierToDelete(s)}
-                          className="btn-ghost text-rose-500 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold px-2.5 py-1.5 flex items-center gap-1.5"
-                        >
-                          <Trash2 size={14} />
-                          Excluir
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            <div className="flex justify-end pt-2">
+            {/* Rodapé */}
+            <div className="flex justify-end px-5 py-3.5 border-t border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#111111] shrink-0">
               <button
                 type="button"
                 className="btn-secondary"
