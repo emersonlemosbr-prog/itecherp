@@ -3,7 +3,7 @@ import { useSettings } from '../context/SettingsContext'
 import { useAuth } from '../context/AuthContext'
 import ModalFrame from '../components/UI/ModalFrame'
 import React, { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { ArrowLeft, Save, MessageCircle, X } from 'lucide-react'
 import api from '../api/client'
 import CustomerPicker from '../components/UI/CustomerPicker'
@@ -20,6 +20,7 @@ export default function ServiceOrderForm() {
   const { id } = useParams()
   const isEdit = Boolean(id)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [customer, setCustomer] = useState(null)
   const [suppliers, setSuppliers] = useState([])
@@ -63,6 +64,27 @@ export default function ServiceOrderForm() {
     api.get('/inventory/suppliers').then(({ data }) => setSuppliers(data))
       .catch(() => setError('Não foi possível carregar os fornecedores.'))
   }, [isAdmin])
+
+  // Pré-carregamento de cliente via URL query param (ex: /ordens/nova?customerId=123)
+  useEffect(() => {
+    if (isEdit) return
+    const searchParams = new URLSearchParams(location.search)
+    const customerIdParam = searchParams.get('customerId')
+    if (customerIdParam) {
+      api.get(`/customers/${customerIdParam}`).then(({ data }) => {
+        if (data) {
+          setCustomer({
+            id: data.id,
+            first_name: data.first_name,
+            last_name: data.last_name,
+            phone: data.phone,
+            cpf: data.cpf,
+            address: data.address
+          })
+        }
+      }).catch(err => console.warn('[PRESELECT_CUSTOMER_ERROR]', err.message))
+    }
+  }, [isEdit, location.search])
 
   useEffect(() => {
     if (!isEdit) return

@@ -188,8 +188,31 @@ app.use('/api', require('./routes/notesAliases'));
 // Serve o frontend estático se ele existir (hospedagem híbrida opcional)
 const frontendDist = path.join(__dirname, 'public');
 if (fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
+  const assetsDist = path.join(frontendDist, 'assets');
+  if (fs.existsSync(assetsDist)) {
+    // Configura cache imutável de 1 ano exclusivamente para assets versionados com hash (/assets/*)
+    app.use('/assets', express.static(assetsDist, {
+      maxAge: '1y',
+      immutable: true
+    }));
+  }
+
+  // Raiz e demais arquivos estáticos (index.html, robots.txt, etc) sem cache agressivo
+  app.use(express.static(frontendDist, {
+    maxAge: 0,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    }
+  }));
+
   app.get(/^(?!\/api).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(frontendDist, 'index.html'));
   });
 }
@@ -225,12 +248,28 @@ if (require.main === module) {
 
     if (process.env.DATABASE_URL) {
       db.initSchema()
-        .then(() => {
+        .then(async () => {
           console.log('[DATABASE] Esquema PostgreSQL pronto.');
+          try {
+            const migrateCustomers2 = require('./db/customersMigration2');
+            await migrateCustomers2(db);
+            console.log('[DATABASE] Migrações PostgreSQL verificadas com sucesso.');
+          } catch (migErr) {
+            console.warn('[DATABASE] Aviso na migração PostgreSQL:', migErr.message);
+          }
         })
         .catch((err) => {
           console.error('[DATABASE] Falha ao verificar esquema PostgreSQL:', err.message);
         });
+    } else {
+      // Ambiente exclusivamente local (SQLite)
+      try {
+        const migrateCustomers2 = require('./db/customersMigration2');
+        migrateCustomers2(db);
+        console.log('[DATABASE] Migrações locais verificadas.');
+      } catch (migErr) {
+        console.warn('[DATABASE] Aviso na migração local:', migErr.message);
+      }
     }
 
     ensureFinancialHistoryUpToDate()

@@ -17,11 +17,11 @@ async function nextOrderNumber(storeId = 1, txClient = null) {
       [storeId]
     );
 
-    // Encontra o maior número numérico existente entre as OS da loja
-    const row = await tx.queryOne(
-      "SELECT MAX(CAST(order_number AS BIGINT)) AS max_num FROM service_orders WHERE store_id = $1 AND order_number ~ '^[0-9]+$'",
-      [storeId]
-    );
+    // Encontra o maior número numérico existente entre as OS da loja (compatível com SQLite e PostgreSQL)
+    const sql = db.isSqlite
+      ? "SELECT MAX(CAST(order_number AS INTEGER)) AS max_num FROM service_orders WHERE store_id = $1 AND order_number GLOB '[0-9]*'"
+      : "SELECT MAX(CAST(order_number AS BIGINT)) AS max_num FROM service_orders WHERE store_id = $1 AND order_number ~ '^[0-9]+$'";
+    const row = await tx.queryOne(sql, [storeId]);
 
     const maxVal = row?.max_num !== null && row?.max_num !== undefined ? Number(row.max_num) : 0;
     const nextVal = maxVal + 1;

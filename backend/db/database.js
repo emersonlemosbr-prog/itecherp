@@ -82,14 +82,33 @@ function parseDatabaseUrl(rawUrl) {
   };
 }
 
+const isProductionEnvironment = process.env.NODE_ENV === 'production';
+
+// Trava Crítica de Segurança Anti-Fallback:
+// Em produção (NODE_ENV=production), o PostgreSQL é obrigatório.
+// Jamais permite fallback silencioso para SQLite nem aceita DB_CLIENT=sqlite.
+if (isProductionEnvironment) {
+  const candidateProdUrl = connectionString || process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!candidateProdUrl || typeof candidateProdUrl !== 'string' || !candidateProdUrl.trim()) {
+    console.error('\n🛑 [FATAL DATABASE ERROR] Em ambiente de produção (NODE_ENV=production), a variável DATABASE_URL ou POSTGRES_URL é estritamente obrigatória.');
+    console.error('🛑 Fallback automático para SQLite e o uso de DB_CLIENT=sqlite são terminantemente proibidos em produção para evitar divergência ou perda de dados.\n');
+    throw new Error('CONFIGURACAO_DATABASE_INVALIDA: DATABASE_URL ou POSTGRES_URL ausente em ambiente de producao.');
+  }
+}
+
 let pool = null;
 let sqliteDb = null;
-const isSqliteMode = isTestEnvironment && !connectionString;
+const isSqliteMode = !isProductionEnvironment && (
+  (isTestEnvironment && !connectionString) ||
+  (!connectionString && !process.env.DATABASE_URL && !process.env.POSTGRES_URL) ||
+  process.env.DB_CLIENT === 'sqlite'
+);
 
 if (isSqliteMode) {
-  // Modo SQLite isolado para testes rápidos e seguros sem tocar na nuvem
+  // Modo SQLite isolado para testes rápidos e desenvolvimento seguro sem tocar na nuvem
   const Database = require('better-sqlite3');
-  const dbPath = process.env.ITECH_DB_PATH || ':memory:';
+  const defaultLocalDb = path.join(__dirname, 'itech-local-dev.db');
+  const dbPath = process.env.ITECH_DB_PATH || defaultLocalDb;
   if (dbPath !== ':memory:') {
     try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) {}
   }
@@ -97,12 +116,12 @@ if (isSqliteMode) {
   sqliteDb.pragma('journal_mode = WAL');
   sqliteDb.pragma('foreign_keys = ON');
 
-  // Inicializa o schema SQLite compatível e completo para testes isolados
+  // Inicializa o schema SQLite compatível e completo para desenvolvimento/testes isolados
   try {
     const { initSqliteTestSchema } = require('./sqliteSchema');
     initSqliteTestSchema(sqliteDb);
   } catch (err) {
-    console.warn('[DATABASE] Erro ao carregar schema de teste SQLite:', err.message);
+    console.warn('[DATABASE] Erro ao carregar schema SQLite:', err.message);
   }
 } else {
   // Modo PostgreSQL (Produção ou TEST_DATABASE_URL autorizada)

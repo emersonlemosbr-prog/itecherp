@@ -8,6 +8,7 @@ const migrateScreenProtectors = require('./screenProtectorsSchema');
 const migrateChecklist = require('./serviceOrderChecklistSchema');
 const migrateTracking = require('./trackingSchema');
 const migrateCustomerDeletion = require('./customerDeletionSchema');
+const migrateCustomers2 = require('./customersMigration2');
 
 function initSqliteTestSchema(db) {
   // 1. Tabelas Base
@@ -193,6 +194,7 @@ function initSqliteTestSchema(db) {
       created_by_name_snapshot TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_withdrawals_so_part ON cash_withdrawals(service_order_id) WHERE source_type = 'service_order_part';
 
     CREATE TABLE IF NOT EXISTS stock_categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -401,6 +403,7 @@ function initSqliteTestSchema(db) {
   migrateMultiTenant(db);
   migrateConstraints(db);
   migrateCustomerDeletion(db);
+  migrateCustomers2(db);
   migratePartsCatalog(db);
   migrateScreenProtectors(db);
   migrateChecklist(db);
