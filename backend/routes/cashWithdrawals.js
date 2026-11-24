@@ -1,5 +1,6 @@
 // routes/cashWithdrawals.js
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const db = require('../db/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
@@ -62,14 +63,57 @@ router.post('/', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
-    const withdrawal = await db.queryOne('SELECT id, source_type FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
-    if (!withdrawal) return res.status(404).json({ error: 'Retirada não encontrada nesta loja.' });
+
+    // Apenas o usuário proprietário (ADM Master da loja) tem permissão para excluir retiradas
+    if (!req.user || !req.user.is_master) {
+      return res.status(403).json({ error: 'Apenas o proprietário da loja tem permissão para excluir retiradas de caixa.' });
+    }
+
+    // Validação da senha do proprietário
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!password) {
+      return res.status(400).json({ error: 'A senha do proprietário é obrigatória para confirmar a exclusão.' });
+    }
+
+    // Busca o usuário atual com seu hash de senha no banco de dados
+    const currentUser = await db.queryOne('SELECT id, password_hash, is_master, store_id FROM users WHERE id = $1 AND store_id = $2', [req.user.id, storeId]);
+    if (!currentUser || !currentUser.is_master) {
+      return res.status(403).json({ error: 'Apenas o proprietário da loja tem permissão para excluir retiradas de caixa.' });
+    }
+
+    // Se a loja tiver owner_password_hash definido, também pode ser aceito, mas prioritariamente valida o hash do usuário master autenticado
+    let isPasswordCorrect = false;
+    if (currentUser.password_hash) {
+      isPasswordCorrect = await bcrypt.compare(password, currentUser.password_hash);
+    }
+    if (!isPasswordCorrect) {
+      const storeRecord = await db.queryOne('SELECT owner_password_hash FROM stores WHERE id = $1', [storeId]);
+      if (storeRecord?.owner_password_hash) {
+        isPasswordCorrect = await bcrypt.compare(password, storeRecord.owner_password_hash);
+      }
+    }
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({ error: 'Senha incorreta. A retirada não foi excluída.' });
+    }
+
+    const withdrawal = await db.queryOne('SELECT id, source_type, amount, reason, withdrawal_date FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (!withdrawal) {
+      return res.status(404).json({ error: 'Retirada não encontrada nesta loja.' });
+    }
     if (withdrawal.source_type === 'service_order_part') {
       return res.status(409).json({ error: 'A retirada automática da OS não pode ser excluída.' });
     }
 
     await db.query('DELETE FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
-    await logAction({ user: req.user, action: 'delete_cash_withdrawal', recordType: 'cash_withdrawal', recordId: req.params.id, storeId });
+    await logAction({
+      user: req.user,
+      action: 'delete_cash_withdrawal',
+      recordType: 'cash_withdrawal',
+      recordId: req.params.id,
+      details: { amount: withdrawal.amount, reason: withdrawal.reason, withdrawal_date: withdrawal.withdrawal_date },
+      storeId
+    });
     emitDashboardRefresh({ source: 'cash_withdrawal_delete', cashWithdrawalId: Number(req.params.id) });
     res.json({ success: true });
   } catch (err) {

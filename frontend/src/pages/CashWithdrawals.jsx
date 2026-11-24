@@ -1,34 +1,41 @@
-import { confirmRecordDeletion } from '../utils/confirmDeletion'
 import ModalFrame from '../components/UI/ModalFrame'
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, X, Trash2 } from 'lucide-react'
+import { Plus, X, Trash2, AlertTriangle, KeyRound, Eye, EyeOff } from 'lucide-react'
 import api from '../api/client'
 import { formatCurrency, formatDate } from '../utils/format'
 import { useAuth } from '../context/AuthContext'
 
 export default function CashWithdrawals() {
-  const { isSuspended } = useAuth()
+  const { isSuspended, isOwner } = useAuth()
   const [items, setItems] = useState([])
   const [showForm, setShowForm] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [passwordModalItem, setPasswordModalItem] = useState(null)
+  const [notice, setNotice] = useState('')
 
   const load = () => api.get('/cash-withdrawals').then(r => setItems(r.data))
   useEffect(() => { load() }, [])
 
-  async function remove(id) {
+  function handleStartDelete(withdrawal) {
     if (isSuspended) {
       alert('Esta funcionalidade está temporariamente indisponível porque a assinatura da sua loja está suspensa.')
       return
     }
-    if (!confirmRecordDeletion('Excluir esta retirada de caixa?')) return
-    await api.delete(`/cash-withdrawals/${id}`)
-    load()
+    setPendingDelete(withdrawal)
   }
 
-  const total = items.reduce((s, i) => s + i.amount, 0)
+  const total = items.reduce((s, i) => s + Number(i.amount || 0), 0)
 
   return (
     <div className="space-y-4">
+      {notice && (
+        <div role="status" className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 p-3 rounded-xl flex items-center justify-between text-sm">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice('')} className="btn-ghost !p-1" aria-label="Fechar aviso"><X size={16} /></button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-display font-bold text-xl">Retiradas de Caixa</h2>
@@ -60,7 +67,7 @@ export default function CashWithdrawals() {
               <th className="px-4 py-2.5">Valor</th>
               <th className="px-4 py-2.5">Origem / OS</th>
               <th className="px-4 py-2.5">Observações</th>
-              <th className="px-4 py-2.5"></th>
+              {isOwner && <th className="px-4 py-2.5 text-right">Ações</th>}
             </tr>
           </thead>
           <tbody>
@@ -77,18 +84,222 @@ export default function CashWithdrawals() {
                   </div> : <span className="text-xs text-slate-500">Retirada manual</span>}
                 </td>
                 <td className="px-4 py-2.5 text-slate-500">{w.notes || '—'}</td>
-                <td className="px-4 py-2.5">{w.source_type !== 'service_order_part' && <button className="btn-ghost !px-1.5 !py-1 text-rose-600" aria-label="Excluir retirada manual" onClick={() => remove(w.id)}><Trash2 size={15} /></button>}</td>
+                {isOwner && (
+                  <td className="px-4 py-2.5 text-right">
+                    {w.source_type !== 'service_order_part' ? (
+                      <button
+                        className="btn-ghost !px-2 !py-1 text-rose-600 hover:bg-rose-500/10 transition-colors"
+                        aria-label={`Excluir retirada de ${formatCurrency(w.amount)}`}
+                        title="Excluir retirada (exclusivo para proprietário)"
+                        onClick={() => handleStartDelete(w)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">Automática</span>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Nenhuma retirada registrada.</td></tr>
+              <tr><td colSpan={isOwner ? 7 : 6} className="px-4 py-8 text-center text-slate-400">Nenhuma retirada registrada.</td></tr>
             )}
           </tbody>
         </table></div>
       </div>
 
       {showForm && <WithdrawalFormModal onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load() }} />}
+
+      {/* Primeiro Pop-up: Confirmação de exclusão */}
+      {pendingDelete && (
+        <DeleteConfirmModal
+          withdrawal={pendingDelete}
+          onClose={() => setPendingDelete(null)}
+          onContinue={() => {
+            const item = pendingDelete
+            setPendingDelete(null)
+            setPasswordModalItem(item)
+          }}
+        />
+      )}
+
+      {/* Segundo Pop-up: Autenticação com senha do proprietário */}
+      {passwordModalItem && (
+        <OwnerPasswordModal
+          withdrawal={passwordModalItem}
+          onClose={() => setPasswordModalItem(null)}
+          onSuccess={() => {
+            setPasswordModalItem(null)
+            setNotice('Retirada de caixa excluída com sucesso.')
+            load()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function DeleteConfirmModal({ withdrawal, onClose, onContinue }) {
+  return (
+    <ModalFrame className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={onClose}>
+      <div className="modal-panel w-full max-w-md p-5 sm:p-6" onClick={e => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="confirm-delete-title">
+        <div className="flex items-center gap-3 pb-3 mb-4 border-b border-slate-200/70 dark:border-white/10">
+          <div className="p-2 rounded-full bg-rose-500/10 text-rose-600">
+            <AlertTriangle size={22} />
+          </div>
+          <div>
+            <h3 id="confirm-delete-title" className="font-display font-bold text-lg text-slate-900 dark:text-white">
+              Excluir retirada de caixa?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Esta ação não poderá ser desfeita após a confirmação.</p>
+          </div>
+        </div>
+
+        <div className="space-y-3 mb-5 text-sm">
+          <div className="bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-3.5 space-y-2 text-xs">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 dark:text-slate-400">Valor da retirada:</span>
+              <span className="font-bold text-rose-600 dark:text-rose-400 text-sm">{formatCurrency(withdrawal.amount)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 dark:text-slate-400">Data:</span>
+              <span className="font-medium text-slate-700 dark:text-slate-200">{formatDate(withdrawal.withdrawal_date)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-500 dark:text-slate-400">Descrição:</span>
+              <span className="font-medium text-slate-700 dark:text-slate-200 max-w-[200px] truncate text-right">{withdrawal.reason || '—'}</span>
+            </div>
+            {withdrawal.notes && (
+              <div className="flex justify-between items-start pt-1 border-t border-slate-200/60 dark:border-white/5">
+                <span className="text-slate-500 dark:text-slate-400">Observações:</span>
+                <span className="text-slate-700 dark:text-slate-300 italic max-w-[200px] text-right">{withdrawal.notes}</span>
+              </div>
+            )}
+          </div>
+
+          <p className="text-slate-700 dark:text-slate-300 text-xs">
+            Essa ação excluirá permanentemente esta retirada. Para continuar, será necessário confirmar sua senha de acesso.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2.5">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="btn-primary !bg-rose-600 hover:!bg-rose-700 text-white" onClick={onContinue}>
+            Continuar
+          </button>
+        </div>
+      </div>
+    </ModalFrame>
+  )
+}
+
+function OwnerPasswordModal({ withdrawal, onClose, onSuccess }) {
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleConfirm(e) {
+    e.preventDefault()
+    if (!password) {
+      setError('Informe sua senha de acesso.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      await api.delete(`/cash-withdrawals/${withdrawal.id}`, {
+        data: { password }
+      })
+      onSuccess()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao excluir retirada de caixa.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <ModalFrame busy={loading} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4" onClick={() => { if (!loading) onClose() }}>
+      <div className="modal-panel w-full max-w-md p-5 sm:p-6" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="owner-auth-title">
+        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200/70 dark:border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-full bg-amber-500/10 text-amber-500">
+              <KeyRound size={20} />
+            </div>
+            <div>
+              <h3 id="owner-auth-title" className="font-display font-bold text-lg text-slate-900 dark:text-white">
+                Confirme sua identidade
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Digite sua senha de acesso ao iTechCloud para autorizar a exclusão.
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={loading} className="btn-ghost !px-2 !py-1.5" aria-label="Fechar modal">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleConfirm} className="space-y-4">
+          <div className="text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/5 p-3 rounded-lg border border-slate-200/60 dark:border-white/5">
+            Excluindo retirada de <strong className="text-rose-600 dark:text-rose-400">{formatCurrency(withdrawal.amount)}</strong> realizada em <strong>{formatDate(withdrawal.withdrawal_date)}</strong>.
+          </div>
+
+          {error && (
+            <p role="alert" className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-lg p-2.5">
+              {error}
+            </p>
+          )}
+
+          <div>
+            <label className="label" htmlFor="owner-delete-password">
+              Senha de acesso
+            </label>
+            <div className="relative">
+              <input
+                id="owner-delete-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                disabled={loading}
+                className="input pr-10"
+                placeholder="Digite sua senha de login"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoFocus
+              />
+              <button
+                type="button"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                aria-label={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-2">
+            <button type="button" className="btn-secondary" disabled={loading} onClick={onClose}>
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="btn-primary !bg-rose-600 hover:!bg-rose-700 text-white disabled:opacity-50"
+              disabled={loading || !password}
+            >
+              {loading ? 'Validando senha...' : 'Confirmar exclusão'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </ModalFrame>
   )
 }
 
@@ -135,3 +346,4 @@ function WithdrawalFormModal({ onClose, onSaved }) {
     </ModalFrame>
   )
 }
+

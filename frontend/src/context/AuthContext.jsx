@@ -56,6 +56,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const isAdmin = user?.role === 'admin'
+  const isOwner = Boolean(user?.is_master)
   const isSuspended = store?.status === 'suspended' || store?.is_suspended || false
   const suspensionReason = store?.suspension_reason || 'Acesso temporariamente limitado por pendência administrativa.'
 
@@ -67,6 +68,7 @@ export function AuthProvider({ children }) {
       login,
       logout,
       isAdmin,
+      isOwner,
       isSuspended,
       suspensionReason
     }}>
