@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Smartphone, Plus, Check, ChevronDown, Building2 } from 'lucide-react';
 import { POPULAR_BRANDS, STORAGE_OPTIONS, CONDITION_OPTIONS, getSuggestions } from '../data/deviceCatalog';
+import { getSaoPauloDateString } from '../utils/date';
 
 export default function DeviceFormDrawer({
   isOpen,
@@ -27,7 +28,7 @@ export default function DeviceFormDrawer({
   const [costPrice, setCostPrice] = useState('');
   const [sellPrice, setSellPrice] = useState('');
   const [supplierId, setSupplierId] = useState('');
-  const [entryDate, setEntryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [entryDate, setEntryDate] = useState(() => getSaoPauloDateString());
   const [notes, setNotes] = useState('');
 
   // Sugestões de modelo
@@ -97,7 +98,7 @@ export default function DeviceFormDrawer({
       setCostPrice(initialData.cost_price !== null && initialData.cost_price !== undefined ? String(initialData.cost_price) : '');
       setSellPrice(initialData.sell_price !== null && initialData.sell_price !== undefined ? String(initialData.sell_price) : '');
       setSupplierId(initialData.supplier_id ? String(initialData.supplier_id) : '');
-      setEntryDate(initialData.entry_date || new Date().toISOString().slice(0, 10));
+      setEntryDate(initialData.entry_date || getSaoPauloDateString());
       setNotes(initialData.notes || '');
     } else {
       // Padrão criação
@@ -117,7 +118,7 @@ export default function DeviceFormDrawer({
       setCostPrice('');
       setSellPrice('');
       setSupplierId('');
-      setEntryDate(new Date().toISOString().slice(0, 10));
+      setEntryDate(getSaoPauloDateString());
       setNotes('');
     }
     setError('');

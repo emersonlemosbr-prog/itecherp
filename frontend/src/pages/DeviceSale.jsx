@@ -7,6 +7,7 @@ import { FileText, Mail, Package, Plus, Printer, Save, Search, Trash2, UserRound
 import api from '../api/client'
 import CustomerPicker from '../components/UI/CustomerPicker'
 import { formatCurrency } from '../utils/format'
+import { getSaoPauloDateString } from '../utils/date'
 
 
 function emptyItem(index = 1, deviceId = null) {
@@ -34,7 +35,7 @@ function computeTotal(items) {
 }
 
 function createDraft() {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getSaoPauloDateString()
   return {
     id: null,
     order_number: '',
@@ -152,7 +153,7 @@ export default function DeviceSale() {
         setForm({
           id: data.id,
           order_number: data.order_number || '',
-          sale_date: data.sale_date || new Date().toISOString().slice(0, 10),
+          sale_date: data.sale_date || getSaoPauloDateString(),
           seller_name: data.seller_name || '',
           customer_id: data.customer_id || null,
           customer_name: data.customer_name || '',

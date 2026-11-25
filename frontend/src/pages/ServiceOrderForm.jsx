@@ -11,8 +11,9 @@ import ServiceOrderPhotoManager from '../components/UI/ServiceOrderPhotoManager'
 import DevicePasswordSection from '../components/ServiceOrder/DevicePasswordSection'
 import DeviceChecklistSection from '../components/ServiceOrder/DeviceChecklistSection'
 import { STATUS_LABELS, PAYMENT_METHOD_LABELS, formatCurrency, onlyDigits } from '../utils/format'
+import { getSaoPauloDateString } from '../utils/date'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => getSaoPauloDateString()
 
 export default function ServiceOrderForm() {
   const { settings } = useSettings()

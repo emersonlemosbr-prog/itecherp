@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { Search, ShieldAlert, ShieldCheck } from 'lucide-react'
 import api from '../api/client'
 import { formatCurrency, formatDate } from '../utils/format'
+import { getSaoPauloDateString } from '../utils/date'
 
 export default function Warranties() {
   const [q, setQ] = useState('')
@@ -19,7 +20,7 @@ export default function Warranties() {
   useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t) }, [load])
   useEffect(() => { api.get('/warranties/expiring').then(r => setExpiring(r.data)) }, [])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getSaoPauloDateString()
 
   return (
     <div className="space-y-4">

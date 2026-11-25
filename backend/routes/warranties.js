@@ -3,6 +3,7 @@ const express = require('express');
 const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { getSaoPauloDateString } = require('../utils/time');
 
 const router = express.Router();
 router.use(authenticate);
@@ -38,8 +39,8 @@ router.get('/', async (req, res, next) => {
 router.get('/expiring', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
-    const today = new Date().toISOString().slice(0, 10);
-    const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const today = getSaoPauloDateString();
+    const soon = getSaoPauloDateString(new Date(Date.now() + 7 * 86400000));
     const rows = await db.query(`
       SELECT w.*, COALESCE(w.customer_name_snapshot, c.first_name) AS first_name,
         CASE WHEN w.customer_name_snapshot IS NOT NULL THEN '' ELSE c.last_name END AS last_name, so.order_number

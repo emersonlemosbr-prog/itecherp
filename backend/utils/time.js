@@ -106,6 +106,20 @@ async function getTrustedNowSqlite() {
   return toSqliteDateTime(trustedDate);
 }
 
+/**
+ * Retorna a data no formato YYYY-MM-DD exclusivamente no fuso horário America/Sao_Paulo.
+ */
+function getSaoPauloDateString(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const validDate = Number.isNaN(d.getTime()) ? new Date() : d;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(validDate);
+}
+
 // Sincroniza em background para reduzir latência em requisições.
 setInterval(() => {
   syncNtpOffset().catch((err) => {
@@ -117,4 +131,5 @@ module.exports = {
   getTrustedDate,
   getTrustedNowSqlite,
   toSqliteDateTime,
+  getSaoPauloDateString,
 };

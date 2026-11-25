@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Plus, X, Trash2, AlertTriangle, KeyRound, Eye, EyeOff } from 'lucide-react'
 import api from '../api/client'
 import { formatCurrency, formatDate } from '../utils/format'
+import { getSaoPauloDateString } from '../utils/date'
 import { useAuth } from '../context/AuthContext'
 
 export default function CashWithdrawals() {
@@ -306,7 +307,7 @@ function OwnerPasswordModal({ withdrawal, onClose, onSuccess }) {
 function WithdrawalFormModal({ onClose, onSaved }) {
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => getSaoPauloDateString())
   const [notes, setNotes] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)

@@ -8,6 +8,7 @@ import {
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
+import { getSaoPauloDateString } from '../utils/date';
 import { formatCurrency } from '../utils/format';
 import CustomerPicker from '../components/UI/CustomerPicker';
 import ModalFrame from '../components/UI/ModalFrame';
@@ -367,7 +368,7 @@ export default function DeviceSalePOS() {
     }
 
     // Montar payload compatível com POST /api/device-sales
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getSaoPauloDateString();
     const customerName = selectedCustomer
       ? `${selectedCustomer.first_name || ''} ${selectedCustomer.last_name || ''}`.trim()
       : 'Cliente Balcão';

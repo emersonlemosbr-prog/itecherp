@@ -2,7 +2,7 @@ const express = require('express')
 const nodemailer = require('nodemailer')
 const db = require('../db/database')
 const { authenticate, requireRole } = require('../middleware/auth')
-const { getTrustedNowSqlite } = require('../utils/time')
+const { getTrustedNowSqlite, getSaoPauloDateString } = require('../utils/time')
 const { emitDashboardRefresh, emitInventoryRefresh } = require('../utils/events')
 const { dispatchNotification } = require('../services/notificationService')
 const { nextNumber } = require('../services/settings')
@@ -64,7 +64,7 @@ function normalizeSale(body, existing = {}) {
 
   return {
     customer_id: body.customer_id ? Number(body.customer_id) : existing.customer_id || null,
-    sale_date: body.sale_date || existing.sale_date || new Date().toISOString().slice(0, 10),
+    sale_date: body.sale_date || existing.sale_date || getSaoPauloDateString(),
     seller_name: body.seller_name ?? existing.seller_name ?? '',
     customer_name: body.customer_name ?? existing.customer_name ?? '',
     customer_cpf_cnpj: body.customer_cpf_cnpj ?? existing.customer_cpf_cnpj ?? '',

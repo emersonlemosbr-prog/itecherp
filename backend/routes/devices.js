@@ -3,6 +3,7 @@ const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
 const { enforceStoreSuspension } = require('../middleware/suspension');
 const { emitInventoryRefresh } = require('../utils/events');
+const { getSaoPauloDateString } = require('../utils/time');
 
 const router = express.Router();
 router.use(authenticate);
@@ -466,7 +467,7 @@ router.post('/', async (req, res) => {
     const sellPrice = normalizeNumber(req.body.sell_price, 0);
     const supplierId = req.body.supplier_id ? Number(req.body.supplier_id) : null;
     const supplierName = normalizeString(req.body.supplier_name);
-    const entryDate = normalizeString(req.body.entry_date) || new Date().toISOString().slice(0, 10);
+    const entryDate = normalizeString(req.body.entry_date) || getSaoPauloDateString();
     const notes = normalizeString(req.body.notes);
 
     if (!brand) return res.status(400).json({ error: 'A marca do aparelho é obrigatória.' });

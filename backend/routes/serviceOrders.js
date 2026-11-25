@@ -6,6 +6,7 @@ const multer = require('multer');
 const db = require('../db/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { getSaoPauloDateString } = require('../utils/time');
 const { nextOrderNumber } = require('../utils/orderNumber');
 const { getTrustedNowSqlite } = require('../utils/time');
 const { emitDashboardRefresh } = require('../utils/events');
@@ -113,7 +114,7 @@ async function syncSideEffects(order, trustedNow, client = db) {
   // Garantia: gerada quando a OS é entregue (delivered) e não foi "não realizado"
   const existingWarranty = await client.queryOne('SELECT * FROM warranties WHERE service_order_id = $1 AND store_id = $2', [order.id, storeId]);
   if (order.status === 'delivered' && order.payment_status !== 'not_performed') {
-    const start = order.delivery_date || new Date().toISOString().slice(0, 10);
+    const start = order.delivery_date || getSaoPauloDateString();
     const end = new Date(new Date(start).getTime() + (order.warranty_days || 90) * 86400000)
       .toISOString().slice(0, 10);
 
@@ -149,8 +150,17 @@ async function syncSideEffects(order, trustedNow, client = db) {
 router.get('/', async (req, res, next) => {
   try {
     const storeId = req.user.store_id || 1;
-    const { q, status, payment_status } = req.query;
-    let sql = `
+    const { q, status, payment_status, limit, summary } = req.query;
+
+    const isSummary = summary === 'true' || summary === '1';
+    let sql = isSummary ? `
+      SELECT so.id, so.order_number, so.customer_id, so.brand, so.model, so.service_price, so.status, so.payment_status, so.entry_date,
+        COALESCE(so.customer_name_snapshot, c.first_name) AS first_name,
+        CASE WHEN so.customer_name_snapshot IS NOT NULL THEN '' ELSE c.last_name END AS last_name
+      FROM service_orders so
+      JOIN customers c ON c.id = so.customer_id
+      WHERE so.store_id = $1
+    ` : `
       SELECT so.*, COALESCE(so.customer_name_snapshot, c.first_name) AS first_name,
         CASE WHEN so.customer_name_snapshot IS NOT NULL THEN '' ELSE c.last_name END AS last_name,
         COALESCE(so.customer_phone_snapshot, c.phone) AS phone
@@ -175,7 +185,11 @@ router.get('/', async (req, res, next) => {
       sql += ` AND so.payment_status = $${paramIndex++}`;
       params.push(payment_status);
     }
-    sql += ' ORDER BY so.entry_date DESC, so.id DESC LIMIT 300';
+
+    const parsedLimit = parseInt(limit, 10);
+    const maxLimit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 300) : 300;
+
+    sql += ` ORDER BY so.entry_date DESC, so.id DESC LIMIT ${maxLimit}`;
 
     const rows = await db.query(sql, ...params);
     const orders = rows.map((row) => {
@@ -541,8 +555,8 @@ router.put('/:id', async (req, res, next) => {
     const device_condition = b.device_condition !== undefined ? (b.device_condition || null) : existing.device_condition;
     const battery_health = b.battery_health !== undefined
       ? ((b.battery_health !== '' && b.battery_health !== null && !isNaN(b.battery_health))
-          ? Math.min(100, Math.max(0, parseInt(b.battery_health, 10)))
-          : null)
+        ? Math.min(100, Math.max(0, parseInt(b.battery_health, 10)))
+        : null)
       : existing.battery_health;
     const checklist_notes = b.checklist_notes !== undefined
       ? (b.checklist_notes ? String(b.checklist_notes).slice(0, 2000) : null)

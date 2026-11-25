@@ -1,4 +1,5 @@
 import { useSettings } from '../context/SettingsContext'
+import { getSaoPauloDateString } from '../utils/date'
 import React, { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
@@ -62,12 +63,12 @@ export default function Dashboard() {
   // Filtros de período: 'today' | '7d' | 'this_month' | 'last_month' | 'custom'
   const [period, setPeriod] = useState('this_month')
   const [customRange, setCustomRange] = useState({
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: new Date().toISOString().slice(0, 10),
+    startDate: getSaoPauloDateString(),
+    endDate: getSaoPauloDateString(),
   })
   const [customDraft, setCustomDraft] = useState({
-    startDate: new Date().toISOString().slice(0, 10),
-    endDate: new Date().toISOString().slice(0, 10),
+    startDate: getSaoPauloDateString(),
+    endDate: getSaoPauloDateString(),
   })
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [customError, setCustomError] = useState('')
@@ -112,10 +113,10 @@ export default function Dashboard() {
     try {
       const params = periodParams
       const ordersPromise = (user?.role === 'admin' || user?.permissions?.orders)
-        ? api.get('/service-orders').catch(err => {
-            console.warn('Não foi possível carregar ordens de serviço no painel:', err)
-            return { data: [] }
-          })
+        ? api.get('/service-orders', { params: { limit: 15, summary: true } }).catch(err => {
+          console.warn('Não foi possível carregar ordens de serviço no painel:', err)
+          return { data: [] }
+        })
         : Promise.resolve({ data: [] })
 
       const [statsRes, dailyRes, monthlyRes, statusRes, ordersRes] = await Promise.all([
@@ -130,7 +131,7 @@ export default function Dashboard() {
       setDaily(dailyRes.data)
       setMonthly(monthlyRes.data)
       setStatusDist(statusRes.data)
-      setOrders(ordersRes.data.slice(0, 15))
+      setOrders(ordersRes.data)
     } catch (err) {
       console.error('Erro ao carregar dados do painel:', err)
       setError(err?.response?.data?.message || err.message || 'Falha ao carregar informações do painel.')
@@ -325,11 +326,10 @@ export default function Dashboard() {
                   key={opt.id}
                   type="button"
                   onClick={() => handleFilterClick(opt.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                    isActive
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${isActive
                       ? 'bg-white dark:bg-[#2c2c30] text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/60 dark:ring-white/10'
                       : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-200/50 dark:hover:bg-white/5'
-                  }`}
+                    }`}
                 >
                   {opt.label}
                   {opt.id === 'custom' && period === 'custom' && customRange.startDate && (
