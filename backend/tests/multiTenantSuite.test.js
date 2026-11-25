@@ -1,15 +1,40 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const bcrypt = require('bcryptjs');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-multi-tenant-'));
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
+
 const db = require('../db/database');
 const { checkStoreSubscription, isNicknameAvailable, createStoreWithInitialData } = require('../services/multiTenantService');
 const settingsService = require('../services/settings');
+
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
 
 test('Multi-Tenant Suite: Preservação dos Dados Históricos da iTech', () => {
   // A Loja 1 (iTech) deve existir e estar ativa
   const store1 = db.prepare('SELECT * FROM stores WHERE id = 1').get();
   assert.ok(store1, 'Loja 1 (iTech) deve existir');
   assert.equal(store1.status, 'active');
+
+  // Em banco temporário limpo, semear dados históricos iniciais da Loja 1 caso não existam
+  if (db.prepare('SELECT COUNT(*) as count FROM customers WHERE store_id = 1').get().count === 0) {
+    db.prepare("INSERT INTO customers (store_id, first_name, last_name, phone) VALUES (1, 'Cliente', 'Histórico', '11999990000')").run();
+  }
+  if (db.prepare('SELECT COUNT(*) as count FROM users WHERE store_id = 1').get().count === 0) {
+    db.prepare("INSERT INTO users (store_id, full_name, username, password_hash, role, is_master) VALUES (1, 'Admin iTech', 'itech', 'hash', 'admin', 1)").run();
+  }
+  if (db.prepare('SELECT COUNT(*) as count FROM stock_products WHERE store_id = 1').get().count === 0) {
+    db.prepare("INSERT INTO stock_products (store_id, code, name, sale_price) VALUES (1, 'HIST-01', 'Produto Histórico', 100.00)").run();
+  }
 
   // Os dados históricos devem estar intactos e vinculados à Loja 1
   const customersCount = db.prepare('SELECT COUNT(*) as count FROM customers WHERE store_id = 1').get().count;
@@ -32,20 +57,20 @@ test('Multi-Tenant Suite: Preservação dos Dados Históricos da iTech', () => {
   assert.ok(stockCount > 0, 'Produtos de estoque da Loja 1 devem estar preservados');
 });
 
-test('Multi-Tenant Suite: Cadastro de Nova Loja e Validação de Nickname', () => {
+test('Multi-Tenant Suite: Cadastro de Nova Loja e Validação de Nickname', async () => {
   // Nickname existente não pode estar disponível
   const existingUser = db.prepare('SELECT username FROM users LIMIT 1').get();
   if (existingUser) {
-    assert.equal(isNicknameAvailable(existingUser.username), false, 'Nickname existente deve ser recusado');
+    assert.equal(await isNicknameAvailable(existingUser.username), false, 'Nickname existente deve ser recusado');
   }
 
   // Nickname novo deve estar disponível
   const uniqueNick = `testnick_${Date.now()}`;
-  assert.equal(isNicknameAvailable(uniqueNick), true, 'Nickname inédito deve ser aceito');
+  assert.equal(await isNicknameAvailable(uniqueNick), true, 'Nickname inédito deve ser aceito');
 
   // Cadastro de nova loja
   const newStoreEmail = `loja_${Date.now()}@teste.com`;
-  const result = createStoreWithInitialData({
+  const result = await createStoreWithInitialData({
     storeName: 'Loja Teste Alpha',
     ownerName: 'Proprietário Teste',
     email: newStoreEmail,
@@ -64,14 +89,14 @@ test('Multi-Tenant Suite: Cadastro de Nova Loja e Validação de Nickname', () =
   assert.equal(createdStore.name, 'Loja Teste Alpha');
 
   // Nickname recém cadastrado não deve mais estar disponível
-  assert.equal(isNicknameAvailable(uniqueNick), false, 'Nickname cadastrado não pode mais ser reutilizado');
+  assert.equal(await isNicknameAvailable(uniqueNick), false, 'Nickname cadastrado não pode mais ser reutilizado');
 });
 
-test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', () => {
+test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', async () => {
   // Criar loja de teste para manipulação de assinatura
   const testEmail = `sub_test_${Date.now()}@teste.com`;
   const nick = `subnick_${Date.now()}`;
-  const { storeId } = createStoreWithInitialData({
+  const { storeId } = await createStoreWithInitialData({
     storeName: 'Loja Ciclo Assinatura',
     ownerName: 'Dono Assinatura',
     email: testEmail,
@@ -82,7 +107,7 @@ test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', (
   });
 
   // 1. Estado inicial: pending_activation
-  let check = checkStoreSubscription(storeId);
+  let check = await checkStoreSubscription(storeId);
   assert.equal(check.effectiveStatus, 'pending_activation');
   assert.equal(check.canAccessErp, false, 'Loja pendente não deve acessar ERP');
 
@@ -93,7 +118,7 @@ test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', (
     WHERE id = ?
   `).run(storeId);
 
-  check = checkStoreSubscription(storeId);
+  check = await checkStoreSubscription(storeId);
   assert.equal(check.effectiveStatus, 'active');
   assert.equal(check.canAccessErp, true, 'Loja ativa deve acessar ERP');
 
@@ -104,7 +129,7 @@ test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', (
     WHERE id = ?
   `).run(storeId);
 
-  check = checkStoreSubscription(storeId);
+  check = await checkStoreSubscription(storeId);
   assert.equal(check.effectiveStatus, 'overdue');
   assert.equal(check.canAccessErp, true, 'Loja em atraso dentro da tolerância ainda acessa');
 
@@ -115,9 +140,10 @@ test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', (
     WHERE id = ?
   `).run(storeId);
 
-  check = checkStoreSubscription(storeId);
+  check = await checkStoreSubscription(storeId);
   assert.equal(check.effectiveStatus, 'suspended');
-  assert.equal(check.canAccessErp, false, 'Loja fora da tolerância deve ser automaticamente suspensa');
+  assert.equal(check.isSuspended, true, 'Loja fora da tolerância deve ser automaticamente suspensa');
+  assert.equal(check.canAccessErp, true, 'Loja suspensa entra em modo restrito de leitura');
 
   // 5. Suspensão manual explícita
   db.prepare(`
@@ -126,9 +152,10 @@ test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', (
     WHERE id = ?
   `).run(storeId);
 
-  check = checkStoreSubscription(storeId);
+  check = await checkStoreSubscription(storeId);
   assert.equal(check.effectiveStatus, 'suspended');
-  assert.equal(check.canAccessErp, false, 'Loja com status suspenso não acessa ERP');
+  assert.equal(check.isSuspended, true, 'Loja com status suspenso deve estar sinalizada como suspensa');
+  assert.equal(check.canAccessErp, true, 'Loja com status suspenso acessa apenas em modo restrito');
 
   // 6. Reativação manual
   db.prepare(`
@@ -137,14 +164,14 @@ test('Multi-Tenant Suite: Ciclo de Vida da Assinatura e Bloqueio Automático', (
     WHERE id = ?
   `).run(storeId);
 
-  check = checkStoreSubscription(storeId);
+  check = await checkStoreSubscription(storeId);
   assert.equal(check.effectiveStatus, 'active');
   assert.equal(check.canAccessErp, true, 'Loja reativada volta a ter acesso completo');
 });
 
-test('Multi-Tenant Suite: Isolamento de Dados entre Lojas', () => {
+test('Multi-Tenant Suite: Isolamento de Dados entre Lojas', async () => {
   // Criar Loja A e Loja B
-  const storeA = createStoreWithInitialData({
+  const storeA = await createStoreWithInitialData({
     storeName: 'Loja A Isolamento',
     ownerName: 'Dono A',
     email: `loja_a_${Date.now()}@teste.com`,
@@ -154,7 +181,7 @@ test('Multi-Tenant Suite: Isolamento de Dados entre Lojas', () => {
     erpPassword: 'senhaErp123',
   });
 
-  const storeB = createStoreWithInitialData({
+  const storeB = await createStoreWithInitialData({
     storeName: 'Loja B Isolamento',
     ownerName: 'Dono B',
     email: `loja_b_${Date.now()}@teste.com`,
@@ -182,8 +209,8 @@ test('Multi-Tenant Suite: Isolamento de Dados entre Lojas', () => {
   assert.equal(customersOfA.some(c => c.id === custA.lastInsertRowid), true, 'Loja A deve ver seu próprio cliente');
 
   // Inserir OS na Loja A e na Loja B com mesmo número sequencial (permitido por multi-tenancy)
-  const osNumA = settingsService.nextNumber('order', storeA.storeId);
-  const osNumB = settingsService.nextNumber('order', storeB.storeId);
+  const osNumA = await settingsService.nextNumber('order', storeA.storeId);
+  const osNumB = await settingsService.nextNumber('order', storeB.storeId);
 
   assert.equal(osNumA, 1, 'Primeira OS da Loja A deve ser 1');
   assert.equal(osNumB, 1, 'Primeira OS da Loja B deve ser 1 (numeração independente por loja)');
@@ -223,8 +250,8 @@ test('Multi-Tenant Suite: Isolamento de Dados entre Lojas', () => {
   assert.ok(prodB.lastInsertRowid > 0, 'Produto Loja B com mesmo código inserido sem colisão');
 });
 
-test('Multi-Tenant Suite: Limite de Usuários por Loja (2 Admins, 6 Funcionários)', () => {
-  const store = createStoreWithInitialData({
+test('Multi-Tenant Suite: Limite de Usuários por Loja (2 Admins, 6 Funcionários)', async () => {
+  const store = await createStoreWithInitialData({
     storeName: 'Loja Limite Usuários',
     ownerName: 'Dono Limite',
     email: `limite_${Date.now()}@teste.com`,

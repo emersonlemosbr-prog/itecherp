@@ -1,17 +1,32 @@
 // backend/tests/dashboardInteractiveDetails.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-dash-details-'));
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
+
 const db = require('../db/database');
 const { getTrustedNowSqlite } = require('../utils/time');
 const { getMonthDateRangeForSqlite } = require('../utils/financialHistory');
 
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
+
 test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com permissões de exclusão', async (t) => {
+  const rand = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   // 1. Criar loja de teste isolada
   const store = await db.queryOne(`
     INSERT INTO stores (name, slug, owner_name, owner_email, status)
-    VALUES ('Loja Teste Dashboard', 'loja-dash-' || trunc(random()*100000), 'Owner Dash', 'dash_' || trunc(random()*100000) || '@test.com', 'active')
+    VALUES ('Loja Teste Dashboard', $1, 'Owner Dash', $2, 'active')
     RETURNING id
-  `);
+  `, [`loja-dash-${rand}`, `dash_${rand}@test.com`]);
   const storeId = store.id;
 
   // 2. Criar cliente na loja
@@ -95,14 +110,21 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
   `, [prod1.id]);
 
   // Simular as consultas dos 9 indicadores da dashboard para a loja
+  const isSqlite = Boolean(db.isSqlite);
+  const soDelivExpr = isSqlite ? 'substr(COALESCE(so.delivery_date, so.entry_date), 1, 10)' : '(COALESCE(so.delivery_date, so.entry_date))::date';
+  const soEntryExpr = isSqlite ? 'substr(so.entry_date, 1, 10)' : 'so.entry_date::date';
+  const saleCreatedExpr = isSqlite ? 'substr(s.created_at, 1, 10)' : 's.created_at::date';
+  const caCreatedExpr = isSqlite ? 'substr(ca.created_at, 1, 10)' : 'ca.created_at::date';
+  const paramCast = isSqlite ? '' : '::date';
+
   // 1. Receita total (OS 1 paga + Venda 1 = 350 + 120 = 470)
   const osEntries = await db.query(`
     SELECT so.id, so.service_price AS amount
     FROM service_orders so
     WHERE so.store_id = $1
       AND so.payment_status IN ('paid', 'credit_account')
-      AND (COALESCE(so.delivery_date, so.entry_date))::date >= $2::date
-      AND (COALESCE(so.delivery_date, so.entry_date))::date < $3::date
+      AND ${soDelivExpr} >= $2${paramCast}
+      AND ${soDelivExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
 
   const saleEntries = await db.query(`
@@ -110,8 +132,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     FROM store_sales s
     WHERE s.store_id = $1
       AND COALESCE(s.is_canceled, 0) = 0
-      AND s.created_at::date >= $2::date
-      AND s.created_at::date < $3::date
+      AND ${saleCreatedExpr} >= $2${paramCast}
+      AND ${saleCreatedExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
 
   const totalRev = [...osEntries, ...saleEntries].reduce((acc, i) => acc + Number(i.amount), 0);
@@ -123,8 +145,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     FROM service_orders so
     WHERE so.store_id = $1
       AND so.payment_status IN ('pending', 'credit_account')
-      AND (COALESCE(so.delivery_date, so.entry_date))::date >= $2::date
-      AND (COALESCE(so.delivery_date, so.entry_date))::date < $3::date
+      AND ${soDelivExpr} >= $2${paramCast}
+      AND ${soDelivExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   assert.equal(pendingRev.length, 2, 'Receita pendente tem OS 2 e OS 3');
 
@@ -134,8 +156,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     FROM credit_accounts ca
     WHERE ca.store_id = $1
       AND ca.status = 'open'
-      AND ca.created_at::date >= $2::date
-      AND ca.created_at::date < $3::date
+      AND ${caCreatedExpr} >= $2${paramCast}
+      AND ${caCreatedExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   assert.equal(openCredits.length, 1);
   assert.equal(Number(openCredits[0].amount), 50.00);
@@ -145,8 +167,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     SELECT so.id FROM service_orders so
     WHERE so.store_id = $1
       AND so.status IN ('diagnosis', 'waiting_parts', 'repairing')
-      AND so.entry_date::date >= $2::date
-      AND so.entry_date::date < $3::date
+      AND ${soEntryExpr} >= $2${paramCast}
+      AND ${soEntryExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   assert.equal(inProgress.length, 1);
   assert.equal(inProgress[0].id, os2.id);
@@ -156,8 +178,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     SELECT so.id FROM service_orders so
     WHERE so.store_id = $1
       AND so.status = 'ready'
-      AND so.entry_date::date >= $2::date
-      AND so.entry_date::date < $3::date
+      AND ${soEntryExpr} >= $2${paramCast}
+      AND ${soEntryExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   assert.equal(ready.length, 1);
   assert.equal(ready[0].id, os3.id);
@@ -167,8 +189,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     SELECT so.id FROM service_orders so
     WHERE so.store_id = $1
       AND so.status = 'delivered'
-      AND so.entry_date::date >= $2::date
-      AND so.entry_date::date < $3::date
+      AND ${soEntryExpr} >= $2${paramCast}
+      AND ${soEntryExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   assert.equal(completed.length, 1);
   assert.equal(completed[0].id, os1.id);
@@ -178,8 +200,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     SELECT so.id FROM service_orders so
     WHERE so.store_id = $1
       AND so.status = 'not_performed'
-      AND so.entry_date::date >= $2::date
-      AND so.entry_date::date < $3::date
+      AND ${soEntryExpr} >= $2${paramCast}
+      AND ${soEntryExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   assert.equal(notPerformed.length, 1);
   assert.equal(notPerformed[0].id, os4.id);
@@ -190,8 +212,8 @@ test('Dashboard Interativa: Auditoria e teste completo dos 9 indicadores com per
     FROM store_sales s
     WHERE s.store_id = $1
       AND COALESCE(s.is_canceled, 0) = 0
-      AND s.created_at::date >= $2::date
-      AND s.created_at::date < $3::date
+      AND ${saleCreatedExpr} >= $2${paramCast}
+      AND ${saleCreatedExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   assert.equal(sales.length, 1);
   assert.equal(Number(sales[0].total_amount), 120.00);

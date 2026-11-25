@@ -7,30 +7,48 @@ const path = require('path');
 let backupExecuted = false;
 
 function performSafeBackup(db) {
+  // Testes e banco em memória nunca devem copiar arquivos físicos.
+  if (process.env.NODE_ENV === 'test') return;
+  if (!db || !db.name || db.name === ':memory:') return;
+
   if (backupExecuted) return;
   backupExecuted = true;
 
   try {
-    const dbDir = path.join(__dirname);
+    // Usa o caminho do banco realmente conectado, sem presumir itech.db.
+    const mainDb = path.resolve(db.name);
+
+    if (!fs.existsSync(mainDb)) return;
+
+    const dbDir = path.dirname(mainDb);
     const backupDir = path.join(dbDir, 'backups');
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
-    }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const mainDb = path.join(dbDir, 'itech.db');
-    if (fs.existsSync(mainDb)) {
-      const destMain = path.join(backupDir, `backup-before-checklist-${timestamp}.db`);
-      fs.copyFileSync(mainDb, destMain);
-      console.log(`[DATABASE] Backup de segurança criado com sucesso: ${path.basename(destMain)}`);
-    }
+    fs.mkdirSync(backupDir, { recursive: true });
 
-    const walDb = path.join(dbDir, 'itech.db-wal');
+    const timestamp = new Date().toISOString()
+      .replace(/[:.]/g, '-')
+      .slice(0, 19);
+
+    const dbName = path.basename(mainDb, path.extname(mainDb));
+    const backupPath = path.join(
+      backupDir,
+      `backup-before-checklist-${dbName}-${timestamp}.db`
+    );
+
+    fs.copyFileSync(mainDb, backupPath);
+
+    const walDb = `${mainDb}-wal`;
     if (fs.existsSync(walDb)) {
-      fs.copyFileSync(walDb, path.join(backupDir, `backup-before-checklist-${timestamp}.db-wal`));
+      fs.copyFileSync(walDb, `${backupPath}-wal`);
     }
+
+    console.log(
+      `[DATABASE] Backup de segurança criado: ${path.basename(backupPath)}`
+    );
   } catch (error) {
-    console.warn(`[DATABASE] Aviso: Não foi possível criar cópia de backup do banco: ${error.message}`);
+    console.warn(
+      `[DATABASE] Aviso: não foi possível criar backup: ${error.message}`
+    );
   }
 }
 

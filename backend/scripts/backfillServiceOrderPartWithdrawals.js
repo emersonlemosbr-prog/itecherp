@@ -42,41 +42,75 @@ const report = {
   created: [],
 };
 
-if (apply) {
-  db.transaction(() => {
-    // Re-read under the write lock to avoid using an OS edited after the audit.
-    for (const order of db.prepare(eligibleSql).all().filter(item => !item.withdrawal_id)) {
-      const withdrawalDate = historicalDate(order);
-      const existing = db.prepare("SELECT id FROM cash_withdrawals WHERE service_order_id=? AND source_type='service_order_part'").get(order.id);
-      if (existing) continue;
-      const withdrawalId = recordOnDelivery(db, null, { ...order, delivery_date: withdrawalDate }, withdrawalDate, order.created_by);
-      report.created.push({
-        withdrawal_id: withdrawalId, service_order_id: order.id,
-        order_number: order.order_number, parts_cost: order.parts_cost,
-        supplier: order.supplier_name, status: order.status, withdrawal_date: withdrawalDate,
-      });
+// Adaptador compatível com a interface assíncrona oficial (query / queryOne / execute)
+const dbAdapter = {
+  isSqlite: true,
+  async query(sql, params = []) {
+    const sqliteSql = sql.replace(/\$(\d+)/g, '?');
+    const stmt = db.prepare(sqliteSql);
+    return stmt.reader ? stmt.all(...params) : stmt.run(...params);
+  },
+  async queryOne(sql, params = []) {
+    const sqliteSql = sql.replace(/\$(\d+)/g, '?');
+    const row = db.prepare(sqliteSql).get(...params);
+    return row || null;
+  },
+  async execute(sql, params = []) {
+    const sqliteSql = sql.replace(/\$(\d+)/g, '?');
+    const info = db.prepare(sqliteSql).run(...params);
+    return { rowCount: info.changes, changes: info.changes, id: info.lastInsertRowid };
+  },
+};
+
+async function main() {
+  if (apply) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      // Re-read under the write lock to avoid using an OS edited after the audit.
+      for (const order of db.prepare(eligibleSql).all().filter(item => !item.withdrawal_id)) {
+        const withdrawalDate = historicalDate(order);
+        const existing = db.prepare("SELECT id FROM cash_withdrawals WHERE service_order_id=? AND source_type='service_order_part'").get(order.id);
+        if (existing) continue;
+        const withdrawalId = await recordOnDelivery(dbAdapter, null, { ...order, delivery_date: withdrawalDate }, withdrawalDate, order.created_by);
+        report.created.push({
+          withdrawal_id: withdrawalId, service_order_id: order.id,
+          order_number: order.order_number, parts_cost: order.parts_cost,
+          supplier: order.supplier_name, status: order.status, withdrawal_date: withdrawalDate,
+        });
+      }
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
     }
-  }).immediate();
+  }
+
+  report.remaining_missing = db.prepare(`
+    SELECT COUNT(*) AS n FROM service_orders so
+    LEFT JOIN stock_suppliers s ON s.id = so.supplier_id
+    WHERE so.status = 'delivered' AND so.parts_cost > 0
+      AND NOT EXISTS (
+        SELECT 1 FROM cash_withdrawals w
+        WHERE w.service_order_id = so.id AND w.source_type = 'service_order_part'
+      )
+  `).get().n;
+  report.duplicates = db.prepare(`
+    SELECT COUNT(*) AS n FROM (
+      SELECT service_order_id FROM cash_withdrawals
+      WHERE source_type = 'service_order_part'
+      GROUP BY service_order_id HAVING COUNT(*) > 1
+    )
+  `).get().n;
+  report.manual_total = db.prepare("SELECT COUNT(*) AS n FROM cash_withdrawals WHERE source_type = 'manual'").get().n;
+
+  console.log(JSON.stringify(report, null, 2));
 }
 
-report.remaining_missing = db.prepare(`
-  SELECT COUNT(*) AS n FROM service_orders so
-  LEFT JOIN stock_suppliers s ON s.id = so.supplier_id
-  WHERE so.status = 'delivered' AND so.parts_cost > 0
-    AND NOT EXISTS (
-      SELECT 1 FROM cash_withdrawals w
-      WHERE w.service_order_id = so.id AND w.source_type = 'service_order_part'
-    )
-`).get().n;
-report.duplicates = db.prepare(`
-  SELECT COUNT(*) AS n FROM (
-    SELECT service_order_id FROM cash_withdrawals
-    WHERE source_type = 'service_order_part'
-    GROUP BY service_order_id HAVING COUNT(*) > 1
-  )
-`).get().n;
-report.manual_total = db.prepare("SELECT COUNT(*) AS n FROM cash_withdrawals WHERE source_type = 'manual'").get().n;
-
-console.log(JSON.stringify(report, null, 2));
-
-db.close();
+main()
+  .catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    db.close();
+  });

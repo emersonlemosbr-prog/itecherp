@@ -1,12 +1,19 @@
 // services/financialSummary.js
 async function calculateFinancialSummary(db, startDate, nextStartDate, { includeProfit = true, storeId = 1 } = {}) {
+  const isSqlite = Boolean(db?.isSqlite);
+  const soDateExpr = isSqlite ? 'substr(COALESCE(delivery_date, entry_date), 1, 10)' : '(COALESCE(delivery_date, entry_date))::date';
+  const saleDateExpr = isSqlite ? 'substr(created_at, 1, 10)' : 'created_at::date';
+  const sSaleDateExpr = isSqlite ? 'substr(s.created_at, 1, 10)' : 's.created_at::date';
+  const withdrawalDateExpr = isSqlite ? 'substr(withdrawal_date, 1, 10)' : 'withdrawal_date::date';
+  const paramCast = isSqlite ? '' : '::date';
+
   const serviceRevenueRow = await db.queryOne(`
     SELECT COALESCE(SUM(service_price), 0) AS total
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
       AND payment_status IN ('paid', 'credit_account')
-      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
-      AND (COALESCE(delivery_date, entry_date))::date < $3::date
+      AND ${soDateExpr} >= $2${paramCast}
+      AND ${soDateExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   const serviceRevenue = Number(serviceRevenueRow?.total || 0);
 
@@ -15,8 +22,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
     FROM store_sales
     WHERE (store_id = $1 OR store_id IS NULL)
       AND COALESCE(is_canceled, 0) = 0
-      AND created_at::date >= $2::date
-      AND created_at::date < $3::date
+      AND ${saleDateExpr} >= $2${paramCast}
+      AND ${saleDateExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   const storeRevenue = Number(storeRevenueRow?.total || 0);
 
@@ -25,8 +32,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
       AND payment_status IN ('pending', 'credit_account')
-      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
-      AND (COALESCE(delivery_date, entry_date))::date < $3::date
+      AND ${soDateExpr} >= $2${paramCast}
+      AND ${soDateExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
   const pendingRevenue = Number(pendingRevenueRow?.total || 0);
 
@@ -37,8 +44,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
       FROM service_orders
       WHERE (store_id = $1 OR store_id IS NULL)
         AND payment_status IN ('paid', 'credit_account')
-        AND (COALESCE(delivery_date, entry_date))::date >= $2::date
-        AND (COALESCE(delivery_date, entry_date))::date < $3::date
+        AND ${soDateExpr} >= $2${paramCast}
+        AND ${soDateExpr} < $3${paramCast}
     `, [storeId, startDate, nextStartDate]);
     serviceProfit = Number(profitRow?.total || 0);
   }
@@ -52,8 +59,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
       WHERE (s.store_id = $1 OR s.store_id IS NULL)
         AND COALESCE(s.is_canceled, 0) = 0
         AND COALESCE(i.is_canceled, 0) = 0
-        AND s.created_at::date >= $2::date
-        AND s.created_at::date < $3::date
+        AND ${sSaleDateExpr} >= $2${paramCast}
+        AND ${sSaleDateExpr} < $3${paramCast}
     `, [storeId, startDate, nextStartDate]);
     storeProfit = Number(storeProfitRow?.total || 0);
   }
@@ -64,8 +71,8 @@ async function calculateFinancialSummary(db, startDate, nextStartDate, { include
       SELECT COALESCE(SUM(amount), 0) AS total
       FROM cash_withdrawals
       WHERE (store_id = $1 OR store_id IS NULL)
-        AND withdrawal_date::date >= $2::date
-        AND withdrawal_date::date < $3::date
+        AND ${withdrawalDateExpr} >= $2${paramCast}
+        AND ${withdrawalDateExpr} < $3${paramCast}
     `, [storeId, startDate, nextStartDate]);
     cashWithdrawals = Number(cashRow?.total || 0);
   }

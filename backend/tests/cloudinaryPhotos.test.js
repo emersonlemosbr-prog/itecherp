@@ -32,7 +32,6 @@ sdk.uploader.destroy = async (id) => {
   return { result: 'ok' };
 };
 const db = require('../db/database');
-db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1; ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0;');
 db.exec(`CREATE TABLE IF NOT EXISTS system_settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
   INSERT OR IGNORE INTO system_settings (id, value) VALUES (1, '{"documents":{"warranty_days":90}}');`);
 db.exec("CREATE TABLE IF NOT EXISTS document_sequences (kind TEXT PRIMARY KEY, next_value INTEGER NOT NULL); INSERT OR IGNORE INTO document_sequences (kind, next_value) VALUES ('order', 126);");

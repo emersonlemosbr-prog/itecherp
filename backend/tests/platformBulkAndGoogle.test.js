@@ -1,10 +1,27 @@
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-platform-google-'));
+process.env.NODE_ENV = 'test';
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-only';
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
+delete process.env.DATABASE_URL;
+delete process.env.POSTGRES_URL;
+delete process.env.TEST_DATABASE_URL;
+
 const db = require('../db/database');
+
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
 const { createStoreWithInitialData } = require('../services/multiTenantService');
 const googleAuthService = require('../services/googleAuthService');
 const express = require('express');
@@ -132,7 +149,7 @@ test('Google Auth Route: Proteção, Validação e Vinculação Segura de Contas
     assert.equal(resNew.body.googleData.googleId, testGoogleSub);
 
     // Caso B: Usuário já cadastrado por e-mail e senha tradicionais
-    const store = createStoreWithInitialData({
+    const store = await createStoreWithInitialData({
       storeName: 'Loja Existente Senha',
       ownerName: 'Dono Tradicional',
       email: testEmail,
@@ -141,6 +158,7 @@ test('Google Auth Route: Proteção, Validação e Vinculação Segura de Contas
       nickname: `trad_${Date.now()}`,
       erpPassword: 'senhaErp123'
     });
+    db.prepare("UPDATE stores SET status = 'active' WHERE id = ?").run(store.storeId);
 
     // Tentar autenticar com Google SEM fornecer a senha existente:
     // DEVE RECUSAR vinculação automática (regra de segurança 2.4.6)
@@ -175,9 +193,9 @@ test('Google Auth Route: Proteção, Validação e Vinculação Segura de Contas
     assert.equal(resDirectLogin.body.store.id, store.storeId);
 
     // Prevenção de duplicação: tentar criar outra loja com mesmo googleId deve ser bloqueado
-    assert.throws(
-      () => {
-        createStoreWithInitialData({
+    await assert.rejects(
+      async () => {
+        await createStoreWithInitialData({
           storeName: 'Segunda Loja Clone',
           ownerName: 'Outro Dono',
           email: `outro_${Date.now()}@teste.com`,
@@ -207,8 +225,13 @@ test('Superadmin: Atualização de Vencimento e Recuperação de Status em Atras
   const platformRoutes = require('../routes/platform');
   app.use('/api/platform', platformRoutes);
 
-  // Obter admin real da plataforma
-  const admin = db.prepare('SELECT * FROM platform_users WHERE active = 1 LIMIT 1').get();
+  // Obter ou criar admin da plataforma para o banco temporário de teste
+  let admin = db.prepare('SELECT * FROM platform_users WHERE active = 1 LIMIT 1').get();
+  if (!admin) {
+    const hash = bcrypt.hashSync('AdminPlat123!', 8);
+    db.prepare("INSERT INTO platform_users (name, email, password_hash, role, active, session_version) VALUES ('Superadmin Teste', 'superadmin@test.com', ?, 'superadmin', 1, 1)").run(hash);
+    admin = db.prepare('SELECT * FROM platform_users WHERE active = 1 LIMIT 1').get();
+  }
   assert.ok(admin, 'Deve haver pelo menos um administrador da plataforma ativo');
 
   const validAdminToken = jwt.sign(
@@ -224,7 +247,7 @@ test('Superadmin: Atualização de Vencimento e Recuperação de Status em Atras
   );
 
   // Criar loja de teste
-  const store = createStoreWithInitialData({
+  const store = await createStoreWithInitialData({
     storeName: 'Loja Vencimento Teste',
     ownerName: 'Dono Vencimento',
     email: `venc_${Date.now()}@teste.com`,
@@ -301,7 +324,7 @@ test('Superadmin: Ações em Massa (Ativar, Suspender, Excluir e Proteções)', 
   );
 
   // Criar 3 lojas para o teste em massa
-  const storeA = createStoreWithInitialData({
+  const storeA = await createStoreWithInitialData({
     storeName: 'Loja Massa A',
     ownerName: 'Dono Massa A',
     email: `massa_a_${Date.now()}@teste.com`,
@@ -311,7 +334,7 @@ test('Superadmin: Ações em Massa (Ativar, Suspender, Excluir e Proteções)', 
     erpPassword: 'senha123'
   });
 
-  const storeB = createStoreWithInitialData({
+  const storeB = await createStoreWithInitialData({
     storeName: 'Loja Massa B',
     ownerName: 'Dono Massa B',
     email: `massa_b_${Date.now()}@teste.com`,
@@ -321,7 +344,7 @@ test('Superadmin: Ações em Massa (Ativar, Suspender, Excluir e Proteções)', 
     erpPassword: 'senha123'
   });
 
-  const storeC = createStoreWithInitialData({
+  const storeC = await createStoreWithInitialData({
     storeName: 'Loja Massa C',
     ownerName: 'Dono Massa C',
     email: `massa_c_${Date.now()}@teste.com`,

@@ -111,10 +111,15 @@ function initSqliteTestSchema(db) {
       photo_url TEXT,
       url TEXT,
       storage_key TEXT,
+      original_name TEXT,
+      mime_type TEXT,
+      file_size INTEGER,
       public_id TEXT,
       photo_type TEXT DEFAULT 'entry',
+      description TEXT,
       caption TEXT,
       created_by INTEGER REFERENCES users(id),
+      created_by_name_snapshot TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -200,6 +205,7 @@ function initSqliteTestSchema(db) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       store_id INTEGER DEFAULT 1,
       name TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -239,7 +245,8 @@ function initSqliteTestSchema(db) {
     CREATE TABLE IF NOT EXISTS stock_levels (
       product_id INTEGER PRIMARY KEY REFERENCES stock_products(id) ON DELETE CASCADE,
       quantity INTEGER NOT NULL DEFAULT 0,
-      min_quantity INTEGER DEFAULT 0
+      min_quantity INTEGER DEFAULT 0,
+      updated_at TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS stock_movements (
@@ -397,7 +404,148 @@ function initSqliteTestSchema(db) {
     );
     CREATE INDEX IF NOT EXISTS idx_device_history_device ON device_history(device_id);
     CREATE INDEX IF NOT EXISTS idx_device_history_store ON device_history(store_id);
+
+    CREATE TABLE IF NOT EXISTS user_notification_preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      mode TEXT NOT NULL DEFAULT 'custom' CHECK(mode IN ('all', 'none', 'custom')),
+      preferences TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(store_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_notif_pref_user ON user_notification_preferences(user_id);
+    CREATE INDEX IF NOT EXISTS idx_user_notif_pref_store ON user_notification_preferences(store_id);
+
+    CREATE TABLE IF NOT EXISTS frontals_calculator (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      base_value REAL NOT NULL DEFAULT 0,
+      brand TEXT DEFAULT 'Apple',
+      model TEXT,
+      version TEXT DEFAULT 'primeira linha',
+      entries TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS piece_calculator (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      base_value REAL NOT NULL DEFAULT 0,
+      entries TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS pagbank_calculator (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      value REAL NOT NULL DEFAULT 100,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT,
+      content TEXT,
+      color_id INTEGER DEFAULT 1,
+      archived INTEGER NOT NULL DEFAULT 0,
+      trashed INTEGER NOT NULL DEFAULT 0,
+      deleted_at TEXT,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_notes_store ON notes(store_id);
+
+    CREATE TABLE IF NOT EXISTS labels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(store_id, user_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS favorite_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL UNIQUE REFERENCES notes(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS pinned_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      note_id INTEGER NOT NULL UNIQUE REFERENCES notes(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      pinned_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS platform_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform_user_id INTEGER REFERENCES platform_users(id) ON DELETE SET NULL,
+      platform_user_name TEXT,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id INTEGER,
+      target_name TEXT,
+      details TEXT,
+      ip_address TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_platform_audit_action ON platform_audit_logs(action);
+
+    CREATE TABLE IF NOT EXISTS virus_scans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      device_name TEXT,
+      status TEXT DEFAULT 'completed',
+      total_files INTEGER DEFAULT 0,
+      threats_found INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS virus_scan_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scan_id INTEGER NOT NULL REFERENCES virus_scans(id) ON DELETE CASCADE,
+      file_path TEXT,
+      threat_name TEXT,
+      severity TEXT,
+      status TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
+
+  // Garantir colunas ausentes em bancos SQLite pré-existentes sem recriar tabelas
+  const hasCol = (table, column) => {
+    try {
+      return db.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column);
+    } catch {
+      return false;
+    }
+  };
+  const ensureColumn = (table, column, definition) => {
+    if (!hasCol(table, column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
+  };
+
+  ensureColumn('stock_categories', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('stock_levels', 'updated_at', 'TEXT');
+  ensureColumn('service_order_photos', 'original_name', 'TEXT');
+  ensureColumn('service_order_photos', 'mime_type', 'TEXT');
+  ensureColumn('service_order_photos', 'file_size', 'INTEGER');
+  ensureColumn('service_order_photos', 'description', 'TEXT');
+  ensureColumn('service_order_photos', 'created_by_name_snapshot', 'TEXT');
 
   // 2. Aplica migrações multi-tenant
   migrateMultiTenant(db);

@@ -2,7 +2,18 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('os');
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-pub-tracking-'));
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
+
 const db = require('../db/database');
+
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
 const { createStoreWithInitialData } = require('../services/multiTenantService');
 const { generateTracking, getPublicOrder } = require('../services/publicTracking');
 const { createPublicApp } = require('../publicTrackingServer');
@@ -129,11 +140,18 @@ test('Acompanhamento público: dados da empresa no rodapé com isolamento multi-
 
   t.after(async () => {
     app.locals.close();
+    server.closeAllConnections?.();
     server.close();
-    server.closeAllConnections();
-    await db.execute('DELETE FROM service_orders WHERE store_id = ANY($1::int[])', [createdStoreIds]);
-    await db.execute('DELETE FROM customers WHERE store_id = ANY($1::int[])', [createdStoreIds]);
-    await db.execute('DELETE FROM stores WHERE id = ANY($1::int[])', [createdStoreIds]);
+    for (const sid of createdStoreIds) {
+      await db.execute('DELETE FROM service_orders WHERE store_id = $1', [sid]);
+      await db.execute('DELETE FROM customers WHERE store_id = $1', [sid]);
+      await db.execute('DELETE FROM store_subscription_history WHERE store_id = $1', [sid]);
+      await db.execute('DELETE FROM document_sequences WHERE store_id = $1', [sid]);
+      await db.execute('DELETE FROM stock_categories WHERE store_id = $1', [sid]);
+      await db.execute('DELETE FROM users WHERE store_id = $1', [sid]);
+      await db.execute('DELETE FROM system_settings WHERE store_id = $1', [sid]);
+      await db.execute('DELETE FROM stores WHERE id = $1', [sid]);
+    }
   });
 
   await t.test('1 e 2. Empresa A e Empresa B exibem apenas seus próprios dados e logos (HTML e API)', async () => {

@@ -86,6 +86,12 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
   const startDate = getMonthStartDate(year, month);
   const next = getNextYearMonth(year, month);
   const nextStartDate = getMonthStartDate(next.year, next.month);
+  const isSqlite = Boolean(db?.isSqlite);
+  const soDateExpr = isSqlite ? 'substr(COALESCE(delivery_date, entry_date), 1, 10)' : '(COALESCE(delivery_date, entry_date))::date';
+  const soAliasDateExpr = isSqlite ? 'substr(COALESCE(so.delivery_date, so.entry_date), 1, 10)' : '(COALESCE(so.delivery_date, so.entry_date))::date';
+  const saleDateExpr = isSqlite ? 'substr(created_at, 1, 10)' : 'created_at::date';
+  const withdrawalDateExpr = isSqlite ? 'substr(w.withdrawal_date, 1, 10)' : 'w.withdrawal_date::date';
+  const paramCast = isSqlite ? '' : '::date';
 
   const summary = await calculateFinancialSummary(db, startDate, nextStartDate, { storeId });
 
@@ -93,8 +99,8 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
     SELECT COUNT(*) AS total_services
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
-      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
-      AND (COALESCE(delivery_date, entry_date))::date < $3::date
+      AND ${soDateExpr} >= $2${paramCast}
+      AND ${soDateExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
 
   const storeStats = await db.queryOne(`
@@ -102,21 +108,21 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
     FROM store_sales
     WHERE (store_id = $1 OR store_id IS NULL)
       AND COALESCE(is_canceled, 0) = 0
-      AND created_at::date >= $2::date
-      AND created_at::date < $3::date
+      AND ${saleDateExpr} >= $2${paramCast}
+      AND ${saleDateExpr} < $3${paramCast}
   `, [storeId, startDate, nextStartDate]);
 
   const expenses = await db.queryOne(`
     SELECT COALESCE(SUM(CASE WHEN w.source_type = 'service_order_part'
         AND so.payment_status IN ('paid', 'credit_account')
-        AND (COALESCE(so.delivery_date, so.entry_date))::date >= $1::date
-        AND (COALESCE(so.delivery_date, so.entry_date))::date < $2::date
+        AND ${soAliasDateExpr} >= $1${paramCast}
+        AND ${soAliasDateExpr} < $2${paramCast}
         THEN w.amount ELSE 0 END), 0) AS already_in_service_profit
     FROM cash_withdrawals w
     LEFT JOIN service_orders so ON so.id = w.service_order_id AND (so.store_id = w.store_id OR w.store_id IS NULL OR so.store_id IS NULL)
     WHERE (w.store_id = $3 OR w.store_id IS NULL)
-      AND w.withdrawal_date::date >= $1::date
-      AND w.withdrawal_date::date < $2::date
+      AND ${withdrawalDateExpr} >= $1${paramCast}
+      AND ${withdrawalDateExpr} < $2${paramCast}
   `, [startDate, nextStartDate, storeId]);
 
   const servicePayments = await db.query(`
@@ -124,8 +130,8 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
     FROM service_orders
     WHERE (store_id = $1 OR store_id IS NULL)
       AND payment_status = 'paid'
-      AND (COALESCE(delivery_date, entry_date))::date >= $2::date
-      AND (COALESCE(delivery_date, entry_date))::date < $3::date
+      AND ${soDateExpr} >= $2${paramCast}
+      AND ${soDateExpr} < $3${paramCast}
     GROUP BY payment_method
   `, [storeId, startDate, nextStartDate]);
 
@@ -134,8 +140,8 @@ async function computeMonthlySnapshot(year, month, storeId = 1) {
     FROM store_sales
     WHERE (store_id = $1 OR store_id IS NULL)
       AND COALESCE(is_canceled, 0) = 0
-      AND created_at::date >= $2::date
-      AND created_at::date < $3::date
+      AND ${saleDateExpr} >= $2${paramCast}
+      AND ${saleDateExpr} < $3${paramCast}
     GROUP BY payment_method
   `, [storeId, startDate, nextStartDate]);
 
@@ -212,19 +218,35 @@ async function upsertSnapshot(snapshot) {
 
 async function getActivityMonthsBefore(current, storeId = 1) {
   const currentComparable = monthToComparableValue(current);
+  const isSqlite = Boolean(db?.isSqlite);
 
-  const rows = await db.query(`
-    SELECT DISTINCT ym
-    FROM (
-      SELECT TO_CHAR(COALESCE(delivery_date, entry_date)::timestamp, 'YYYY-MM') AS ym FROM service_orders WHERE store_id = $1
-      UNION ALL
-      SELECT TO_CHAR(created_at, 'YYYY-MM') AS ym FROM store_sales WHERE store_id = $1 AND COALESCE(is_canceled, 0) = 0
-      UNION ALL
-      SELECT TO_CHAR(withdrawal_date::timestamp, 'YYYY-MM') AS ym FROM cash_withdrawals WHERE store_id = $1
-    ) t
-    WHERE ym IS NOT NULL
-    ORDER BY ym ASC
-  `, [storeId]);
+  const sql = isSqlite
+    ? `
+      SELECT DISTINCT ym
+      FROM (
+        SELECT substr(COALESCE(delivery_date, entry_date), 1, 7) AS ym FROM service_orders WHERE store_id = $1
+        UNION ALL
+        SELECT substr(created_at, 1, 7) AS ym FROM store_sales WHERE store_id = $1 AND COALESCE(is_canceled, 0) = 0
+        UNION ALL
+        SELECT substr(withdrawal_date, 1, 7) AS ym FROM cash_withdrawals WHERE store_id = $1
+      ) t
+      WHERE ym IS NOT NULL AND length(ym) = 7
+      ORDER BY ym ASC
+    `
+    : `
+      SELECT DISTINCT ym
+      FROM (
+        SELECT TO_CHAR(COALESCE(delivery_date, entry_date)::timestamp, 'YYYY-MM') AS ym FROM service_orders WHERE store_id = $1
+        UNION ALL
+        SELECT TO_CHAR(created_at, 'YYYY-MM') AS ym FROM store_sales WHERE store_id = $1 AND COALESCE(is_canceled, 0) = 0
+        UNION ALL
+        SELECT TO_CHAR(withdrawal_date::timestamp, 'YYYY-MM') AS ym FROM cash_withdrawals WHERE store_id = $1
+      ) t
+      WHERE ym IS NOT NULL
+      ORDER BY ym ASC
+    `;
+
+  const rows = await db.query(sql, [storeId]);
 
   return rows
     .map((row) => {

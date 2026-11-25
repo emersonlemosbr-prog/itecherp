@@ -237,9 +237,23 @@ app.use((err, req, res, _next) => {
   });
 });
 
+
 const PORT = process.env.PORT || 4001;
-if (require.main === module) {
-  app.listen(PORT, '0.0.0.0', () => {
+
+// Instância única do servidor — impede inicialização duplicada no mesmo processo
+let serverInstance = null;
+
+/**
+ * Inicialização oficial do servidor HTTP.
+ * Pode ser chamada pelo entrypoint da raiz ou diretamente.
+ */
+function startServer() {
+  if (serverInstance) {
+    console.warn('[SERVER] startServer() chamado mais de uma vez; reutilizando o servidor já ativo.');
+    return serverInstance;
+  }
+
+  serverInstance = app.listen(PORT, '0.0.0.0', () => {
     console.log('==============================================');
     console.log('  iTech Celular e Informática — Backend Online');
     console.log(`  Porta: ${PORT}`);
@@ -262,7 +276,7 @@ if (require.main === module) {
           console.error('[DATABASE] Falha ao verificar esquema PostgreSQL:', err.message);
         });
     } else {
-      // Ambiente exclusivamente local (SQLite)
+
       try {
         const migrateCustomers2 = require('./db/customersMigration2');
         migrateCustomers2(db);
@@ -272,24 +286,58 @@ if (require.main === module) {
       }
     }
 
-    ensureFinancialHistoryUpToDate()
-      .then(({ createdMonths }) => {
-        if (createdMonths && createdMonths.length > 0) {
-          console.log(`[FINANCIAL_HISTORY] ${createdMonths.length} fechamento(s) mensal(is) criado(s).`);
-        }
-      })
-      .catch((error) => {
-        console.error('[FINANCIAL_HISTORY] Falha ao processar fechamento mensal:', error.message);
-      });
+    if (process.env.NODE_ENV !== 'test') {
+      ensureFinancialHistoryUpToDate()
+        .then(({ createdMonths }) => {
+          if (createdMonths && createdMonths.length > 0) {
+            console.log(
+              `[FINANCIAL_HISTORY] ${createdMonths.length} fechamento(s) mensal(is) criado(s).`
+            );
+          }
+        })
+        .catch((error) => {
+          console.error(
+            '[FINANCIAL_HISTORY] Falha ao processar fechamento mensal:',
+            error.message
+          );
+        });
 
-    try {
-      const { startSubscriptionReminderScheduler } = require('./services/subscriptionReminderService');
-      startSubscriptionReminderScheduler();
-      console.log('[SUBSCRIPTION_REMINDERS] Agendador de lembretes de mensalidade iniciado.');
-    } catch (reminderErr) {
-      console.error('[SUBSCRIPTION_REMINDERS] Falha ao inicializar lembretes:', reminderErr.message);
+      try {
+        const { startSubscriptionReminderScheduler } = require('./services/subscriptionReminderService');
+        startSubscriptionReminderScheduler();
+        console.log('[SUBSCRIPTION_REMINDERS] Agendador de lembretes de mensalidade iniciado.');
+      } catch (reminderErr) {
+        console.error(
+          '[SUBSCRIPTION_REMINDERS] Falha ao inicializar lembretes:',
+          reminderErr.message
+        );
+      }
+
+    } else {
+      console.log('[TEST] Rotinas financeiras e agendador omitidos no ambiente de testes.');
     }
+  }); // Fecha o app.listen()
+
+  serverInstance.on('error', (err) => {
+    console.error('[SERVER] Falha ao iniciar o servidor HTTP:', err.message);
+    process.exit(1);
   });
+
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.on(signal, () => {
+      console.log(`[SERVER] Encerramento solicitado: ${signal}`);
+      serverInstance.close(() => process.exit(0));
+    });
+  }
+
+  return serverInstance;
+}
+
+// Mantém compatibilidade com execução direta do backend.
+if (require.main === module) {
+  startServer();
 }
 
 module.exports = app;
+module.exports.startServer = startServer;
+

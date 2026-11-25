@@ -11,11 +11,13 @@ const db = require('../db/database');
  */
 async function nextOrderNumber(storeId = 1, txClient = null) {
   const runner = async (tx) => {
-    // Bloqueia as ordens da loja para evitar concorrência simultânea na geração
-    await tx.query(
-      'SELECT id FROM service_orders WHERE store_id = $1 FOR UPDATE',
-      [storeId]
-    );
+    // Bloqueia as ordens da loja para evitar concorrência simultânea na geração (PostgreSQL)
+    if (!db.isSqlite) {
+      await tx.query(
+        'SELECT id FROM service_orders WHERE store_id = $1 FOR UPDATE',
+        [storeId]
+      );
+    }
 
     // Encontra o maior número numérico existente entre as OS da loja (compatível com SQLite e PostgreSQL)
     const sql = db.isSqlite

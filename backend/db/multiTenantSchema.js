@@ -203,7 +203,7 @@ module.exports = function migrateMultiTenant(db) {
       }
     }
 
-    // Para system_settings: adicionar índice único em store_id se existir a tabela
+    // Para system_settings: adicionar índice único em store_id e coluna updated_at
     const hasSysSettings = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'").get();
     if (!hasSysSettings) {
       db.exec(`
@@ -212,12 +212,16 @@ module.exports = function migrateMultiTenant(db) {
           store_id INTEGER REFERENCES stores(id) ON DELETE CASCADE,
           value TEXT NOT NULL DEFAULT '{}',
           version INTEGER NOT NULL DEFAULT 1,
-          last_backup TEXT
+          last_backup TEXT,
+          updated_at TEXT DEFAULT (datetime('now'))
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_system_settings_store ON system_settings(store_id);
         INSERT OR IGNORE INTO system_settings (id, store_id, value, version) VALUES (1, 1, '{"documents":{"warranty_days":90}}', 1);
       `);
     } else {
+      if (!hasColumn('system_settings', 'updated_at')) {
+        db.exec('ALTER TABLE system_settings ADD COLUMN updated_at TEXT');
+      }
       db.exec(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_system_settings_store ON system_settings(store_id);
       `);

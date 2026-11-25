@@ -6,6 +6,14 @@ const { getTrustedNowSqlite } = require('../utils/time');
 const { ensureFinancialHistoryUpToDate, getMonthDateRangeForSqlite } = require('../utils/financialHistory');
 const { calculateFinancialSummary } = require('../services/financialSummary');
 
+const isSqlite = Boolean(db.isSqlite);
+const dExpr = (col) => (isSqlite ? `substr(${col}, 1, 10)` : `${col}::date`);
+const dParam = (n) => (isSqlite ? `$${n}` : `$${n}::date`);
+const tExpr = (col) => (isSqlite ? `CAST(${col} AS TEXT)` : `${col}::text`);
+const mExpr = (n) => (isSqlite ? `substr($${n}, 1, 7)` : `TO_CHAR($${n}::timestamptz, 'YYYY-MM')`);
+const nullIntExpr = isSqlite ? 'NULL' : 'NULL::int';
+const concatExpr = (...parts) => (isSqlite ? `(${parts.join(' || ')})` : `CONCAT(${parts.join(', ')})`);
+
 function pad2(n) {
   return String(n).padStart(2, '0');
 }
@@ -120,8 +128,8 @@ router.get('/stats', async (req, res, next) => {
       FROM credit_accounts
       WHERE store_id = $1
         AND status = 'open'
-        AND created_at::date >= $2::date
-        AND created_at::date < $3::date
+        AND ${dExpr('created_at')} >= ${dParam(2)}
+        AND ${dExpr('created_at')} < ${dParam(3)}
     `, [storeId, startDate, nextStartDate]);
     const creditAccountsOpen = parseFloat(creditAccountsRow?.total || 0);
 
@@ -129,8 +137,8 @@ router.get('/stats', async (req, res, next) => {
       SELECT status, COUNT(*) as count
       FROM service_orders
       WHERE store_id = $1
-        AND entry_date::date >= $2::date
-        AND entry_date::date < $3::date
+        AND ${dExpr('entry_date')} >= ${dParam(2)}
+        AND ${dExpr('entry_date')} < ${dParam(3)}
       GROUP BY status
     `, [storeId, startDate, nextStartDate]);
 
@@ -141,7 +149,7 @@ router.get('/stats', async (req, res, next) => {
           FROM service_orders
           WHERE store_id = $1
             AND payment_status IN ('paid', 'credit_account')
-            AND COALESCE(delivery_date, entry_date)::date = $2::date
+            AND ${dExpr('COALESCE(delivery_date, entry_date)')} = ${dParam(2)}
         ), 0
       ) as total
     `, [storeId, trustedNow]);
@@ -154,8 +162,8 @@ router.get('/stats', async (req, res, next) => {
           FROM service_orders
           WHERE store_id = $1
             AND payment_status IN ('paid', 'credit_account')
-            AND COALESCE(delivery_date, entry_date)::date >= $2::date
-            AND COALESCE(delivery_date, entry_date)::date < $3::date
+            AND ${dExpr('COALESCE(delivery_date, entry_date)')} >= ${dParam(2)}
+            AND ${dExpr('COALESCE(delivery_date, entry_date)')} < ${dParam(3)}
         ), 0
       ) as total
     `, [storeId, startDate, nextStartDate]);
@@ -168,8 +176,8 @@ router.get('/stats', async (req, res, next) => {
       FROM store_sales
       WHERE store_id = $1
         AND COALESCE(is_canceled, 0) = 0
-        AND created_at::date >= $2::date
-        AND created_at::date < $3::date
+        AND ${dExpr('created_at')} >= ${dParam(2)}
+        AND ${dExpr('created_at')} < ${dParam(3)}
     `, [storeId, startDate, nextStartDate]);
 
     const productsSoldRow = await db.queryOne(`
@@ -179,8 +187,8 @@ router.get('/stats', async (req, res, next) => {
       WHERE s.store_id = $1
         AND COALESCE(s.is_canceled, 0) = 0
         AND COALESCE(i.is_canceled, 0) = 0
-        AND s.created_at::date >= $2::date
-        AND s.created_at::date < $3::date
+        AND ${dExpr('s.created_at')} >= ${dParam(2)}
+        AND ${dExpr('s.created_at')} < ${dParam(3)}
     `, [storeId, startDate, nextStartDate]);
     const productsSold = parseInt(productsSoldRow?.qty || 0, 10);
 
@@ -216,25 +224,25 @@ router.get('/charts/daily-revenue', async (req, res, next) => {
     const trustedNow = await getTrustedNowSqlite();
     const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const rows = await db.query(`
-      SELECT day::text, COALESCE(SUM(revenue), 0) as revenue
+      SELECT ${tExpr('day')} as day, COALESCE(SUM(revenue), 0) as revenue
       FROM (
-        SELECT COALESCE(delivery_date, entry_date)::date as day, COALESCE(SUM(service_price), 0) as revenue
+        SELECT ${dExpr('COALESCE(delivery_date, entry_date)')} as day, COALESCE(SUM(service_price), 0) as revenue
         FROM service_orders
         WHERE store_id = $1
           AND payment_status IN ('paid', 'credit_account')
-          AND COALESCE(delivery_date, entry_date)::date >= $2::date
-          AND COALESCE(delivery_date, entry_date)::date < $3::date
-        GROUP BY COALESCE(delivery_date, entry_date)::date
+          AND ${dExpr('COALESCE(delivery_date, entry_date)')} >= ${dParam(2)}
+          AND ${dExpr('COALESCE(delivery_date, entry_date)')} < ${dParam(3)}
+        GROUP BY ${dExpr('COALESCE(delivery_date, entry_date)')}
 
         UNION ALL
 
-        SELECT created_at::date as day, COALESCE(SUM(total_amount), 0) as revenue
+        SELECT ${dExpr('created_at')} as day, COALESCE(SUM(total_amount), 0) as revenue
         FROM store_sales
         WHERE store_id = $1
-          AND created_at::date >= $2::date
-          AND created_at::date < $3::date
+          AND ${dExpr('created_at')} >= ${dParam(2)}
+          AND ${dExpr('created_at')} < ${dParam(3)}
           AND COALESCE(is_canceled, 0) = 0
-        GROUP BY created_at::date
+        GROUP BY ${dExpr('created_at')}
       ) grouped
       GROUP BY day
       ORDER BY day ASC
@@ -251,7 +259,7 @@ router.get('/charts/monthly-revenue', async (req, res, next) => {
     const trustedNow = await getTrustedNowSqlite();
     const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const rows = await db.query(`
-      SELECT TO_CHAR($1::timestamptz, 'YYYY-MM') as month,
+      SELECT ${mExpr(1)} as month,
              COALESCE(service_revenue, 0) + COALESCE(store_revenue, 0) as revenue,
              COALESCE(service_profit, 0) + COALESCE(store_profit, 0) as profit
       FROM (
@@ -261,24 +269,24 @@ router.get('/charts/monthly-revenue', async (req, res, next) => {
             FROM service_orders
             WHERE store_id = $2
               AND payment_status IN ('paid', 'credit_account')
-              AND COALESCE(delivery_date, entry_date)::date >= $3::date
-              AND COALESCE(delivery_date, entry_date)::date < $4::date
+              AND ${dExpr('COALESCE(delivery_date, entry_date)')} >= ${dParam(3)}
+              AND ${dExpr('COALESCE(delivery_date, entry_date)')} < ${dParam(4)}
           ) as service_revenue,
           (
             SELECT COALESCE(SUM(profit), 0)
             FROM service_orders
             WHERE store_id = $2
               AND payment_status IN ('paid', 'credit_account')
-              AND COALESCE(delivery_date, entry_date)::date >= $3::date
-              AND COALESCE(delivery_date, entry_date)::date < $4::date
+              AND ${dExpr('COALESCE(delivery_date, entry_date)')} >= ${dParam(3)}
+              AND ${dExpr('COALESCE(delivery_date, entry_date)')} < ${dParam(4)}
           ) as service_profit,
           (
             SELECT COALESCE(SUM(total_amount), 0)
             FROM store_sales
             WHERE store_id = $2
               AND COALESCE(is_canceled, 0) = 0
-              AND created_at::date >= $3::date
-              AND created_at::date < $4::date
+              AND ${dExpr('created_at')} >= ${dParam(3)}
+              AND ${dExpr('created_at')} < ${dParam(4)}
           ) as store_revenue,
           (
             SELECT COALESCE(SUM((i.unit_price - COALESCE(i.cost_price, 0)) * i.quantity), 0)
@@ -287,8 +295,8 @@ router.get('/charts/monthly-revenue', async (req, res, next) => {
             WHERE s.store_id = $2
               AND COALESCE(s.is_canceled, 0) = 0
               AND COALESCE(i.is_canceled, 0) = 0
-              AND s.created_at::date >= $3::date
-              AND s.created_at::date < $4::date
+              AND ${dExpr('s.created_at')} >= ${dParam(3)}
+              AND ${dExpr('s.created_at')} < ${dParam(4)}
           ) as store_profit
       ) sub
     `, [trustedNow, storeId, startDate, nextStartDate]);
@@ -307,8 +315,8 @@ router.get('/charts/payment-methods', async (req, res, next) => {
       SELECT payment_method, COUNT(*) as count, COALESCE(SUM(service_price), 0) as total
       FROM service_orders
       WHERE store_id = $1
-        AND entry_date::date >= $2::date
-        AND entry_date::date < $3::date
+        AND ${dExpr('entry_date')} >= ${dParam(2)}
+        AND ${dExpr('entry_date')} < ${dParam(3)}
       GROUP BY payment_method
     `, [storeId, startDate, nextStartDate]);
     res.json(rows);
@@ -326,8 +334,8 @@ router.get('/charts/status-distribution', async (req, res, next) => {
       SELECT status, COUNT(*) as count
       FROM service_orders
       WHERE store_id = $1
-        AND entry_date::date >= $2::date
-        AND entry_date::date < $3::date
+        AND ${dExpr('entry_date')} >= ${dParam(2)}
+        AND ${dExpr('entry_date')} < ${dParam(3)}
       GROUP BY status
     `, [storeId, startDate, nextStartDate]);
     res.json(rows);
@@ -342,22 +350,22 @@ router.get('/charts/cash-flow', async (req, res, next) => {
     const trustedNow = await getTrustedNowSqlite();
     const { startDate, nextStartDate } = resolvePeriodRange(req.query, trustedNow);
     const revenueByDay = await db.query(`
-      SELECT COALESCE(delivery_date, entry_date)::date::text as day, COALESCE(SUM(service_price), 0) as inflow
+      SELECT ${tExpr(dExpr('COALESCE(delivery_date, entry_date)'))} as day, COALESCE(SUM(service_price), 0) as inflow
       FROM service_orders
       WHERE store_id = $1
         AND payment_status IN ('paid', 'credit_account')
-        AND COALESCE(delivery_date, entry_date)::date >= $2::date
-        AND COALESCE(delivery_date, entry_date)::date < $3::date
-      GROUP BY COALESCE(delivery_date, entry_date)::date
+        AND ${dExpr('COALESCE(delivery_date, entry_date)')} >= ${dParam(2)}
+        AND ${dExpr('COALESCE(delivery_date, entry_date)')} < ${dParam(3)}
+      GROUP BY ${dExpr('COALESCE(delivery_date, entry_date)')}
     `, [storeId, startDate, nextStartDate]);
 
     const withdrawalsByDay = await db.query(`
-      SELECT withdrawal_date::date::text as day, COALESCE(SUM(amount), 0) as outflow
+      SELECT ${tExpr(dExpr('withdrawal_date'))} as day, COALESCE(SUM(amount), 0) as outflow
       FROM cash_withdrawals
       WHERE store_id = $1
-        AND withdrawal_date::date >= $2::date
-        AND withdrawal_date::date < $3::date
-      GROUP BY withdrawal_date::date
+        AND ${dExpr('withdrawal_date')} >= ${dParam(2)}
+        AND ${dExpr('withdrawal_date')} < ${dParam(3)}
+      GROUP BY ${dExpr('withdrawal_date')}
     `, [storeId, startDate, nextStartDate]);
 
     const map = {};
@@ -412,20 +420,20 @@ router.get('/details/:indicator', async (req, res, next) => {
             'service_order' AS origin_type,
             so.id,
             so.order_number,
-            CONCAT('OS #', so.order_number, ' - ', COALESCE(so.brand, ''), ' ', COALESCE(so.model, '')) AS title,
+            ${concatExpr("'OS #'", 'so.order_number', "' - '", "COALESCE(so.brand, '')", "' '", "COALESCE(so.model, '')")} AS title,
             COALESCE(so.description, 'Serviço prestado') AS description,
             so.service_price AS amount,
             COALESCE(so.delivery_date, so.entry_date) AS date,
             so.payment_method,
             so.payment_status,
-            COALESCE(so.customer_name_snapshot, CONCAT(c.first_name, ' ', c.last_name)) AS customer_name,
+            COALESCE(so.customer_name_snapshot, ${concatExpr('c.first_name', "' '", 'c.last_name')}) AS customer_name,
             so.customer_id
           FROM service_orders so
           LEFT JOIN customers c ON c.id = so.customer_id
           WHERE (so.store_id = $1 OR so.store_id IS NULL)
             AND so.payment_status IN ('paid', 'credit_account')
-            AND (COALESCE(so.delivery_date, so.entry_date))::date >= $2::date
-            AND (COALESCE(so.delivery_date, so.entry_date))::date < $3::date
+            AND ${dExpr('COALESCE(so.delivery_date, so.entry_date)')} >= ${dParam(2)}
+            AND ${dExpr('COALESCE(so.delivery_date, so.entry_date)')} < ${dParam(3)}
           ORDER BY date DESC, so.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -434,20 +442,20 @@ router.get('/details/:indicator', async (req, res, next) => {
             'store_sale' AS origin_type,
             s.id,
             s.sale_number,
-            CONCAT('Venda de Caixa #', s.sale_number) AS title,
+            ${concatExpr("'Venda de Caixa #'", 's.sale_number')} AS title,
             'Venda de balcão / produtos' AS description,
             s.total_amount AS amount,
             s.created_at AS date,
             s.payment_method,
             'paid' AS payment_status,
             COALESCE(s.created_by_name_snapshot, u.full_name, 'Vendedor') AS customer_name,
-            NULL::int AS customer_id
+            ${nullIntExpr} AS customer_id
           FROM store_sales s
           LEFT JOIN users u ON u.id = s.created_by
           WHERE (s.store_id = $1 OR s.store_id IS NULL)
             AND COALESCE(s.is_canceled, 0) = 0
-            AND s.created_at::date >= $2::date
-            AND s.created_at::date < $3::date
+            AND ${dExpr('s.created_at')} >= ${dParam(2)}
+            AND ${dExpr('s.created_at')} < ${dParam(3)}
           ORDER BY s.created_at DESC, s.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -472,21 +480,21 @@ router.get('/details/:indicator', async (req, res, next) => {
             'service_order' AS origin_type,
             so.id,
             so.order_number,
-            CONCAT('OS #', so.order_number, ' - ', COALESCE(so.brand, ''), ' ', COALESCE(so.model, '')) AS title,
+            ${concatExpr("'OS #'", 'so.order_number', "' - '", "COALESCE(so.brand, '')", "' '", "COALESCE(so.model, '')")} AS title,
             COALESCE(so.description, 'Aguardando pagamento') AS description,
             so.service_price AS amount,
             COALESCE(so.delivery_date, so.entry_date) AS date,
             so.payment_method,
             so.payment_status,
             so.status AS order_status,
-            COALESCE(so.customer_name_snapshot, CONCAT(c.first_name, ' ', c.last_name)) AS customer_name,
+            COALESCE(so.customer_name_snapshot, ${concatExpr('c.first_name', "' '", 'c.last_name')}) AS customer_name,
             so.customer_id
           FROM service_orders so
           LEFT JOIN customers c ON c.id = so.customer_id
           WHERE (so.store_id = $1 OR so.store_id IS NULL)
             AND so.payment_status IN ('pending', 'credit_account')
-            AND (COALESCE(so.delivery_date, so.entry_date))::date >= $2::date
-            AND (COALESCE(so.delivery_date, so.entry_date))::date < $3::date
+            AND ${dExpr('COALESCE(so.delivery_date, so.entry_date)')} >= ${dParam(2)}
+            AND ${dExpr('COALESCE(so.delivery_date, so.entry_date)')} < ${dParam(3)}
           ORDER BY date DESC, so.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -512,20 +520,20 @@ router.get('/details/:indicator', async (req, res, next) => {
             ca.service_order_id,
             so.order_number,
             COALESCE(ca.description, 'Saldo pendente') AS title,
-            CONCAT('Cliente com prazo · Vencimento: ', COALESCE(ca.pickup_date::text, 'Não definido')) AS description,
+            ${concatExpr("'Cliente com prazo · Vencimento: '", `COALESCE(${tExpr('ca.pickup_date')}, 'Não definido')`)} AS description,
             ca.amount,
             ca.created_at AS date,
             ca.pickup_date,
             ca.status,
-            COALESCE(ca.customer_name_snapshot, CONCAT(c.first_name, ' ', c.last_name)) AS customer_name,
+            COALESCE(ca.customer_name_snapshot, ${concatExpr('c.first_name', "' '", 'c.last_name')}) AS customer_name,
             ca.customer_id
           FROM credit_accounts ca
           LEFT JOIN customers c ON c.id = ca.customer_id
           LEFT JOIN service_orders so ON so.id = ca.service_order_id
           WHERE ca.store_id = $1
             AND ca.status = 'open'
-            AND ca.created_at::date >= $2::date
-            AND ca.created_at::date < $3::date
+            AND ${dExpr('ca.created_at')} >= ${dParam(2)}
+            AND ${dExpr('ca.created_at')} < ${dParam(3)}
           ORDER BY ca.created_at DESC, ca.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -549,20 +557,20 @@ router.get('/details/:indicator', async (req, res, next) => {
             'service_order' AS origin_type,
             so.id,
             so.order_number,
-            CONCAT('OS #', so.order_number, ' - ', COALESCE(so.brand, ''), ' ', COALESCE(so.model, '')) AS title,
+            ${concatExpr("'OS #'", 'so.order_number', "' - '", "COALESCE(so.brand, '')", "' '", "COALESCE(so.model, '')")} AS title,
             COALESCE(so.description, 'Em manutenção') AS description,
             so.service_price AS amount,
             so.entry_date AS date,
             so.status AS order_status,
             so.payment_status,
-            COALESCE(so.customer_name_snapshot, CONCAT(c.first_name, ' ', c.last_name)) AS customer_name,
+            COALESCE(so.customer_name_snapshot, ${concatExpr('c.first_name', "' '", 'c.last_name')}) AS customer_name,
             so.customer_id
           FROM service_orders so
           LEFT JOIN customers c ON c.id = so.customer_id
           WHERE (so.store_id = $1 OR so.store_id IS NULL)
             AND so.status IN ('diagnosis', 'waiting_parts', 'repairing')
-            AND so.entry_date::date >= $2::date
-            AND so.entry_date::date < $3::date
+            AND ${dExpr('so.entry_date')} >= ${dParam(2)}
+            AND ${dExpr('so.entry_date')} < ${dParam(3)}
           ORDER BY so.entry_date DESC, so.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -586,20 +594,20 @@ router.get('/details/:indicator', async (req, res, next) => {
             'service_order' AS origin_type,
             so.id,
             so.order_number,
-            CONCAT('OS #', so.order_number, ' - ', COALESCE(so.brand, ''), ' ', COALESCE(so.model, '')) AS title,
+            ${concatExpr("'OS #'", 'so.order_number', "' - '", "COALESCE(so.brand, '')", "' '", "COALESCE(so.model, '')")} AS title,
             COALESCE(so.description, 'Pronto para entrega') AS description,
             so.service_price AS amount,
             so.entry_date AS date,
             so.status AS order_status,
             so.payment_status,
-            COALESCE(so.customer_name_snapshot, CONCAT(c.first_name, ' ', c.last_name)) AS customer_name,
+            COALESCE(so.customer_name_snapshot, ${concatExpr('c.first_name', "' '", 'c.last_name')}) AS customer_name,
             so.customer_id
           FROM service_orders so
           LEFT JOIN customers c ON c.id = so.customer_id
           WHERE (so.store_id = $1 OR so.store_id IS NULL)
             AND so.status = 'ready'
-            AND so.entry_date::date >= $2::date
-            AND so.entry_date::date < $3::date
+            AND ${dExpr('so.entry_date')} >= ${dParam(2)}
+            AND ${dExpr('so.entry_date')} < ${dParam(3)}
           ORDER BY so.entry_date DESC, so.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -623,20 +631,20 @@ router.get('/details/:indicator', async (req, res, next) => {
             'service_order' AS origin_type,
             so.id,
             so.order_number,
-            CONCAT('OS #', so.order_number, ' - ', COALESCE(so.brand, ''), ' ', COALESCE(so.model, '')) AS title,
+            ${concatExpr("'OS #'", 'so.order_number', "' - '", "COALESCE(so.brand, '')", "' '", "COALESCE(so.model, '')")} AS title,
             COALESCE(so.description, 'Entregue ao cliente') AS description,
             so.service_price AS amount,
             COALESCE(so.delivery_date, so.entry_date) AS date,
             so.status AS order_status,
             so.payment_status,
-            COALESCE(so.customer_name_snapshot, CONCAT(c.first_name, ' ', c.last_name)) AS customer_name,
+            COALESCE(so.customer_name_snapshot, ${concatExpr('c.first_name', "' '", 'c.last_name')}) AS customer_name,
             so.customer_id
           FROM service_orders so
           LEFT JOIN customers c ON c.id = so.customer_id
           WHERE (so.store_id = $1 OR so.store_id IS NULL)
             AND so.status = 'delivered'
-            AND so.entry_date::date >= $2::date
-            AND so.entry_date::date < $3::date
+            AND ${dExpr('so.entry_date')} >= ${dParam(2)}
+            AND ${dExpr('so.entry_date')} < ${dParam(3)}
           ORDER BY date DESC, so.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -660,20 +668,20 @@ router.get('/details/:indicator', async (req, res, next) => {
             'service_order' AS origin_type,
             so.id,
             so.order_number,
-            CONCAT('OS #', so.order_number, ' - ', COALESCE(so.brand, ''), ' ', COALESCE(so.model, '')) AS title,
+            ${concatExpr("'OS #'", 'so.order_number', "' - '", "COALESCE(so.brand, '')", "' '", "COALESCE(so.model, '')")} AS title,
             COALESCE(so.description, 'Cancelada / Sem reparo') AS description,
             so.service_price AS amount,
             so.entry_date AS date,
             so.status AS order_status,
             so.payment_status,
-            COALESCE(so.customer_name_snapshot, CONCAT(c.first_name, ' ', c.last_name)) AS customer_name,
+            COALESCE(so.customer_name_snapshot, ${concatExpr('c.first_name', "' '", 'c.last_name')}) AS customer_name,
             so.customer_id
           FROM service_orders so
           LEFT JOIN customers c ON c.id = so.customer_id
           WHERE (so.store_id = $1 OR so.store_id IS NULL)
             AND so.status = 'not_performed'
-            AND so.entry_date::date >= $2::date
-            AND so.entry_date::date < $3::date
+            AND ${dExpr('so.entry_date')} >= ${dParam(2)}
+            AND ${dExpr('so.entry_date')} < ${dParam(3)}
           ORDER BY so.entry_date DESC, so.id DESC
         `, [storeId, startDate, nextStartDate]);
 
@@ -692,18 +700,19 @@ router.get('/details/:indicator', async (req, res, next) => {
 
       // 8. Vendas do mês (store_sales com seus itens detalhados)
       case 'sales': {
-        const sales = await db.query(`
-          SELECT
-            'store_sale' AS origin_type,
-            s.id,
-            s.sale_number,
-            CONCAT('Venda de Caixa #', s.sale_number) AS title,
-            s.total_amount AS amount,
-            s.payment_method,
-            s.notes,
-            s.created_at AS date,
-            COALESCE(s.created_by_name_snapshot, u.full_name, 'Vendedor') AS seller_name,
-            (
+        const itemsSubquery = isSqlite
+          ? `(
+              SELECT json_group_array(json_object(
+                'id', i.id,
+                'product_name', i.product_name,
+                'quantity', i.quantity,
+                'unit_price', i.unit_price,
+                'total_price', COALESCE(i.subtotal, (i.unit_price * i.quantity))
+              ))
+              FROM store_sale_items i
+              WHERE i.sale_id = s.id AND COALESCE(i.is_canceled, 0) = 0
+            )`
+          : `(
               SELECT json_agg(json_build_object(
                 'id', i.id,
                 'product_name', i.product_name,
@@ -713,15 +722,32 @@ router.get('/details/:indicator', async (req, res, next) => {
               ))
               FROM store_sale_items i
               WHERE i.sale_id = s.id AND COALESCE(i.is_canceled, 0) = 0
-            ) AS items
+            )`;
+        const rawSales = await db.query(`
+          SELECT
+            'store_sale' AS origin_type,
+            s.id,
+            s.sale_number,
+            ${concatExpr("'Venda de Caixa #'", 's.sale_number')} AS title,
+            s.total_amount AS amount,
+            s.payment_method,
+            s.notes,
+            s.created_at AS date,
+            COALESCE(s.created_by_name_snapshot, u.full_name, 'Vendedor') AS seller_name,
+            ${itemsSubquery} AS items
           FROM store_sales s
           LEFT JOIN users u ON u.id = s.created_by
           WHERE (s.store_id = $1 OR s.store_id IS NULL)
             AND COALESCE(s.is_canceled, 0) = 0
-            AND s.created_at::date >= $2::date
-            AND s.created_at::date < $3::date
+            AND ${dExpr('s.created_at')} >= ${dParam(2)}
+            AND ${dExpr('s.created_at')} < ${dParam(3)}
           ORDER BY s.created_at DESC, s.id DESC
         `, [storeId, startDate, nextStartDate]);
+
+        const sales = rawSales.map((row) => ({
+          ...row,
+          items: typeof row.items === 'string' ? JSON.parse(row.items) : (row.items || []),
+        }));
 
         const totalAmount = sales.reduce((acc, item) => acc + Number(item.amount || 0), 0);
 

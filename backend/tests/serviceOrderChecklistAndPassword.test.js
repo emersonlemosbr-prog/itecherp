@@ -249,13 +249,13 @@ test('Suíte de testes: Senha do Aparelho, Criptografia Reversível e Checklist 
     }
   });
 
-  await t.test('9. Segurança estrita do Acompanhamento Público: NUNCA expor senha, PIN ou padrão', () => {
+  await t.test('9. Segurança estrita do Acompanhamento Público: NUNCA expor senha, PIN ou padrão', async () => {
     // Gerar token público para a OS
-    const tracking = generateTracking(db, orderPinId);
+    const tracking = await generateTracking(db, orderPinId);
     assert.ok(tracking && tracking.url);
     const token = tracking.url.split('/').pop();
 
-    const publicOrder = getPublicOrder(db, token);
+    const publicOrder = await getPublicOrder(db, token);
     assert.ok(publicOrder);
     assert.equal(publicOrder.brand, 'Samsung');
     assert.strictEqual(publicOrder.unlock_password, undefined, 'Acompanhamento público não pode conter senha');

@@ -1,21 +1,37 @@
 // backend/tests/serviceOrderNumberingAndDetail.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-so-num-'));
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
+
 const db = require('../db/database');
 const { nextOrderNumber } = require('../utils/orderNumber');
 
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
+
 test('Ordem de Serviço: Auditoria de numeração sequencial e isolamento por loja', async (t) => {
+  const randA = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  const randB = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
   // Cria 2 lojas de teste isoladas
   const storeA = await db.queryOne(`
     INSERT INTO stores (name, slug, owner_name, owner_email, status)
-    VALUES ('Loja Teste OS A', 'loja-teste-os-a-' || trunc(random()*100000), 'Owner A', 'owner_a_' || trunc(random()*100000) || '@test.com', 'active')
+    VALUES ('Loja Teste OS A', $1, 'Owner A', $2, 'active')
     RETURNING id
-  `);
+  `, [`loja-teste-os-a-${randA}`, `owner_a_${randA}@test.com`]);
   const storeB = await db.queryOne(`
     INSERT INTO stores (name, slug, owner_name, owner_email, status)
-    VALUES ('Loja Teste OS B', 'loja-teste-os-b-' || trunc(random()*100000), 'Owner B', 'owner_b_' || trunc(random()*100000) || '@test.com', 'active')
+    VALUES ('Loja Teste OS B', $1, 'Owner B', $2, 'active')
     RETURNING id
-  `);
+  `, [`loja-teste-os-b-${randB}`, `owner_b_${randB}@test.com`]);
 
   const storeIdA = storeA.id;
   const storeIdB = storeB.id;

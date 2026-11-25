@@ -240,20 +240,24 @@ async function query(sql, ...args) {
   if (isSqliteMode) {
     const { sqliteSql, finalParams } = translateSqliteSqlAndParams(sql, params);
     const hasReturning = /\bRETURNING\b/i.test(sqliteSql);
-    const cleanSql = sqliteSql.replace(/\s+RETURNING\s+[\w*,\s]+/i, '');
-    const isMutation = /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\b/i.test(cleanSql);
-    const stmt = sqliteDb.prepare(cleanSql);
+    if (hasReturning) {
+      const stmt = sqliteDb.prepare(sqliteSql);
+      const returnedRows = stmt.all(...finalParams);
+      const rows = returnedRows.map((row) => ({
+        ...row,
+        ...(row && row.id !== undefined ? { lastInsertRowid: row.id } : {}),
+      }));
+      rows.rowCount = rows.length;
+      rows.lastInsertRowid = rows[0]?.id ?? null;
+      return rows;
+    }
+    const isMutation = /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE)\b/i.test(sqliteSql);
+    const stmt = sqliteDb.prepare(sqliteSql);
     if (isMutation) {
       const info = stmt.run(...finalParams);
       const rows = [];
       rows.rowCount = info.changes || 0;
       rows.lastInsertRowid = info.lastInsertRowid || null;
-      if (hasReturning) {
-        rows.push({
-          id: info.lastInsertRowid,
-          lastInsertRowid: info.lastInsertRowid,
-        });
-      }
       return rows;
     }
     const rows = stmt.all(...finalParams);

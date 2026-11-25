@@ -13,12 +13,21 @@ test('Supabase Security Advisor: RLS and Data API audit tests', async (t) => {
   const schemaContent = fs.readFileSync(schemaPath, 'utf8');
   const migrationContent = fs.readFileSync(migrationPath, 'utf8');
 
-  // Extrair lista de todas as tabelas criadas no esquema
+  // Extrair lista de todas as tabelas criadas no esquema (47 base da migration 20261028 + 4 tabelas adicionadas posteriormente com RLS direto no schema)
   const createdTables = [...schemaContent.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(\w+)/gi)].map(m => m[1]);
-  assert.equal(createdTables.length, 47, 'Deve haver exatamente 47 tabelas no esquema');
+  assert.equal(createdTables.length, 51, 'Deve haver exatamente 51 tabelas no esquema oficial');
 
-  await t.test('1. Migration ativa Row Level Security (RLS) para todas as 47 tabelas', () => {
-    for (const table of createdTables) {
+  const tablesAddedAfter20261028Migration = new Set([
+    'devices',
+    'device_history',
+    'user_notification_preferences',
+    'user_notifications',
+  ]);
+  const baseMigrationTables = createdTables.filter(t => !tablesAddedAfter20261028Migration.has(t));
+
+  await t.test('1. Migration ativa Row Level Security (RLS) para todas as 47 tabelas base', () => {
+    assert.equal(baseMigrationTables.length, 47);
+    for (const table of baseMigrationTables) {
       const rlsRegex = new RegExp(`ALTER TABLE (?:IF EXISTS )?(?:public\\.)?${table} ENABLE ROW LEVEL SECURITY`, 'i');
       assert.ok(
         rlsRegex.test(migrationContent),
@@ -27,7 +36,7 @@ test('Supabase Security Advisor: RLS and Data API audit tests', async (t) => {
     }
   });
 
-  await t.test('2. Schema mestre (postgresSchema.sql) ativa RLS para todas as 47 tabelas', () => {
+  await t.test('2. Schema mestre (postgresSchema.sql) ativa RLS para todas as 51 tabelas', () => {
     for (const table of createdTables) {
       const rlsRegex = new RegExp(`ALTER TABLE (?:IF EXISTS )?(?:public\\.)?${table} ENABLE ROW LEVEL SECURITY`, 'i');
       assert.ok(

@@ -1,10 +1,33 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-stores-settings-'));
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
+
 const db = require('../db/database');
 const { createStoreWithInitialData } = require('../services/multiTenantService');
 const settingsService = require('../services/settings');
+
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
+
+async function deleteStoresSafely(storeIds) {
+  for (const sid of storeIds) {
+    await db.execute('DELETE FROM store_subscription_history WHERE store_id = $1', [sid]);
+    await db.execute('DELETE FROM document_sequences WHERE store_id = $1', [sid]);
+    await db.execute('DELETE FROM stock_categories WHERE store_id = $1', [sid]);
+    await db.execute('DELETE FROM users WHERE store_id = $1', [sid]);
+    await db.execute('DELETE FROM system_settings WHERE store_id = $1', [sid]);
+    await db.execute('DELETE FROM stores WHERE id = $1', [sid]);
+  }
+}
 
 test('PostgreSQL Fixes: stores primary key sequence and system_settings column compatibility', async (t) => {
   const schemaPath = path.join(__dirname, '../db/postgresSchema.sql');
@@ -74,8 +97,8 @@ test('PostgreSQL Fixes: stores primary key sequence and system_settings column c
     const parsed2 = JSON.parse(settings2.value);
     assert.equal(parsed2.store.name, store2Data.storeName);
 
-    // Limpeza segura dos registros de teste criados nesta asserção
-    await db.execute('DELETE FROM stores WHERE id IN ($1, $2)', [created1.storeId, created2.storeId]);
+    // Limpeza segura respeitando integridade referencial
+    await deleteStoresSafely([created1.storeId, created2.storeId]);
   });
 
   await t.test('4. Atualização de configurações persiste e sincroniza stores.name atomicamente sem duplicar registros', async () => {
@@ -141,7 +164,7 @@ test('PostgreSQL Fixes: stores primary key sequence and system_settings column c
       const countSettings = await db.queryOne('SELECT COUNT(*) AS total FROM system_settings WHERE store_id = $1', [storeId]);
       assert.equal(Number(countSettings.total), 1, 'Deve existir exatamente 1 registro de configurações para a loja');
     } finally {
-      await db.execute('DELETE FROM stores WHERE id = $1', [storeId]);
+      await deleteStoresSafely([storeId]);
     }
   });
 });

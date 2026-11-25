@@ -59,7 +59,7 @@ test('Central de Notificações: Testes de unidade e regras de negócio', async 
     `, [storeId, adminUser.id]);
 
     assert.ok(notif, 'A notificação deve ter sido inserida no banco');
-    assert.equal(notif.is_read, false);
+    assert.equal(Boolean(notif.is_read), false);
     assert.equal(notif.link, '/ordens/9999');
 
     // Limpa a notificação de teste

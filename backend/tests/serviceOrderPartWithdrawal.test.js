@@ -1,5 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const bcrypt = require('bcryptjs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -33,7 +34,8 @@ async function call(handler, { body = {}, params = {}, user = { id: 1, role: 'ad
 }
 
 test('fornecedor, entrega e retirada única preservam lucro e dados após reabertura', async () => {
-  db.prepare("INSERT INTO users (full_name, username, password_hash, role) VALUES ('Teste', 'parts-test', 'hash', 'admin')").run();
+  const ownerHash = bcrypt.hashSync('SenhaMaster123!', 10);
+  db.prepare("INSERT INTO users (full_name, username, password_hash, role, is_master) VALUES ('Teste', 'parts-test', ?, 'admin', 1)").run(ownerHash);
   const customerId = db.prepare("INSERT INTO customers (first_name,last_name) VALUES ('Cliente','Teste')").run().lastInsertRowid;
   const createSupplier = route(inventory, 'post', '/suppliers');
   const supplierA = (await call(createSupplier, { body: { name: 'Fornecedor Teste', contact_info: '11999990000', notes: 'Entrega rápida' } })).body;
@@ -69,7 +71,7 @@ test('fornecedor, entrega e retirada única preservam lucro e dados após reaber
   assert.equal(db.prepare('SELECT profit FROM service_orders WHERE id=?').get(id).profit, 170);
 
   const [year, month] = today.split('-').map(Number);
-  const snapshot = computeMonthlySnapshot(year, month);
+  const snapshot = await computeMonthlySnapshot(year, month);
   assert.equal(snapshot.profit, 170);
   assert.equal(snapshot.expenses, 80);
   assert.equal(snapshot.net_profit, 170);
@@ -82,11 +84,11 @@ test('fornecedor, entrega e retirada única preservam lucro e dados após reaber
   db.prepare("UPDATE cash_withdrawals SET supplier_name = 'Fornecedor Teste' WHERE id = ?").run(withdrawal.id);
   const manual = await call(route(withdrawals, 'post', '/'), { body: { amount: 10, reason: 'Despesa manual', withdrawal_date: today } });
   assert.equal(manual.statusCode, 201);
-  const withManualExpense = computeMonthlySnapshot(year, month);
+  const withManualExpense = await computeMonthlySnapshot(year, month);
   assert.equal(withManualExpense.expenses, 90);
   assert.equal(withManualExpense.net_profit, 160);
   await call(updateOrder, { params: { id }, body: { payment_method: 'pending' } });
-  const pendingPayment = computeMonthlySnapshot(year, month);
+  const pendingPayment = await computeMonthlySnapshot(year, month);
   assert.equal(pendingPayment.profit, 0);
   assert.equal(pendingPayment.net_profit, -90);
   await call(updateOrder, { params: { id }, body: { payment_method: 'pix' } });
@@ -106,7 +108,11 @@ test('fornecedor, entrega e retirada única preservam lucro e dados após reaber
   assert.throws(() => db.prepare(`INSERT INTO cash_withdrawals (amount,reason,withdrawal_date,source_type,service_order_id)
     VALUES (80,'Custo da peça',?,'service_order_part',?)`).run(today, id), /UNIQUE/);
 
-  const blocked = await call(route(withdrawals, 'delete', '/:id'), { params: { id: withdrawal.id } });
+  const blocked = await call(route(withdrawals, 'delete', '/:id'), {
+    params: { id: withdrawal.id },
+    body: { password: 'SenhaMaster123!' },
+    user: { id: 1, role: 'admin', is_master: 1, store_id: 1 },
+  });
   assert.equal(blocked.statusCode, 409);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM cash_withdrawals WHERE service_order_id=?').get(id).n, 1);
 

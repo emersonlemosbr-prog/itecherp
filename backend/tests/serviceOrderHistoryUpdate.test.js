@@ -14,7 +14,7 @@ db.prepare("INSERT INTO users (full_name, username, password_hash, role) VALUES 
 const stockProductId = db.prepare("INSERT INTO stock_products (name, code, created_by) VALUES ('Produto de teste', 'P-1', 1)").run().lastInsertRowid;
 db.prepare('INSERT INTO stock_levels (product_id, quantity) VALUES (?, ?)').run(stockProductId, 10);
 
-test('September revenue should count only service orders, not device sales', () => {
+test('September revenue should count only service orders, not device sales', async () => {
   db.prepare("DELETE FROM store_sales WHERE sale_number = 'VD-TEST-SEP'").run();
   db.prepare("DELETE FROM service_orders WHERE order_number = 'SO-SEP-REGRESSION'").run();
 
@@ -65,7 +65,7 @@ test('September revenue should count only service orders, not device sales', () 
     VALUES (?, ?, 'Aparelho', 'P-1', 0, 1500, 1, 1500, 0)
   `).run(saleId, stockProductId);
 
-  const snapshot = computeMonthlySnapshot(2026, 9);
+  const snapshot = await computeMonthlySnapshot(2026, 9);
   assert.equal(Number(snapshot.revenue), 1800);
   assert.equal(Number(snapshot.received), 1800);
 
@@ -76,8 +76,8 @@ test('September revenue should count only service orders, not device sales', () 
     ) VALUES ('SO-PENDING-REGRESSION', ?, '2026-09-10', 1330, 1330, 'pending', 'pending', 'ready', 1)
   `).run(customerId);
 
-  const dashboardSummary = calculateFinancialSummary(db, '2026-09-01', '2026-10-01');
-  const snapshotWithPending = computeMonthlySnapshot(2026, 9);
+  const dashboardSummary = await calculateFinancialSummary(db, '2026-09-01', '2026-10-01');
+  const snapshotWithPending = await computeMonthlySnapshot(2026, 9);
   assert.equal(dashboardSummary.totalRevenue, 1800, 'a Dashboard não contabiliza OS pendente como receita');
   assert.equal(snapshotWithPending.revenue, dashboardSummary.totalRevenue, 'Histórico e Dashboard usam a mesma receita');
   assert.equal(snapshotWithPending.pending, 1330, 'o valor pendente continua disponível separadamente');
@@ -92,7 +92,7 @@ function getPutHandler() {
   return route.route.stack[0].handle;
 }
 
-test('September revenue should include only service orders, not device sales', () => {
+test('September revenue should include only service orders, not device sales', async () => {
   db.prepare("DELETE FROM store_sales WHERE notes = 'device_sale:999999'").run();
 
   const customerId = db.prepare(`
@@ -142,7 +142,7 @@ test('September revenue should include only service orders, not device sales', (
     VALUES (?, ?, 'Aparelho', 'P-1', 0, 1500, 1, 1500, 0)
   `).run(saleId, stockProductId);
 
-  ensureFinancialHistoryUpToDate('2026-10-01 00:00:00');
+  await ensureFinancialHistoryUpToDate('2026-10-01 00:00:00');
   const snapshot = db.prepare('SELECT * FROM financial_history WHERE year = ? AND month = ?').get(2026, 9);
   assert.ok(snapshot, 'deve existir snapshot de setembro');
   assert.equal(Number(snapshot.revenue), 2100);
@@ -228,16 +228,16 @@ test('PUT /:id updates the financial history for the affected month', async () =
   assert.ok(responseBody, 'a rota deve responder com os dados atualizados');
 });
 
-test('Dashboard e Histórico permanecem iguais ao criar, editar, entregar, pagar e excluir uma OS', () => {
+test('Dashboard e Histórico permanecem iguais ao criar, editar, entregar, pagar e excluir uma OS', async () => {
   const customerId = db.prepare(`
     INSERT INTO customers (first_name, last_name) VALUES ('Cliente', 'Consistência Financeira')
   `).run().lastInsertRowid;
   const startDate = '2027-01-01';
   const nextStartDate = '2027-02-01';
 
-  const assertConsistent = (expectedRevenue, expectedProfit) => {
-    const dashboard = calculateFinancialSummary(db, startDate, nextStartDate);
-    const history = computeMonthlySnapshot(2027, 1);
+  const assertConsistent = async (expectedRevenue, expectedProfit) => {
+    const dashboard = await calculateFinancialSummary(db, startDate, nextStartDate);
+    const history = await computeMonthlySnapshot(2027, 1);
     assert.equal(history.revenue, dashboard.totalRevenue);
     assert.equal(history.profit, dashboard.totalProfit);
     assert.equal(history.revenue, expectedRevenue);
@@ -251,20 +251,20 @@ test('Dashboard e Histórico permanecem iguais ao criar, editar, entregar, pagar
     ) VALUES ('SO-CONSISTENCY-FLOW', ?, '2027-01-10', 200, 50, 150,
       'pending', 'pending', 'received', 1)
   `).run(customerId).lastInsertRowid;
-  assertConsistent(0, 0);
+  await assertConsistent(0, 0);
 
   db.prepare('UPDATE service_orders SET service_price=300, profit=250 WHERE id=?').run(orderId);
-  assertConsistent(0, 0);
+  await assertConsistent(0, 0);
 
   db.prepare("UPDATE service_orders SET status='delivered', delivery_date='2027-01-12' WHERE id=?").run(orderId);
-  assertConsistent(0, 0);
+  await assertConsistent(0, 0);
 
   db.prepare("UPDATE service_orders SET payment_method='pix', payment_status='paid' WHERE id=?").run(orderId);
-  assertConsistent(300, 250);
+  await assertConsistent(300, 250);
 
   db.prepare('UPDATE service_orders SET service_price=350, profit=300 WHERE id=?').run(orderId);
-  assertConsistent(350, 300);
+  await assertConsistent(350, 300);
 
   db.prepare('DELETE FROM service_orders WHERE id=?').run(orderId);
-  assertConsistent(0, 0);
+  await assertConsistent(0, 0);
 });

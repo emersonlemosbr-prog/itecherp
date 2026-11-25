@@ -1,11 +1,26 @@
 // backend/tests/dashboardPeriodFilters.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-dash-periods-'));
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+
 const db = require('../db/database');
 const { createStoreWithInitialData } = require('../services/multiTenantService');
 const dashboardRouter = require('../routes/dashboard');
+
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
 
 test('Dashboard: Validação completa dos 5 filtros de período com dados reais e isolamento multi-tenant', async (t) => {
   const suffixA = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -53,15 +68,20 @@ test('Dashboard: Validação completa dos 5 filtros de período com dados reais 
 
   // Teardown
   t.after(async () => {
-    await db.query('DELETE FROM store_sale_items WHERE sale_id IN (SELECT id FROM store_sales WHERE store_id = ANY($1::int[]))', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM store_sales WHERE store_id = ANY($1::int[])', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM stock_products WHERE store_id = ANY($1::int[])', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM credit_accounts WHERE store_id = ANY($1::int[])', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM service_orders WHERE store_id = ANY($1::int[])', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM customers WHERE store_id = ANY($1::int[])', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM users WHERE store_id = ANY($1::int[])', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM system_settings WHERE store_id = ANY($1::int[])', [[storeIdA, storeIdB]]);
-    await db.query('DELETE FROM stores WHERE id = ANY($1::int[])', [[storeIdA, storeIdB]]);
+    await db.query('DELETE FROM financial_history WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM financial_history_state WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM store_sale_items WHERE sale_id IN (SELECT id FROM store_sales WHERE store_id IN ($1, $2))', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM store_sales WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM stock_products WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM stock_categories WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM credit_accounts WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM service_orders WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM customers WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM store_subscription_history WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM document_sequences WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM users WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM system_settings WHERE store_id IN ($1, $2)', [storeIdA, storeIdB]);
+    await db.query('DELETE FROM stores WHERE id IN ($1, $2)', [storeIdA, storeIdB]);
   });
 
   // Criar registros em datas específicas
@@ -91,8 +111,8 @@ test('Dashboard: Validação completa dos 5 filtros de período com dados reais 
   // 1. Hoje: OS paga de 100
   await db.query(`
     INSERT INTO service_orders (store_id, order_number, customer_id, brand, model, service_price, payment_status, status, entry_date, delivery_date)
-    VALUES ($1, 'OS-HOJE', $2, 'Apple', 'iPhone', 100.00, 'paid', 'delivered', ($3 || ' 10:00:00')::timestamptz, ($3 || ' 10:00:00')::timestamptz)
-  `, [storeIdA, custA.id, todayStr]);
+    VALUES ($1, 'OS-HOJE', $2, 'Apple', 'iPhone', 100.00, 'paid', 'delivered', $3, $3)
+  `, [storeIdA, custA.id, `${todayStr} 10:00:00`]);
 
   // 2. 3 dias atrás: Venda de caixa de 50
   const prodA = await db.queryOne(`
@@ -103,9 +123,9 @@ test('Dashboard: Validação completa dos 5 filtros de período com dados reais 
 
   const sale3 = await db.queryOne(`
     INSERT INTO store_sales (store_id, sale_number, total_amount, payment_method, is_canceled, created_at)
-    VALUES ($1, 9901, 50.00, 'pix', 0, ($2 || ' 14:00:00')::timestamptz)
+    VALUES ($1, 9901, 50.00, 'pix', 0, $2)
     RETURNING id
-  `, [storeIdA, threeDaysAgoStr]);
+  `, [storeIdA, `${threeDaysAgoStr} 14:00:00`]);
 
   await db.query(`
     INSERT INTO store_sale_items (store_id, sale_id, product_id, product_name, quantity, unit_price, subtotal, is_canceled)
@@ -115,14 +135,14 @@ test('Dashboard: Validação completa dos 5 filtros de período com dados reais 
   // 3. Mês passado: OS paga de 300
   await db.query(`
     INSERT INTO service_orders (store_id, order_number, customer_id, brand, model, service_price, payment_status, status, entry_date, delivery_date)
-    VALUES ($1, 'OS-ANTIGA', $2, 'Samsung', 'Galaxy', 300.00, 'paid', 'delivered', ($3 || ' 09:00:00')::timestamptz, ($3 || ' 09:00:00')::timestamptz)
-  `, [storeIdA, custA.id, lastMonthMidStr]);
+    VALUES ($1, 'OS-ANTIGA', $2, 'Samsung', 'Galaxy', 300.00, 'paid', 'delivered', $3, $3)
+  `, [storeIdA, custA.id, `${lastMonthMidStr} 09:00:00`]);
 
   // Inserção Loja B: OS paga hoje de 999 (não pode vazar para Loja A)
   await db.query(`
     INSERT INTO service_orders (store_id, order_number, customer_id, brand, model, service_price, payment_status, status, entry_date, delivery_date)
-    VALUES ($1, 'OS-BETA', $2, 'Motorola', 'G10', 999.00, 'paid', 'delivered', ($3 || ' 11:00:00')::timestamptz, ($3 || ' 11:00:00')::timestamptz)
-  `, [storeIdB, custB.id, todayStr]);
+    VALUES ($1, 'OS-BETA', $2, 'Motorola', 'G10', 999.00, 'paid', 'delivered', $3, $3)
+  `, [storeIdB, custB.id, `${todayStr} 11:00:00`]);
 
   // Obter session_version do userA
   const userRowA = await db.queryOne('SELECT session_version FROM users WHERE id = $1', [storeA.userId]);
@@ -138,9 +158,9 @@ test('Dashboard: Validação completa dos 5 filtros de período com dados reais 
   await new Promise(r => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  t.after(() => {
-    server.close();
-    server.closeAllConnections();
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
   });
 
   const headers = { Authorization: `Bearer ${tokenA}` };

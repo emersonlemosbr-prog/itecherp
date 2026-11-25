@@ -3,10 +3,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-// Força ambiente seguro de teste
+// Força ambiente seguro e banco temporário exclusivo para o teste
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-devices-suite-'));
 process.env.NODE_ENV = 'test';
+process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
 delete process.env.TEST_DATABASE_URL;
 delete process.env.DATABASE_URL;
 delete process.env.POSTGRES_URL;
@@ -14,6 +18,13 @@ delete process.env.POSTGRES_URL;
 const db = require('../db/database');
 const devicesRouter = require('../routes/devices');
 const deviceSalesRouter = require('../routes/deviceSales');
+
+test.after(() => {
+  try {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  } catch (_) {}
+});
 
 // Helper simulador de requisição Express
 function createReqRes({ method = 'GET', url = '/', user = { id: 1, name: 'Admin', role: 'admin', store_id: 1 }, body = {}, query = {}, params = {} }) {

@@ -7,7 +7,6 @@ const path = require('node:path');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'itech-master-delete-'));
 process.env.ITECH_DB_PATH = path.join(tempDir, 'test.db');
 const db = require('../db/database');
-db.exec("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1; ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0; ALTER TABLE users ADD COLUMN job_title TEXT; ALTER TABLE users ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}';");
 const users = require('../routes/users');
 const { requireRole } = require('../middleware/auth');
 
