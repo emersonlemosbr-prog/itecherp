@@ -10,6 +10,7 @@ import api from '../api/client';
 import DeviceFormDrawer from '../components/DeviceFormDrawer';
 import DeviceDetailDrawer from '../components/DeviceDetailDrawer';
 import { POPULAR_BRANDS, STORAGE_OPTIONS, CONDITION_OPTIONS, STATUS_MAP } from '../data/deviceCatalog';
+import useDebounce from '../hooks/useDebounce';
 
 export default function Devices() {
   const navigate = useNavigate();
@@ -42,6 +43,7 @@ export default function Devices() {
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [brandFilter, setBrandFilter] = useState('all');
   const [conditionFilter, setConditionFilter] = useState('all');
   const [storageFilter, setStorageFilter] = useState('all');
@@ -49,6 +51,11 @@ export default function Devices() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [total, setTotal] = useState(0);
+
+  // Redefine a página para 1 quando a busca ou os filtros mudarem
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm, brandFilter, conditionFilter, storageFilter, sortOrder, activeTab]);
 
   // Modais / Drawers
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -63,7 +70,7 @@ export default function Devices() {
       setLoading(true);
       const params = {
         tab: activeTab,
-        q: searchTerm,
+        q: debouncedSearchTerm,
         brand: brandFilter,
         condition: conditionFilter,
         storage: storageFilter,
@@ -82,7 +89,7 @@ export default function Devices() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, searchTerm, brandFilter, conditionFilter, storageFilter, sortOrder, page, limit]);
+  }, [activeTab, debouncedSearchTerm, brandFilter, conditionFilter, storageFilter, sortOrder, page, limit]);
 
   useEffect(() => {
     fetchDevices();
@@ -256,7 +263,7 @@ export default function Devices() {
       </div>
 
       {/* Abas com Contadores Dinâmicos */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200 dark:border-ink-700 text-xs font-medium scrollbar-none">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-1.5 pb-2 sm:pb-1 border-b border-slate-200 dark:border-ink-700 text-xs font-medium">
         {[
           { key: 'all', label: 'Todos', count: counts.all },
           { key: 'in_stock', label: 'Em estoque', count: counts.in_stock },
@@ -272,14 +279,14 @@ export default function Devices() {
               setActiveTab(tab.key);
               setPage(1);
             }}
-            className={`px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all whitespace-nowrap ${
+            className={`w-full sm:w-auto px-2.5 sm:px-3 py-2 rounded-xl flex items-center justify-between sm:justify-start gap-1.5 transition-all text-left sm:whitespace-nowrap ${
               activeTab === tab.key
                 ? 'bg-brand-500/15 text-brand-700 dark:text-brand-400 font-bold border border-brand-500/30'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-ink-800'
             }`}
           >
-            <span>{tab.label}</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+            <span className="leading-tight">{tab.label}</span>
+            <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
               activeTab === tab.key
                 ? 'bg-brand-500 text-slate-950'
                 : 'bg-slate-200/80 dark:bg-ink-800 text-slate-600 dark:text-slate-400'
