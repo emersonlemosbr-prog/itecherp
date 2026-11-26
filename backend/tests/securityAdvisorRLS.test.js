@@ -13,15 +13,20 @@ test('Supabase Security Advisor: RLS and Data API audit tests', async (t) => {
   const schemaContent = fs.readFileSync(schemaPath, 'utf8');
   const migrationContent = fs.readFileSync(migrationPath, 'utf8');
 
-  // Extrair lista de todas as tabelas criadas no esquema (47 base da migration 20261028 + 4 tabelas adicionadas posteriormente com RLS direto no schema)
+  // Extrair lista de todas as tabelas criadas no esquema (47 base da migration 20261028 + 9 tabelas adicionadas posteriormente com RLS direto no schema)
   const createdTables = [...schemaContent.matchAll(/CREATE TABLE (?:IF NOT EXISTS )?(\w+)/gi)].map(m => m[1]);
-  assert.equal(createdTables.length, 51, 'Deve haver exatamente 51 tabelas no esquema oficial');
+  assert.equal(createdTables.length, 56, 'Deve haver exatamente 56 tabelas no esquema oficial');
 
   const tablesAddedAfter20261028Migration = new Set([
     'devices',
     'device_history',
     'user_notification_preferences',
     'user_notifications',
+    'purchases',
+    'purchase_items',
+    'accounts_payable',
+    'payable_installments',
+    'payable_payments',
   ]);
   const baseMigrationTables = createdTables.filter(t => !tablesAddedAfter20261028Migration.has(t));
 

@@ -5,7 +5,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Wrench, ShieldCheck, HandCoins, X, Smartphone, NotebookPen,
   ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings,
-  User, Bell, UserCircle, LogOut, Percent
+  User, Bell, UserCircle, LogOut, Percent, ShoppingBag
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBodyScrollLock } from '../UI/ModalFrame'
@@ -82,7 +82,11 @@ export default function Sidebar({ open, onClose }) {
     const items = [...section.items]
 
     if (section.title === 'Financeiro' && isAdmin) {
+      items.push({ to: '/contas-a-pagar', label: 'Contas a Pagar', icon: ReceiptText })
       items.push({ to: '/caixa', label: 'Retiradas de Caixa', icon: Banknote })
+    }
+    if (section.title === 'Estoque e Vendas' && isAdmin) {
+      items.unshift({ to: '/compras', label: 'Compras', icon: ShoppingBag })
     }
 
     return { ...section, items: items.filter(item => canAccess(user, item.to)) }

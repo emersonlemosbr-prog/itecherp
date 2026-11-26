@@ -128,6 +128,8 @@ app.use('/api/financial-history', require('./routes/financialHistory'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/notes', require('./routes/notes'));
 app.use('/api/inventory', require('./routes/inventory'));
+app.use('/api/purchases', require('./routes/purchases'));
+app.use('/api/payables', require('./routes/payables'));
 app.use('/api/screen-protectors', require('./routes/screenProtectors'));
 app.use('/api/store-sales', require('./routes/storeSales'));
 app.use('/api/events', require('./routes/events'));

@@ -38,6 +38,8 @@ const Sales = lazy(() => import('./pages/Sales'))
 const InventoryControl = lazy(() => import('./pages/InventoryControl'))
 const CompatibleScreenProtectors = lazy(() => import('./pages/CompatibleScreenProtectors'))
 const CashWithdrawals = lazy(() => import('./pages/CashWithdrawals'))
+const Purchases = lazy(() => import('./pages/Purchases'))
+const AccountsPayable = lazy(() => import('./pages/AccountsPayable'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Users = lazy(() => import('./pages/Users'))
 const Notes = lazy(() => import('./pages/Notes'))
@@ -164,9 +166,11 @@ export default function App() {
                   <Route path="/aparelhos" element={<Devices />} />
                   <Route path="/vendas" element={<Sales />} />
                   <Route path="/estoque" element={<InventoryControl />} />
+                  <Route path="/compras" element={<Protected adminOnly><Purchases /></Protected>} />
                   <Route path="/anotacoes" element={<Notes />} />
                   <Route path="/removedor-virus" element={<VirusRemover />} />
                   <Route path="/caixa" element={<Protected adminOnly><CashWithdrawals /></Protected>} />
+                  <Route path="/contas-a-pagar" element={<Protected adminOnly><AccountsPayable /></Protected>} />
                   <Route path="/configuracoes" element={<Protected adminOnly><Settings /></Protected>} />
                   <Route path="/usuarios" element={<Protected adminOnly><Users /></Protected>} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />

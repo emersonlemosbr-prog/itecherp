@@ -101,8 +101,8 @@ router.delete('/:id', async (req, res, next) => {
     if (!withdrawal) {
       return res.status(404).json({ error: 'Retirada não encontrada nesta loja.' });
     }
-    if (withdrawal.source_type === 'service_order_part') {
-      return res.status(409).json({ error: 'A retirada automática da OS não pode ser excluída.' });
+    if (['service_order_part', 'purchase_payment', 'payable_payment'].includes(withdrawal.source_type)) {
+      return res.status(409).json({ error: 'Retiradas automáticas de OS, Compras ou Contas a Pagar não podem ser excluídas diretamente.' });
     }
 
     await db.query('DELETE FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);

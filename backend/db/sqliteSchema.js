@@ -523,6 +523,122 @@ function initSqliteTestSchema(db) {
       status TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      purchase_number TEXT NOT NULL,
+      origin_type TEXT NOT NULL CHECK (origin_type IN ('supplier', 'customer_trade')),
+      supplier_id INTEGER REFERENCES stock_suppliers(id) ON DELETE SET NULL,
+      supplier_name TEXT,
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+      customer_name TEXT,
+      invoice_number TEXT,
+      purchase_date TEXT NOT NULL,
+      subtotal REAL NOT NULL DEFAULT 0,
+      discount REAL NOT NULL DEFAULT 0,
+      freight REAL NOT NULL DEFAULT 0,
+      total_amount REAL NOT NULL DEFAULT 0,
+      payment_condition TEXT NOT NULL CHECK (payment_condition IN ('cash', 'installments')),
+      payment_method TEXT,
+      down_payment REAL NOT NULL DEFAULT 0,
+      installments_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'canceled')),
+      notes TEXT,
+      idempotency_key TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_by_name_snapshot TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(store_id, purchase_number)
+    );
+    CREATE INDEX IF NOT EXISTS idx_purchases_store_date ON purchases(store_id, purchase_date DESC, id DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_purchases_idempotency ON purchases(store_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS purchase_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      purchase_id INTEGER NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+      item_type TEXT NOT NULL CHECK (item_type IN ('device', 'existing_accessory', 'new_accessory')),
+      product_id INTEGER REFERENCES stock_products(id) ON DELETE SET NULL,
+      device_id INTEGER,
+      description TEXT NOT NULL,
+      identifier TEXT,
+      brand TEXT,
+      model TEXT,
+      storage TEXT,
+      color TEXT,
+      condition TEXT,
+      category_id INTEGER,
+      category_name TEXT,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      unit_cost REAL NOT NULL DEFAULT 0,
+      total_cost REAL NOT NULL DEFAULT 0,
+      sale_price REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON purchase_items(purchase_id);
+    CREATE INDEX IF NOT EXISTS idx_purchase_items_store ON purchase_items(store_id);
+
+    CREATE TABLE IF NOT EXISTS accounts_payable (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      purchase_id INTEGER REFERENCES purchases(id) ON DELETE SET NULL,
+      supplier_id INTEGER REFERENCES stock_suppliers(id) ON DELETE SET NULL,
+      supplier_name TEXT,
+      origin_type TEXT NOT NULL DEFAULT 'manual' CHECK (origin_type IN ('purchase', 'manual')),
+      category TEXT,
+      description TEXT NOT NULL,
+      total_amount REAL NOT NULL DEFAULT 0,
+      paid_amount REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'partial', 'paid', 'canceled')),
+      due_date TEXT NOT NULL,
+      notes TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_accounts_payable_store_status ON accounts_payable(store_id, status, due_date);
+    CREATE INDEX IF NOT EXISTS idx_accounts_payable_purchase ON accounts_payable(purchase_id);
+
+    CREATE TABLE IF NOT EXISTS payable_installments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      payable_id INTEGER NOT NULL REFERENCES accounts_payable(id) ON DELETE CASCADE,
+      installment_number INTEGER NOT NULL DEFAULT 1,
+      total_installments INTEGER NOT NULL DEFAULT 1,
+      amount REAL NOT NULL DEFAULT 0,
+      paid_amount REAL NOT NULL DEFAULT 0,
+      due_date TEXT NOT NULL,
+      paid_at TEXT,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'partial', 'paid', 'canceled')),
+      payment_method TEXT,
+      cash_withdrawal_id INTEGER REFERENCES cash_withdrawals(id) ON DELETE SET NULL,
+      notified_due_soon_at TEXT,
+      notified_overdue_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_payable_installments_store_due ON payable_installments(store_id, status, due_date);
+    CREATE INDEX IF NOT EXISTS idx_payable_installments_payable ON payable_installments(payable_id);
+
+    CREATE TABLE IF NOT EXISTS payable_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL DEFAULT 1,
+      payable_id INTEGER NOT NULL REFERENCES accounts_payable(id) ON DELETE CASCADE,
+      installment_id INTEGER NOT NULL REFERENCES payable_installments(id) ON DELETE CASCADE,
+      amount REAL NOT NULL,
+      payment_date TEXT NOT NULL,
+      payment_method TEXT NOT NULL,
+      cash_withdrawal_id INTEGER REFERENCES cash_withdrawals(id) ON DELETE SET NULL,
+      idempotency_key TEXT,
+      notes TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_by_name_snapshot TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_payable_payments_store ON payable_payments(store_id, payment_date DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_payable_payments_idempotency ON payable_payments(store_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
   `);
 
   // Garantir colunas ausentes em bancos SQLite pré-existentes sem recriar tabelas
