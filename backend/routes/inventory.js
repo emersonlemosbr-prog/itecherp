@@ -263,15 +263,54 @@ router.delete('/categories/:id', requireRole('admin'), async (req, res) => {
   }
 });
 
+function isValidCpfOrCnpj(doc) {
+  const digits = String(doc || '').replace(/\D/g, '');
+  if (!digits) return true;
+  if (digits.length === 11) {
+    if (/^(\d)\1{10}$/.test(digits)) return false;
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += parseInt(digits[i], 10) * (10 - i);
+    let rev = (sum * 10) % 11;
+    if (rev === 10) rev = 0;
+    if (rev !== parseInt(digits[9], 10)) return false;
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += parseInt(digits[i], 10) * (11 - i);
+    rev = (sum * 10) % 11;
+    if (rev === 10) rev = 0;
+    return rev === parseInt(digits[10], 10);
+  }
+  if (digits.length === 14) {
+    if (/^(\d)\1{13}$/.test(digits)) return false;
+    const calc = (base, weights) => {
+      let sum = 0;
+      for (let i = 0; i < weights.length; i++) sum += parseInt(base[i], 10) * weights[i];
+      const rem = sum % 11;
+      return rem < 2 ? 0 : 11 - rem;
+    };
+    const d1 = calc(digits, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const d2 = calc(digits, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    return d1 === parseInt(digits[12], 10) && d2 === parseInt(digits[13], 10);
+  }
+  return false;
+}
+
 router.get('/suppliers', async (req, res) => {
   try {
     const storeId = req.user.store_id || 1;
+    const activeOnly = req.query.active_only === 'true';
     const rows = await db.query(`
-      SELECT s.id, s.name, s.contact_info, s.notes, s.is_active,
-      (SELECT COUNT(*) FROM stock_products p WHERE p.supplier_id = s.id AND p.store_id = s.store_id) AS product_count,
-      (SELECT COUNT(*) FROM service_orders so WHERE so.supplier_id = s.id AND so.store_id = s.store_id) AS service_order_count,
-      (SELECT COUNT(*) FROM cash_withdrawals w WHERE w.supplier_id = s.id AND w.store_id = s.store_id) AS withdrawal_count
-      FROM stock_suppliers s WHERE s.store_id = $1 ORDER BY LOWER(s.name)
+      SELECT s.id, s.name, s.trade_name, s.person_type, s.document, s.state_registration,
+        s.phone, s.whatsapp, s.email, s.contact_name, s.contact_info,
+        s.postal_code, s.street, s.number, s.complement, s.neighborhood, s.city, s.state,
+        s.notes, s.is_active, s.created_at, s.updated_at,
+        (SELECT COUNT(*) FROM stock_products p WHERE p.supplier_id = s.id AND p.store_id = s.store_id) AS product_count,
+        (SELECT COUNT(*) FROM service_orders so WHERE so.supplier_id = s.id AND so.store_id = s.store_id) AS service_order_count,
+        (SELECT COUNT(*) FROM cash_withdrawals w WHERE w.supplier_id = s.id AND w.store_id = s.store_id) AS withdrawal_count,
+        (SELECT COUNT(*) FROM purchases pu WHERE pu.supplier_id = s.id AND pu.store_id = s.store_id AND pu.status != 'canceled') AS purchases_count,
+        (SELECT COALESCE(SUM(pu.total_amount), 0) FROM purchases pu WHERE pu.supplier_id = s.id AND pu.store_id = s.store_id AND pu.status != 'canceled') AS purchases_total
+      FROM stock_suppliers s
+      WHERE s.store_id = $1 ${activeOnly ? 'AND s.is_active = 1' : ''}
+      ORDER BY LOWER(s.name)
     `, [storeId]);
     res.json(rows);
   } catch (err) {
@@ -279,24 +318,79 @@ router.get('/suppliers', async (req, res) => {
   }
 });
 
+router.get('/suppliers/:id/purchases', async (req, res) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const supplier = await db.queryOne('SELECT id, name FROM stock_suppliers WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (!supplier) return res.status(404).json({ error: 'Fornecedor não encontrado nesta loja.' });
+
+    const items = await db.query(`
+      SELECT
+        p.id, p.purchase_number, p.purchase_date, p.total_amount, p.payment_condition, p.status,
+        (SELECT COALESCE(SUM(pi.quantity), 0) FROM purchase_items pi WHERE pi.purchase_id = p.id) AS items_count,
+        COALESCE(ap.status, CASE WHEN p.payment_condition = 'cash' THEN 'paid' ELSE 'open' END) AS financial_status
+      FROM purchases p
+      LEFT JOIN accounts_payable ap ON ap.purchase_id = p.id AND ap.store_id = p.store_id
+      WHERE p.supplier_id = $1 AND p.store_id = $2 AND p.status != 'canceled'
+      ORDER BY p.purchase_date DESC, p.id DESC
+    `, [supplier.id, storeId]);
+
+    const totalPurchased = items.reduce((acc, row) => acc + Number(row.total_amount || 0), 0);
+    res.json({ supplier, items, total_purchased: totalPurchased });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar histórico de compras do fornecedor: ' + err.message });
+  }
+});
+
 router.post('/suppliers', async (req, res) => {
   try {
     const storeId = req.user.store_id || 1;
-    const name = normalizeName(req.body?.name);
-    const contactInfo = normalizeName(req.body?.contact_info);
-    const notes = normalizeName(req.body?.notes);
-    if (!name) return res.status(400).json({ error: 'Nome do fornecedor é obrigatório.' });
+    const b = req.body || {};
+    const name = normalizeName(b.name);
+    const tradeName = normalizeName(b.trade_name);
+    const personType = b.person_type === 'PF' ? 'PF' : 'PJ';
+    const document = normalizeName(b.document);
+    const stateReg = normalizeName(b.state_registration);
+    const phone = normalizeName(b.phone);
+    const whatsapp = normalizeName(b.whatsapp);
+    const email = normalizeName(b.email);
+    const contactName = normalizeName(b.contact_name);
+    const contactInfo = normalizeName(b.contact_info) || phone || whatsapp || email || '';
+    const notes = normalizeName(b.notes);
+
+    if (!name) return res.status(400).json({ error: 'Nome / Razão social do fornecedor é obrigatório.' });
     if (name.length > 200 || contactInfo.length > 100 || notes.length > 1000) {
       return res.status(400).json({ error: 'Dados do fornecedor excedem o tamanho permitido.' });
+    }
+    if (document && !isValidCpfOrCnpj(document)) {
+      return res.status(400).json({ error: 'CPF ou CNPJ inválido.' });
     }
 
     const exists = await db.queryOne('SELECT id FROM stock_suppliers WHERE store_id = $1 AND lower(name) = lower($2)', [storeId, name]);
     if (exists) return res.status(409).json({ error: 'Fornecedor já cadastrado nesta loja.' });
 
-    const info = await db.execute('INSERT INTO stock_suppliers (store_id, name, contact_info, notes) VALUES ($1, $2, $3, $4) RETURNING id', [
-      storeId, name, contactInfo || null, notes || null
+    if (document) {
+      const cleanDoc = document.replace(/\D/g, '');
+      const dupDoc = await db.queryOne('SELECT id FROM stock_suppliers WHERE store_id = $1 AND document = $2', [storeId, cleanDoc]);
+      if (dupDoc) return res.status(409).json({ error: 'Já existe um fornecedor cadastrado com este CPF/CNPJ nesta loja.' });
+    }
+
+    const info = await db.execute(`
+      INSERT INTO stock_suppliers (
+        store_id, name, trade_name, person_type, document, state_registration,
+        phone, whatsapp, email, contact_name, contact_info,
+        postal_code, street, number, complement, neighborhood, city, state,
+        notes, is_active
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      RETURNING id
+    `, [
+      storeId, name, tradeName || null, personType, document ? document.replace(/\D/g, '') : null, stateReg || null,
+      phone || null, whatsapp || null, email || null, contactName || null, contactInfo || null,
+      normalizeName(b.postal_code) || null, normalizeName(b.street) || null, normalizeName(b.number) || null,
+      normalizeName(b.complement) || null, normalizeName(b.neighborhood) || null, normalizeName(b.city) || null,
+      normalizeName(b.state) || null, notes || null, b.is_active === false || b.is_active === 0 ? 0 : 1
     ]);
-    res.status(201).json(await db.queryOne('SELECT id, name, contact_info, notes, is_active FROM stock_suppliers WHERE id = $1', [info.id]));
+    res.status(201).json(await db.queryOne('SELECT * FROM stock_suppliers WHERE id = $1', [info.id]));
   } catch (err) {
     res.status(500).json({ error: 'Erro ao cadastrar fornecedor: ' + err.message });
   }
@@ -307,23 +401,64 @@ router.put('/suppliers/:id', async (req, res) => {
     const storeId = req.user.store_id || 1;
     const existing = await db.queryOne('SELECT * FROM stock_suppliers WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
     if (!existing) return res.status(404).json({ error: 'Fornecedor não encontrado nesta loja.' });
-    const name = normalizeName(req.body?.name ?? existing.name);
-    const contactInfo = normalizeName(req.body?.contact_info ?? existing.contact_info);
-    const notes = normalizeName(req.body?.notes ?? existing.notes);
-    if (!name) return res.status(400).json({ error: 'Nome do fornecedor é obrigatório.' });
+
+    const b = req.body || {};
+    const name = normalizeName(b.name ?? existing.name);
+    const document = b.document !== undefined ? normalizeName(b.document) : existing.document;
+    const phone = b.phone !== undefined ? normalizeName(b.phone) : existing.phone;
+    const whatsapp = b.whatsapp !== undefined ? normalizeName(b.whatsapp) : existing.whatsapp;
+    const email = b.email !== undefined ? normalizeName(b.email) : existing.email;
+    const contactInfo = normalizeName(b.contact_info ?? existing.contact_info) || phone || whatsapp || email || '';
+    const notes = normalizeName(b.notes ?? existing.notes);
+
+    if (!name) return res.status(400).json({ error: 'Nome / Razão social do fornecedor é obrigatório.' });
     if (name.length > 200 || contactInfo.length > 100 || notes.length > 1000) {
       return res.status(400).json({ error: 'Dados do fornecedor excedem o tamanho permitido.' });
     }
+    if (document && !isValidCpfOrCnpj(document)) {
+      return res.status(400).json({ error: 'CPF ou CNPJ inválido.' });
+    }
+
     const duplicate = await db.queryOne('SELECT id FROM stock_suppliers WHERE store_id = $1 AND lower(name) = lower($2) AND id <> $3', [storeId, name, req.params.id]);
     if (duplicate) return res.status(409).json({ error: 'Fornecedor já cadastrado nesta loja.' });
 
-    await db.execute('UPDATE stock_suppliers SET name = $1, contact_info = $2, notes = $3, is_active = $4 WHERE id = $5 AND store_id = $6', [
-      name, contactInfo || null, notes || null,
-      req.body?.is_active === undefined ? existing.is_active : (req.body.is_active ? 1 : 0),
+    const cleanDoc = document ? document.replace(/\D/g, '') : null;
+    if (cleanDoc) {
+      const dupDoc = await db.queryOne('SELECT id FROM stock_suppliers WHERE store_id = $1 AND document = $2 AND id <> $3', [storeId, cleanDoc, req.params.id]);
+      if (dupDoc) return res.status(409).json({ error: 'Já existe um fornecedor cadastrado com este CPF/CNPJ nesta loja.' });
+    }
+
+    await db.execute(`
+      UPDATE stock_suppliers SET
+        name = $1, trade_name = $2, person_type = $3, document = $4, state_registration = $5,
+        phone = $6, whatsapp = $7, email = $8, contact_name = $9, contact_info = $10,
+        postal_code = $11, street = $12, number = $13, complement = $14, neighborhood = $15,
+        city = $16, state = $17, notes = $18, is_active = $19, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $20 AND store_id = $21
+    `, [
+      name,
+      b.trade_name !== undefined ? (normalizeName(b.trade_name) || null) : existing.trade_name,
+      b.person_type === 'PF' ? 'PF' : (b.person_type === 'PJ' ? 'PJ' : (existing.person_type || 'PJ')),
+      cleanDoc,
+      b.state_registration !== undefined ? (normalizeName(b.state_registration) || null) : existing.state_registration,
+      phone || null,
+      whatsapp || null,
+      email || null,
+      b.contact_name !== undefined ? (normalizeName(b.contact_name) || null) : existing.contact_name,
+      contactInfo || null,
+      b.postal_code !== undefined ? (normalizeName(b.postal_code) || null) : existing.postal_code,
+      b.street !== undefined ? (normalizeName(b.street) || null) : existing.street,
+      b.number !== undefined ? (normalizeName(b.number) || null) : existing.number,
+      b.complement !== undefined ? (normalizeName(b.complement) || null) : existing.complement,
+      b.neighborhood !== undefined ? (normalizeName(b.neighborhood) || null) : existing.neighborhood,
+      b.city !== undefined ? (normalizeName(b.city) || null) : existing.city,
+      b.state !== undefined ? (normalizeName(b.state) || null) : existing.state,
+      notes || null,
+      b.is_active === undefined ? existing.is_active : (b.is_active ? 1 : 0),
       req.params.id,
       storeId
     ]);
-    res.json(await db.queryOne('SELECT id, name, contact_info, notes, is_active FROM stock_suppliers WHERE id = $1', [req.params.id]));
+    res.json(await db.queryOne('SELECT * FROM stock_suppliers WHERE id = $1', [req.params.id]));
   } catch (err) {
     res.status(500).json({ error: 'Erro ao atualizar fornecedor: ' + err.message });
   }
@@ -334,6 +469,11 @@ router.delete('/suppliers/:id', requireRole('admin'), async (req, res) => {
     const storeId = req.user.store_id || 1;
     const existing = await db.queryOne('SELECT * FROM stock_suppliers WHERE id = $1 AND (store_id = $2 OR store_id IS NULL)', [req.params.id, storeId]);
     if (!existing) return res.status(404).json({ error: 'Fornecedor não encontrado nesta loja.' });
+
+    const purchaseCountRow = await db.queryOne('SELECT COUNT(*) as n FROM purchases WHERE supplier_id = $1 AND store_id = $2', [req.params.id, storeId]);
+    if (Number(purchaseCountRow?.n || 0) > 0) {
+      return res.status(409).json({ error: 'Este fornecedor possui compras vinculadas e não pode ser excluído permanentemente. Utilize a opção Inativar.' });
+    }
 
     const prodCountRow = await db.queryOne('SELECT COUNT(*) as n FROM stock_products WHERE supplier_id = $1 AND (store_id = $2 OR store_id IS NULL)', [req.params.id, storeId]);
     const soCountRow = await db.queryOne('SELECT COUNT(*) as n FROM service_orders WHERE supplier_id = $1 AND (store_id = $2 OR store_id IS NULL)', [req.params.id, storeId]);

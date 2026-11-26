@@ -109,7 +109,7 @@ export default function Purchases() {
   async function loadDependencies() {
     try {
       const [supRes, prodRes, catRes, custRes] = await Promise.all([
-        api.get('/inventory/suppliers'),
+        api.get('/inventory/suppliers', { params: { active_only: 'true' } }),
         api.get('/inventory/products', { params: { active_only: 'true' } }),
         api.get('/inventory/categories'),
         api.get('/customers', { params: { limit: 200 } }),

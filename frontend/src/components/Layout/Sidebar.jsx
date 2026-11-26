@@ -5,7 +5,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Wrench, ShieldCheck, HandCoins, X, Smartphone, NotebookPen,
   ReceiptText, ShoppingCart, Boxes, FolderArchive, Banknote, Shield, Settings,
-  User, Bell, UserCircle, LogOut, Percent, ShoppingBag
+  User, Bell, UserCircle, LogOut, Percent, ShoppingBag, Truck
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useBodyScrollLock } from '../UI/ModalFrame'
@@ -86,6 +86,7 @@ export default function Sidebar({ open, onClose }) {
       items.push({ to: '/caixa', label: 'Retiradas de Caixa', icon: Banknote })
     }
     if (section.title === 'Estoque e Vendas' && isAdmin) {
+      items.unshift({ to: '/fornecedores', label: 'Fornecedores', icon: Truck })
       items.unshift({ to: '/compras', label: 'Compras', icon: ShoppingBag })
     }
 

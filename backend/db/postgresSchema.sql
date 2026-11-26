@@ -181,6 +181,23 @@ CREATE TABLE IF NOT EXISTS stock_suppliers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_stock_suppliers_store ON stock_suppliers(store_id);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS trade_name VARCHAR(255);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS person_type VARCHAR(8) DEFAULT 'PJ';
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS document VARCHAR(32);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS state_registration VARCHAR(64);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS phone VARCHAR(32);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(32);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS email VARCHAR(255);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS contact_name VARCHAR(255);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS postal_code VARCHAR(16);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS street VARCHAR(255);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS number VARCHAR(32);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS complement VARCHAR(120);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS neighborhood VARCHAR(120);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(120);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS state VARCHAR(16);
+ALTER TABLE stock_suppliers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_stock_suppliers_document ON stock_suppliers(store_id, document);
 
 -- ----------------------------------------------------------------------------
 -- 11. CATEGORIAS DE ESTOQUE

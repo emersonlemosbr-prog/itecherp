@@ -40,6 +40,7 @@ const CompatibleScreenProtectors = lazy(() => import('./pages/CompatibleScreenPr
 const CashWithdrawals = lazy(() => import('./pages/CashWithdrawals'))
 const Purchases = lazy(() => import('./pages/Purchases'))
 const AccountsPayable = lazy(() => import('./pages/AccountsPayable'))
+const Suppliers = lazy(() => import('./pages/Suppliers'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Users = lazy(() => import('./pages/Users'))
 const Notes = lazy(() => import('./pages/Notes'))
@@ -167,6 +168,7 @@ export default function App() {
                   <Route path="/vendas" element={<Sales />} />
                   <Route path="/estoque" element={<InventoryControl />} />
                   <Route path="/compras" element={<Protected adminOnly><Purchases /></Protected>} />
+                  <Route path="/fornecedores" element={<Protected adminOnly><Suppliers /></Protected>} />
                   <Route path="/anotacoes" element={<Notes />} />
                   <Route path="/removedor-virus" element={<VirusRemover />} />
                   <Route path="/caixa" element={<Protected adminOnly><CashWithdrawals /></Protected>} />

@@ -656,6 +656,22 @@ function initSqliteTestSchema(db) {
   };
 
   ensureColumn('stock_categories', 'is_active', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('stock_suppliers', 'trade_name', 'TEXT');
+  ensureColumn('stock_suppliers', 'person_type', "TEXT DEFAULT 'PJ'");
+  ensureColumn('stock_suppliers', 'document', 'TEXT');
+  ensureColumn('stock_suppliers', 'state_registration', 'TEXT');
+  ensureColumn('stock_suppliers', 'phone', 'TEXT');
+  ensureColumn('stock_suppliers', 'whatsapp', 'TEXT');
+  ensureColumn('stock_suppliers', 'email', 'TEXT');
+  ensureColumn('stock_suppliers', 'contact_name', 'TEXT');
+  ensureColumn('stock_suppliers', 'postal_code', 'TEXT');
+  ensureColumn('stock_suppliers', 'street', 'TEXT');
+  ensureColumn('stock_suppliers', 'number', 'TEXT');
+  ensureColumn('stock_suppliers', 'complement', 'TEXT');
+  ensureColumn('stock_suppliers', 'neighborhood', 'TEXT');
+  ensureColumn('stock_suppliers', 'city', 'TEXT');
+  ensureColumn('stock_suppliers', 'state', 'TEXT');
+  ensureColumn('stock_suppliers', 'updated_at', 'TEXT');
   ensureColumn('stock_levels', 'updated_at', 'TEXT');
   ensureColumn('service_order_photos', 'original_name', 'TEXT');
   ensureColumn('service_order_photos', 'mime_type', 'TEXT');
