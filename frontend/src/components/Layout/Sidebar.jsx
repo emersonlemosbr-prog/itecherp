@@ -107,11 +107,11 @@ export default function Sidebar({ open, onClose }) {
           <button className="btn-ghost md:hidden !px-2.5 !py-2 text-slate-600 dark:text-zinc-300" onClick={onClose} aria-label="Fechar menu"><X size={20} /></button>
         </div>
 
-        <nav className="flex-1 min-h-0 p-3.5 space-y-4 overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y">
+        <nav className="flex-1 min-h-0 px-3 py-2.5 space-y-3 overflow-y-auto overflow-x-hidden overscroll-contain touch-pan-y">
           {sections.map(section => (
-            <div key={section.title} className="space-y-2">
+            <div key={section.title} className="space-y-1">
               <p className="sidebar-section-title">{section.title}</p>
-              <div className="space-y-1.5">
+              <div className="space-y-0.5">
                 {section.items.map(({ to, label, icon: Icon, end }) => (
                   <NavLink
                     key={to}
@@ -120,7 +120,7 @@ export default function Sidebar({ open, onClose }) {
                     onClick={onClose}
                     className={({ isActive }) => `sidebar-link ${isActive ? 'sidebar-link-active' : ''}`}
                   >
-                    <Icon size={18} />
+                    <Icon size={15} className="shrink-0" />
                     <span>{label}</span>
                   </NavLink>
                 ))}
@@ -129,13 +129,13 @@ export default function Sidebar({ open, onClose }) {
           ))}
 
           {isAdmin && (
-            <div className="pt-2">
+            <div className="pt-1.5 border-t border-slate-200/70 dark:border-white/5">
               <NavLink
                 to="/configuracoes"
                 onClick={onClose}
                 className={({ isActive }) => `sidebar-link ${isActive ? "sidebar-link-active" : ""}`}
               >
-                <Settings size={18} />
+                <Settings size={15} className="shrink-0" />
                 <span>Configurações da Loja</span>
               </NavLink>
             </div>
