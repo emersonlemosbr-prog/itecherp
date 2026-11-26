@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "cd backend && npm run dev",
     "postinstall": "cd backend && npm install",
-    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install",
+    "build": "cd frontend && npm install && npm run build && cd .. && node scripts/syncFrontendDist.js && cd backend && npm install",
     "test": "cd backend && npm test"
   },
   "dependencies": {},

@@ -349,6 +349,11 @@ html.dark .sidebar-link-active {
   box-shadow: none !important;
 }
 
+.sidebar-link-active:hover,
+html.dark .sidebar-link-active:hover {
+  color: var(--brand-primary, #0F172A) !important;
+}
+
 .sidebar-collapse-button {
   display: flex;
   width: 100%;
