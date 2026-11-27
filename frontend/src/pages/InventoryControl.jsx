@@ -1,4 +1,5 @@
 import { confirmRecordDeletion } from '../utils/confirmDeletion'
+import MobileRecordCard from '../components/MobileRecordCard'
 import Access from '../components/UI/Access'
 import { usePagination } from '../components/UI/Pagination'
 import ModalFrame from '../components/UI/ModalFrame'
@@ -11,6 +12,7 @@ import {
 import api, { getApiBaseUrl } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/format';
+import useDebounce from '../hooks/useDebounce';
 
 const MOVEMENT_LABELS = {
   entry: 'Entrada',
@@ -44,6 +46,8 @@ export default function InventoryControl() {
     out_of_stock: false,
   });
 
+  const debouncedQ = useDebounce(filters.q, 300);
+
   const [stats, setStats] = useState(null);
   const [products, setProducts] = useState([]);
   const pagination = usePagination(products)
@@ -60,12 +64,12 @@ export default function InventoryControl() {
   const [imagePreview, setImagePreview] = useState(null);
 
   const queryParams = useMemo(() => ({
-    q: filters.q || undefined,
+    q: debouncedQ || undefined,
     category_id: filters.category_id || undefined,
     supplier_id: filters.supplier_id || undefined,
     low_stock: filters.low_stock || undefined,
     out_of_stock: filters.out_of_stock || undefined,
-  }), [filters]);
+  }), [debouncedQ, filters.category_id, filters.supplier_id, filters.low_stock, filters.out_of_stock]);
 
   const loadDashboard = useCallback(async () => {
     const { data } = await api.get('/inventory/dashboard');
@@ -78,9 +82,9 @@ export default function InventoryControl() {
   }, [queryParams]);
 
   const loadMovements = useCallback(async () => {
-    const { data } = await api.get('/inventory/movements', { params: { q: filters.q || undefined } });
+    const { data } = await api.get('/inventory/movements', { params: { q: debouncedQ || undefined } });
     setMovements(data);
-  }, [filters.q]);
+  }, [debouncedQ]);
 
   const loadOptions = useCallback(async () => {
     const [categoriesRes, suppliersRes] = await Promise.all([
@@ -242,7 +246,48 @@ export default function InventoryControl() {
         </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {pagination.rows.map((product) => {
+          const status = statusForProduct(product);
+          return (
+            <MobileRecordCard
+              key={product.id}
+              title={product.name}
+              subtitle={product.model || product.category_name || '—'}
+              badge={<span className={status.badge}>{status.label}</span>}
+              media={
+                product.image_url ? (
+                  <button type="button" onClick={() => setImagePreview(product)} className="block h-12 w-12 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+                    <img src={product.image_url} alt={product.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  </button>
+                ) : null
+              }
+              fields={[
+                { label: 'Código', value: product.code || '-' },
+                { label: 'Fornecedor', value: product.supplier_name || '—' },
+                { label: 'Custo', value: <Access>{formatCurrency(product.cost_price)}</Access> },
+                { label: 'Venda', value: <Access>{formatCurrency(product.sale_price)}</Access>, highlight: true },
+                { label: 'Estoque', value: `${product.quantity} (Mín: ${product.min_stock})` },
+                { label: 'Categoria', value: product.category_name || '—' },
+              ]}
+              actions={
+                <>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs flex items-center gap-1" onClick={() => openEditForm(product)}><Pencil size={13} /> Editar</button></Access>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs flex items-center gap-1" onClick={() => openStockAction('entry', product)}><ArrowUpCircle size={13} /> Entrada</button></Access>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-amber-500/10 text-amber-500 text-xs flex items-center gap-1" onClick={() => openStockAction('exit', product)}><ArrowDownCircle size={13} /> Saída</button></Access>
+                  <button type="button" className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs flex items-center gap-1" onClick={() => openHistory(product)}><History size={13} /> Histórico</button>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-rose-500/10 text-rose-500 text-xs flex items-center gap-1" onClick={() => removeProduct(product)}><Trash2 size={13} /> Excluir</button></Access>
+                </>
+              }
+            />
+          );
+        })}
+        {products.length === 0 && (
+          <div className="card p-6 text-center text-xs text-slate-400">Nenhum produto encontrado.</div>
+        )}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -272,7 +317,7 @@ export default function InventoryControl() {
                 return (
                   <tr key={product.id} className={`border-b border-slate-50 dark:border-ink-700/50 ${rowClass}`}>
                     <td className="px-3 py-2.5">
-                      {product.image_url ? <button type="button" onClick={() => setImagePreview(product)} className="block h-11 w-11 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"><img src={product.image_url} alt={product.name} className="h-full w-full object-cover" /></button> : <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-[10px] text-slate-400 dark:bg-ink-700">Sem foto</span>}
+                      {product.image_url ? <button type="button" onClick={() => setImagePreview(product)} className="block h-11 w-11 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"><img src={product.image_url} alt={product.name} loading="lazy" decoding="async" className="h-full w-full object-cover" /></button> : <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 text-[10px] text-slate-400 dark:bg-ink-700">Sem foto</span>}
                     </td>
                     <td className="px-3 py-2.5 font-medium">{product.code}</td>
                     <td className="px-3 py-2.5">
@@ -306,7 +351,48 @@ export default function InventoryControl() {
         </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {pagination.rows.map((product) => {
+          const status = statusForProduct(product);
+          return (
+            <MobileRecordCard
+              key={product.id}
+              title={product.name}
+              subtitle={product.model || product.category_name || '—'}
+              badge={<span className={status.badge}>{status.label}</span>}
+              media={
+                product.image_url ? (
+                  <button type="button" onClick={() => setImagePreview(product)} className="block h-12 w-12 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+                    <img src={product.image_url} alt={product.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  </button>
+                ) : null
+              }
+              fields={[
+                { label: 'Código', value: product.code || '-' },
+                { label: 'Fornecedor', value: product.supplier_name || '—' },
+                { label: 'Custo', value: <Access>{formatCurrency(product.cost_price)}</Access> },
+                { label: 'Venda', value: <Access>{formatCurrency(product.sale_price)}</Access>, highlight: true },
+                { label: 'Estoque', value: `${product.quantity} (Mín: ${product.min_stock})` },
+                { label: 'Categoria', value: product.category_name || '—' },
+              ]}
+              actions={
+                <>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs flex items-center gap-1" onClick={() => openEditForm(product)}><Pencil size={13} /> Editar</button></Access>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs flex items-center gap-1" onClick={() => openStockAction('entry', product)}><ArrowUpCircle size={13} /> Entrada</button></Access>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-amber-500/10 text-amber-500 text-xs flex items-center gap-1" onClick={() => openStockAction('exit', product)}><ArrowDownCircle size={13} /> Saída</button></Access>
+                  <button type="button" className="px-2 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs flex items-center gap-1" onClick={() => openHistory(product)}><History size={13} /> Histórico</button>
+                  <Access><button type="button" className="px-2 py-1.5 rounded-lg bg-rose-500/10 text-rose-500 text-xs flex items-center gap-1" onClick={() => removeProduct(product)}><Trash2 size={13} /> Excluir</button></Access>
+                </>
+              }
+            />
+          );
+        })}
+        {products.length === 0 && (
+          <div className="card p-6 text-center text-xs text-slate-400">Nenhum produto encontrado.</div>
+        )}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="px-4 py-3 border-b border-slate-100 dark:border-ink-700">
           <h3 className="font-semibold text-sm">Movimentações de Estoque</h3>
         </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import MobileRecordCard from '../components/MobileRecordCard'
 import {
   ReceiptText, Plus, Search, CheckCircle2, AlertCircle, Clock, DollarSign, X, Ban
 } from 'lucide-react'
@@ -233,7 +234,47 @@ export default function AccountsPayable() {
             </div>
           </div>
 
-          <div className="card overflow-hidden">
+          <div className="md:hidden space-y-3">
+            {loading ? (
+              <div className="card p-6 text-center text-xs text-zinc-400">Carregando...</div>
+            ) : items.length === 0 ? (
+              <div className="card p-6 text-center text-xs text-zinc-400">Nenhuma conta encontrada.</div>
+            ) : items.map(it => (
+              <MobileRecordCard
+                key={it.id}
+                title={it.description}
+                subtitle={it.supplier_name || 'Sem fornecedor'}
+                badge={
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    it.status === 'paid' ? 'bg-emerald-500/15 text-emerald-400' :
+                    it.status === 'overdue' ? 'bg-rose-500/15 text-rose-400' :
+                    'bg-amber-500/15 text-amber-400'
+                  }`}>
+                    {it.status === 'paid' ? 'Pago' : it.status === 'overdue' ? 'Vencido' : 'Em aberto'}
+                  </span>
+                }
+                fields={[
+                  { label: 'Parcela', value: `${it.installment_number}/${it.total_installments}` },
+                  { label: 'Vencimento', value: String(it.due_date || '').slice(0, 10) },
+                  { label: 'Valor', value: formatMoney(it.amount), highlight: true },
+                  { label: 'Pagamento', value: it.paid_at ? String(it.paid_at).slice(0, 10) : '-' },
+                ]}
+                actions={
+                  it.status !== 'paid' && it.status !== 'canceled' ? (
+                    <button
+                      type="button"
+                      onClick={() => { setPayModal(it); setPayDate(new Date().toISOString().slice(0, 10)); setPayMethod('pix'); setPayNotes('') }}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 text-xs font-semibold"
+                    >
+                      Dar baixa
+                    </button>
+                  ) : null
+                }
+              />
+            ))}
+          </div>
+
+          <div className="card overflow-hidden hidden md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-white/5 text-zinc-400 uppercase text-[10px]">

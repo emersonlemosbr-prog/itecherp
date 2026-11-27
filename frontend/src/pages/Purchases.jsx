@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import MobileRecordCard from '../components/MobileRecordCard'
 import {
   ShoppingBag, Plus, Search, Trash2, PackagePlus, Smartphone, Boxes,
   Calendar, DollarSign, CheckCircle2, AlertCircle, X, Eye, Pencil, Ban
@@ -505,13 +506,77 @@ export default function Purchases() {
               <option value="cash">À vista</option>
               <option value="installments">A prazo</option>
             </select>
-            <div className="flex gap-1.5">
-              <input type="date" className="input w-1/2" value={startDate} onChange={e => setStartDate(e.target.value)} title="Data inicial" />
-              <input type="date" className="input w-1/2" value={endDate} onChange={e => setEndDate(e.target.value)} title="Data final" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:col-span-2 lg:col-span-1">
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">📅 Data inicial</label>
+                <input type="date" className="input w-full" value={startDate} onChange={e => setStartDate(e.target.value)} title="Data inicial" />
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">📅 Data final</label>
+                <input type="date" className="input w-full" value={endDate} onChange={e => setEndDate(e.target.value)} title="Data final" />
+              </div>
             </div>
           </div>
 
-          <div className="card overflow-hidden">
+          <div className="md:hidden space-y-3">
+            {loading ? (
+              <div className="card p-6 text-center text-xs text-zinc-400">Carregando compras...</div>
+            ) : purchases.length === 0 ? (
+              <div className="card p-6 text-center text-xs text-zinc-400">Nenhuma compra registrada no período.</div>
+            ) : purchases.map(p => (
+              <MobileRecordCard
+                key={p.id}
+                title={p.purchase_number}
+                subtitle={p.origin_type === 'customer_trade' ? `Cliente: ${p.customer_name}` : p.supplier_name}
+                badge={
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                    p.payment_condition === 'cash'
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'bg-amber-500/15 text-amber-400'
+                  }`}>
+                    {p.payment_condition === 'cash' ? 'À vista' : `A prazo (${p.installments_count}x)`}
+                  </span>
+                }
+                fields={[
+                  { label: 'Data', value: String(p.purchase_date).slice(0, 10) },
+                  { label: 'Nota Fiscal', value: p.invoice_number || '-' },
+                  { label: 'Valor Total', value: formatMoney(p.total_amount), highlight: true },
+                  { label: 'Situação', value: p.status === 'canceled' ? 'Cancelada' : 'Confirmada' },
+                ]}
+                actions={
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openDetail(p.id)}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1"
+                    >
+                      <Eye size={14} /> Visualizar
+                    </button>
+                    {p.status !== 'canceled' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditPurchase(p.id)}
+                          className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1"
+                        >
+                          <Pencil size={14} /> Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setError(''); setCancelModal(p); setCancelReason('') }}
+                          className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs flex items-center gap-1"
+                        >
+                          <Ban size={14} /> Cancelar
+                        </button>
+                      </>
+                    )}
+                  </>
+                }
+              />
+            ))}
+          </div>
+
+          <div className="card overflow-hidden hidden md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-zinc-400 uppercase text-[10px]">

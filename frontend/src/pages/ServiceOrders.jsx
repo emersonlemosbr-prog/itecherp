@@ -1,4 +1,5 @@
 import Access from '../components/UI/Access'
+import MobileRecordCard from '../components/MobileRecordCard'
 import { useSettings } from '../context/SettingsContext'
 import React, { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
@@ -9,22 +10,24 @@ import {
   STATUS_LABELS, STATUS_BADGE, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_BADGE,
   formatCurrency, formatDate
 } from '../utils/format'
+import useDebounce from '../hooks/useDebounce'
 
 export default function ServiceOrders() {
   const { settings } = useSettings()
   const [page, setPage] = useState(1)
   const { isAdmin, isSuspended } = useAuth()
   const [q, setQ] = useState('')
+  const debouncedQ = useDebounce(q, 300)
   const [status, setStatus] = useState('')
   const [orders, setOrders] = useState([])
 
   const load = useCallback(async () => {
-    const { data } = await api.get('/service-orders', { params: { q: q || undefined, status: status || undefined } })
+    const { data } = await api.get('/service-orders', { params: { q: debouncedQ || undefined, status: status || undefined } })
     setOrders(data)
-  }, [q, status])
+  }, [debouncedQ, status])
 
-  useEffect(() => setPage(1), [q, status, settings.system.page_size])
-  useEffect(() => { const t = setTimeout(load, 200); return () => clearTimeout(t) }, [load])
+  useEffect(() => setPage(1), [debouncedQ, status, settings.system.page_size])
+  useEffect(() => { load() }, [load])
 
   async function handleDelete(id) {
     if (isSuspended) {
@@ -68,8 +71,37 @@ export default function ServiceOrders() {
       </div>
 
       <div className="flex gap-3 items-center text-sm"><button className="btn-secondary" disabled={page<=1} onClick={()=>setPage(p=>p-1)}>Anterior</button><span>Página {page}</span><button className="btn-secondary" disabled={page*settings.system.page_size>=orders.length} onClick={()=>setPage(p=>p+1)}>Próxima</button></div>
-      <p className="text-xs text-slate-500 md:hidden">Deslize a tabela para os lados para ver todas as colunas e ações.</p>
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {orders.slice((page-1)*settings.system.page_size,page*settings.system.page_size).map(o => (
+          <MobileRecordCard
+            key={o.id}
+            title={`OS #${o.order_number}`}
+            subtitle={`${o.first_name || ''} ${o.last_name || ''}`.trim()}
+            badge={<span className={STATUS_BADGE[o.status]}>{STATUS_LABELS[o.status]}</span>}
+            fields={[
+              { label: 'Aparelho', value: `${o.brand || ''} ${o.model || ''}`.trim() || '-' },
+              ...(isAdmin ? [{ label: 'Valor', value: formatCurrency(o.service_price), highlight: true }] : []),
+              { label: 'Defeito / Serviço', value: o.description || '-', fullWidth: true },
+              { label: 'Entrada', value: formatDate(o.entry_date) },
+              { label: 'Entrega', value: formatDate(o.delivery_date) },
+              ...(isAdmin ? [{ label: 'Pagamento', value: <span className={PAYMENT_STATUS_BADGE[o.payment_status]}>{PAYMENT_STATUS_LABELS[o.payment_status]}</span> }] : []),
+            ]}
+            actions={
+              <>
+                <Link to={`/ordens/${o.id}`} className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1"><Eye size={14} /> Ver</Link>
+                <Access permission="edit_order"><Link to={`/ordens/${o.id}/editar`} className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1"><Pencil size={14} /> Editar</Link></Access>
+                <Access permission="printing"><Link to={`/ordens/${o.id}/imprimir`} className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1"><Printer size={14} /> Imprimir</Link></Access>
+                {isAdmin && <button type="button" className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs flex items-center gap-1" onClick={() => handleDelete(o.id)}><Trash2 size={14} /> Excluir</button>}
+              </>
+            }
+          />
+        ))}
+        {orders.length === 0 && (
+          <div className="card p-6 text-center text-xs text-slate-400">Nenhuma ordem de serviço encontrada.</div>
+        )}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela com rolagem horizontal"><table className="service-orders-table w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">

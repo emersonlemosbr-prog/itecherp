@@ -1,4 +1,5 @@
 import Access from '../components/UI/Access'
+import MobileRecordCard from '../components/MobileRecordCard'
 import { usePagination } from '../components/UI/Pagination'
 import React, { useEffect, useState, useCallback } from 'react'
 import { Search, ShieldAlert, ShieldCheck } from 'lucide-react'
@@ -51,7 +52,34 @@ export default function Warranties() {
         <input className="input pl-9" placeholder="Buscar por cliente, OS ou aparelho..." value={q} onChange={e => setQ(e.target.value)} />
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {pagination.rows.map(w => {
+          const expired = w.warranty_end < today
+          return (
+            <MobileRecordCard
+              key={w.id}
+              title={`OS #${w.order_number}`}
+              subtitle={`${w.first_name} ${w.last_name}`}
+              badge={
+                expired
+                  ? <span className="badge-slate">Expirada</span>
+                  : <span className="badge-green flex items-center gap-1 w-fit"><ShieldCheck size={12} /> Ativa</span>
+              }
+              fields={[
+                { label: 'Aparelho', value: `${w.brand || ''} ${w.model || ''}`.trim() || '-' },
+                { label: 'Retirada', value: formatDate(w.pickup_date) },
+                { label: 'Início', value: formatDate(w.warranty_start) },
+                { label: 'Fim', value: formatDate(w.warranty_end) },
+              ]}
+            />
+          )
+        })}
+        {warranties.length === 0 && (
+          <div className="card p-6 text-center text-xs text-slate-400">Nenhuma garantia registrada ainda.</div>
+        )}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela com rolagem horizontal"><table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">

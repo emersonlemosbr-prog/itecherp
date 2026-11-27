@@ -1,4 +1,5 @@
 import { useSettings } from '../context/SettingsContext'
+import MobileRecordCard from '../components/MobileRecordCard'
 import ModalFrame from '../components/UI/ModalFrame'
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Plus, Minus, Trash2, ShoppingCart, CheckCircle2, Undo2, ShieldAlert } from 'lucide-react';
@@ -246,7 +247,41 @@ export default function Sales() {
               />
             </div>
 
-            <div className="table-scroll overflow-x-auto">
+            <div className="md:hidden space-y-2.5">
+              {products.map((product) => (
+                <MobileRecordCard
+                  key={product.id}
+                  title={product.name}
+                  subtitle={`${product.code}${product.model ? ` • ${product.model}` : ''}`}
+                  badge={
+                    (Number(product.quantity) || 0) > 0 ? (
+                      <span className="badge-green">{product.quantity} disp.</span>
+                    ) : (
+                      <span className="badge-red">Sem estoque</span>
+                    )
+                  }
+                  fields={[
+                    { label: 'Categoria', value: product.category_name || 'Sem categoria' },
+                    { label: 'Preço', value: formatCurrency(product.sale_price), highlight: true },
+                  ]}
+                  actions={
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs"
+                      onClick={() => addProduct(product)}
+                      disabled={(Number(product.quantity) || 0) <= 0}
+                    >
+                      <Plus size={14} /> Adicionar à venda
+                    </button>
+                  }
+                />
+              ))}
+              {products.length === 0 && (
+                <p className="py-6 text-center text-xs text-slate-400">Nenhum produto encontrado.</p>
+              )}
+            </div>
+
+            <div className="table-scroll overflow-x-auto hidden md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">
@@ -296,7 +331,32 @@ export default function Sales() {
             <div className="px-4 py-3 border-b border-slate-100 dark:border-ink-700">
               <h3 className="font-semibold text-sm">Histórico de Vendas</h3>
             </div>
-            <div className="table-scroll overflow-x-auto">
+            <div className="md:hidden space-y-2.5 p-3">
+              {history.map((sale) => (
+                <MobileRecordCard
+                  key={sale.id}
+                  title={sale.sale_number}
+                  subtitle={formatDateTime(sale.created_at)}
+                  badge={<span className="text-xs font-bold text-[#FFBE0B]">{formatCurrency(sale.total_amount)}</span>}
+                  fields={[
+                    { label: 'Pagamento', value: PAYMENT_LABELS[sale.payment_method] || sale.payment_method },
+                    { label: 'Produtos', value: sale.products_summary || '—', fullWidth: true },
+                  ]}
+                  actions={
+                    isAdmin ? (
+                      <button type="button" className="btn-danger text-xs" onClick={() => openCancelModal(sale)}>
+                        <Undo2 size={14} /> Desfazer venda
+                      </button>
+                    ) : null
+                  }
+                />
+              ))}
+              {history.length === 0 && (
+                <p className="py-6 text-center text-xs text-slate-400">Nenhuma venda realizada ainda.</p>
+              )}
+            </div>
+
+            <div className="table-scroll overflow-x-auto hidden md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">

@@ -539,7 +539,55 @@ export default function DeviceSale() {
                   <Package size={16} className="text-brand-600" /> Produtos
                 </div>
 
-                <div className="table-scroll overflow-x-auto rounded-xl border border-slate-200 dark:border-[#4A4A4A]">
+                <div className="md:hidden space-y-3">
+                  {form.items.map((row, index) => {
+                    const subtotal = buildRowSubtotal(row)
+                    return (
+                      <div key={row.id} className="card p-3.5 space-y-2.5 border border-slate-200 dark:border-[#4A4A4A]">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">Item #{index + 1}</span>
+                          <button type="button" className="btn-ghost !px-2 !py-1 text-rose-600" onClick={() => removeItem(index)} disabled={form.items.length === 1}>
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">Item</label>
+                          <input className="input w-full" value={row.item} onChange={(e) => updateItem(index, 'item', e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">Produto</label>
+                          <div className="flex items-center gap-1.5">
+                            <input className="input flex-1 min-w-0" value={row.product} onChange={(e) => updateItem(index, 'product', e.target.value)} placeholder="Descreva o aparelho ou selecione" />
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPicker(index)}
+                              className="p-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 rounded-xl border border-yellow-500/30 shrink-0"
+                              title="Buscar do estoque de Aparelhos"
+                            >
+                              <Smartphone size={16} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">Quantidade</label>
+                            <input type="number" min="0" step="1" className="input w-full" value={row.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase tracking-wider text-slate-400 mb-1">Valor Unitário</label>
+                            <input type="number" min="0" step="0.01" className="input w-full" value={row.unit_price} onChange={(e) => updateItem(index, 'unit_price', e.target.value)} />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-slate-200 dark:border-white/10 text-xs">
+                          <span className="text-slate-400">Subtotal</span>
+                          <strong className="text-[#FFBE0B]">{formatCurrency(subtotal)}</strong>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="table-scroll overflow-x-auto rounded-xl border border-slate-200 dark:border-[#4A4A4A] hidden md:block">
                   <table className="w-full text-sm min-w-[780px]">
                     <thead>
                       <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 bg-slate-50 dark:bg-[#232323] border-b border-slate-200 dark:border-[#4A4A4A]">

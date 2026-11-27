@@ -1,4 +1,5 @@
 import { confirmRecordDeletion } from '../utils/confirmDeletion'
+import MobileRecordCard from '../components/MobileRecordCard'
 import ModalFrame from '../components/UI/ModalFrame'
 import React, { useEffect, useState, useCallback } from 'react'
 import { Search, Check, Plus, X, Trash2 } from 'lucide-react'
@@ -53,7 +54,40 @@ export default function CreditAccounts() {
         </select>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {accounts.map(a => (
+          <MobileRecordCard
+            key={a.id}
+            title={`${a.first_name} ${a.last_name}`}
+            subtitle={a.order_number ? `OS ${a.order_number}` : 'Sem OS'}
+            badge={a.status === 'open' ? <span className="badge-yellow">Em Aberto</span> : <span className="badge-green">Pago</span>}
+            fields={[
+              { label: 'Valor', value: formatCurrency(a.amount), highlight: true },
+              { label: 'Data', value: formatDate(a.pickup_date || a.created_at) },
+              ...(a.description ? [{ label: 'Descrição', value: a.description, fullWidth: true }] : []),
+            ]}
+            actions={
+              <>
+                {a.status === 'open' && (
+                  <button type="button" className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs flex items-center gap-1" onClick={() => markPaid(a.id)}>
+                    <Check size={14} /> Marcar pago
+                  </button>
+                )}
+                {isAdmin && (
+                  <button type="button" className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-500 text-xs flex items-center gap-1" onClick={() => remove(a.id)}>
+                    <Trash2 size={14} /> Excluir
+                  </button>
+                )}
+              </>
+            }
+          />
+        ))}
+        {accounts.length === 0 && (
+          <div className="card p-6 text-center text-xs text-slate-400">Nenhum fiado registrado.</div>
+        )}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela com rolagem horizontal"><table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">

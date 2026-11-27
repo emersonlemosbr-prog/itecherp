@@ -1,4 +1,5 @@
 import { useSettings } from '../context/SettingsContext'
+import MobileRecordCard from '../components/MobileRecordCard'
 import { getSaoPauloDateString } from '../utils/date'
 import React, { useEffect, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
@@ -559,7 +560,34 @@ export default function Dashboard() {
           <p className="font-semibold text-sm text-[var(--text-main)]">Ordens de Serviço Recentes</p>
           <Link to="/ordens" className="text-sm text-[var(--accent-blue)] font-medium hover:text-[var(--accent-purple)]">Ver todas</Link>
         </div>
-        <div className="table-scroll overflow-x-auto">
+        <div className="md:hidden p-3 space-y-2.5">
+          {orders.map(o => (
+            <MobileRecordCard
+              key={o.id}
+              title={`OS #${o.order_number}`}
+              subtitle={`${o.first_name || ''} ${o.last_name || ''}`.trim()}
+              badge={<span className={STATUS_BADGE[o.status]}>{STATUS_LABELS[o.status]}</span>}
+              fields={[
+                { label: 'Aparelho', value: `${o.brand || ''} ${o.model || ''}`.trim() || '-' },
+                { label: 'Total', value: displayCurrency(o.service_price), highlight: true },
+                { label: 'Pagamento', value: <span className={PAYMENT_STATUS_BADGE[o.payment_status]}>{PAYMENT_STATUS_LABELS[o.payment_status]}</span> },
+                { label: 'Entrada', value: formatDate(o.entry_date) },
+              ]}
+              actions={
+                <>
+                  <Link to={`/ordens/${o.id}`} className="btn-ghost !px-2 !py-1 text-xs flex items-center gap-1"><Eye size={14} /> Ver</Link>
+                  <Link to={`/ordens/${o.id}/editar`} className="btn-ghost !px-2 !py-1 text-xs flex items-center gap-1"><Pencil size={14} /> Editar</Link>
+                  <Link to={`/ordens/${o.id}/imprimir`} className="btn-ghost !px-2 !py-1 text-xs flex items-center gap-1"><Printer size={14} /> Imprimir</Link>
+                </>
+              }
+            />
+          ))}
+          {orders.length === 0 && (
+            <p className="py-6 text-center text-xs text-slate-400">Nenhuma ordem de serviço recente.</p>
+          )}
+        </div>
+
+        <div className="table-scroll overflow-x-auto hidden md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs uppercase border-b border-[var(--border-soft)]">

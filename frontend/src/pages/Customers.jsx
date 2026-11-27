@@ -1,4 +1,5 @@
 import Access from '../components/UI/Access'
+import MobileRecordCard from '../components/MobileRecordCard'
 import { usePagination } from '../components/UI/Pagination'
 import PermanentDeleteDialog from '../components/UI/PermanentDeleteDialog'
 import React, { useEffect, useState, useCallback } from 'react'
@@ -164,8 +165,39 @@ export default function Customers() {
         </div>
       </div>
 
+      {/* Cards Mobile de Clientes */}
+      <div className="md:hidden space-y-3">
+        {pagination.rows.map(c => (
+          <MobileRecordCard
+            key={c.id}
+            title={`#${c.id} ${c.first_name} ${c.last_name}`}
+            subtitle={c.cpf || 'Sem CPF'}
+            fields={[
+              { label: 'Telefone', value: c.phone || '—' },
+              { label: 'Cidade / UF', value: c.city ? `${c.city}${c.state ? ` - ${c.state}` : ''}` : (c.address || '—') },
+            ]}
+            actions={
+              <>
+                <Link to={`/clientes/${c.id}`} className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs flex items-center gap-1">
+                  Ver Perfil
+                </Link>
+                {c.phone && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenWhatsApp(c.phone)}
+                    className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs flex items-center gap-1"
+                  >
+                    <MessageCircle size={14} /> WhatsApp
+                  </button>
+                )}
+              </>
+            }
+          />
+        ))}
+      </div>
+
       {/* Tabela de Clientes */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela de Clientes">
           <table className="w-full text-sm">
             <thead>

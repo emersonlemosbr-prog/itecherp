@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import MobileRecordCard from '../components/MobileRecordCard'
 import {
   ShieldCheck, ShieldAlert, Store, User, Mail, Search, CheckCircle2,
   AlertTriangle, XCircle, Clock, Calendar, DollarSign, History, RefreshCw,
@@ -859,8 +860,48 @@ export default function PlatformAdmin() {
           </div>
         )}
 
+        <div className="md:hidden space-y-3">
+          {filteredStores.length === 0 ? (
+            <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">
+              Nenhuma loja encontrada com os filtros selecionados.
+            </div>
+          ) : (
+            filteredStores.map((store) => (
+              <MobileRecordCard
+                key={store.id}
+                title={store.name}
+                subtitle={store.owner_name || store.email || '—'}
+                badge={
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    store.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' :
+                    store.status === 'suspended' ? 'bg-rose-500/15 text-rose-400' :
+                    'bg-amber-500/15 text-amber-400'
+                  }`}>
+                    {store.status}
+                  </span>
+                }
+                fields={[
+                  { label: 'Contato', value: store.phone || store.email || '—' },
+                  { label: 'Vencimento', value: store.due_date ? String(store.due_date).slice(0, 10) : '—' },
+                  { label: 'Cadastro', value: store.created_at ? String(store.created_at).slice(0, 10) : '—' },
+                  { label: 'Selecionada', value: selectedIds.includes(store.id) ? 'Sim' : 'Não' },
+                ]}
+                actions={
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectStore(store.id)}
+                    className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-300 text-xs font-semibold"
+                  >
+                    {selectedIds.includes(store.id) ? 'Desmarcar' : 'Selecionar'}
+                  </button>
+                }
+              />
+            ))
+          )}
+        </div>
+
         {/* Tabela de Lojas */}
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-xl hidden md:block">
           <div className="overflow-x-auto table-scroll">
             <table className="w-full text-left text-xs min-w-[750px]">
               <thead className="bg-slate-950/70 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">

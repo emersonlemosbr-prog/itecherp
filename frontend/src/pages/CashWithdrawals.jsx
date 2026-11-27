@@ -1,4 +1,5 @@
 import ModalFrame from '../components/UI/ModalFrame'
+import MobileRecordCard from '../components/MobileRecordCard'
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, X, Trash2, AlertTriangle, KeyRound, Eye, EyeOff } from 'lucide-react'
@@ -58,7 +59,37 @@ export default function CashWithdrawals() {
         </button>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {items.map(w => (
+          <MobileRecordCard
+            key={w.id}
+            title={w.reason}
+            subtitle={w.supplier_name || 'Sem fornecedor'}
+            badge={<span className="text-xs font-bold text-rose-500">{formatCurrency(w.amount)}</span>}
+            fields={[
+              { label: 'Data', value: formatDate(w.withdrawal_date) },
+              { label: 'Origem', value: w.source_type === 'service_order_part' ? `Automática (${w.order_number || 'OS'})` : 'Manual' },
+              ...(w.notes ? [{ label: 'Observações', value: w.notes, fullWidth: true }] : []),
+            ]}
+            actions={
+              isOwner && w.source_type !== 'service_order_part' ? (
+                <button
+                  type="button"
+                  className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-500 text-xs flex items-center gap-1"
+                  onClick={() => handleStartDelete(w)}
+                >
+                  <Trash2 size={14} /> Excluir
+                </button>
+              ) : null
+            }
+          />
+        ))}
+        {items.length === 0 && (
+          <div className="card p-6 text-center text-xs text-slate-400">Nenhuma retirada registrada.</div>
+        )}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela com rolagem horizontal"><table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">

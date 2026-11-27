@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import MobileRecordCard from '../components/MobileRecordCard';
 import { useNavigate } from 'react-router-dom';
 import {
   Smartphone, Plus, Search, Filter, ArrowUpDown, Clock,
@@ -376,8 +377,31 @@ export default function Devices() {
         </select>
       </div>
 
+      {/* Cards Mobile de Aparelhos */}
+      <div className="md:hidden space-y-3">
+        {loading ? (
+          <div className="card p-6 text-center text-xs text-slate-400">Carregando aparelhos...</div>
+        ) : items.length === 0 ? (
+          <div className="card p-6 text-center text-xs text-slate-400">Nenhum aparelho encontrado.</div>
+        ) : items.map(item => (
+          <MobileRecordCard
+            key={item.id}
+            title={`${item.brand || ''} ${item.model || ''}`.trim() || 'Aparelho'}
+            subtitle={[item.storage, item.color].filter(Boolean).join(' • ') || null}
+            onClick={() => openDetailModal(item)}
+            fields={[
+              { label: 'Condição', value: item.condition === 'new' ? 'Novo' : 'Seminovo' },
+              { label: 'Bateria', value: item.battery_health != null ? `${item.battery_health}%` : '—' },
+              ...(isFinancialAllowed ? [{ label: 'Custo', value: formatCurrency(item.cost_price) }] : []),
+              { label: 'Preço', value: formatCurrency(item.sale_price), highlight: true },
+              { label: 'Situação', value: item.status || '-' },
+            ]}
+          />
+        ))}
+      </div>
+
       {/* Tabela de Aparelhos */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/75 dark:bg-ink-800/50 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-ink-700 font-medium">

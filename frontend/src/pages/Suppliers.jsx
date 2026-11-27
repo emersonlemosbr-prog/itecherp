@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import MobileRecordCard from '../components/MobileRecordCard'
 import { useNavigate } from 'react-router-dom'
 import {
   Truck, Plus, Search, Eye, Pencil, Power, Trash2, X, AlertCircle, CheckCircle2, ShoppingBag
@@ -310,7 +311,50 @@ export default function Suppliers() {
         </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-3">
+        {loading ? (
+          <div className="card p-6 text-center text-xs text-zinc-400">Carregando...</div>
+        ) : filtered.length === 0 ? (
+          <div className="card p-6 text-center text-xs text-zinc-400">Nenhum fornecedor encontrado.</div>
+        ) : filtered.map(s => (
+          <MobileRecordCard
+            key={s.id}
+            title={s.name}
+            subtitle={s.trade_name || null}
+            badge={
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                s.is_active === 0 ? 'bg-zinc-500/20 text-zinc-400' : 'bg-emerald-500/15 text-emerald-400'
+              }`}>
+                {s.is_active === 0 ? 'Inativo' : 'Ativo'}
+              </span>
+            }
+            fields={[
+              { label: 'CPF / CNPJ', value: s.document ? (s.person_type === 'PF' ? maskCPF(s.document) : maskCNPJ(s.document)) : '-' },
+              { label: 'Contato', value: s.phone || s.whatsapp || s.contact_info || '-' },
+              { label: 'Cidade / UF', value: s.city ? `${s.city}${s.state ? `/${s.state}` : ''}` : '-' },
+              { label: 'Compras', value: `${formatMoney(s.purchases_total)} (${s.purchases_count || 0})`, highlight: true },
+            ]}
+            actions={
+              <>
+                <button type="button" onClick={() => openDetail(s)} className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1">
+                  <Eye size={14} /> Visualizar
+                </button>
+                <button type="button" onClick={() => openEditModal(s)} className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-200 text-xs flex items-center gap-1">
+                  <Pencil size={14} /> Editar
+                </button>
+                <button type="button" onClick={() => handleToggleActive(s)} className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-amber-400 text-xs flex items-center gap-1">
+                  <Power size={14} /> {s.is_active === 0 ? 'Reativar' : 'Inativar'}
+                </button>
+                <button type="button" onClick={() => handleDelete(s)} className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs flex items-center gap-1">
+                  <Trash2 size={14} /> Excluir
+                </button>
+              </>
+            }
+          />
+        ))}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-white/5 text-zinc-400 uppercase text-[10px]">

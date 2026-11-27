@@ -1,4 +1,5 @@
 import { useSettings, calculatePrice } from '../context/SettingsContext'
+import MobileRecordCard from '../components/MobileRecordCard'
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { Line } from 'react-chartjs-2'
 import {
@@ -154,7 +155,22 @@ export default function PagbankCalculator() {
         </div>
       </div>
 
-      <div className="card overflow-hidden">
+      <div className="md:hidden space-y-2.5">
+        {rows.map(({ installment, rate, total, installmentValue }) => (
+          <MobileRecordCard
+            key={installment}
+            title={`${installment}x`}
+            subtitle={`Juros: ${rate.toFixed(4)}%`}
+            badge={<span className="text-xs font-bold text-[#FFBE0B]">{formatCurrency(installmentValue)}/mês</span>}
+            fields={[
+              { label: 'Valor Final', value: formatCurrency(total), highlight: true },
+              { label: 'Parcela', value: formatCurrency(installmentValue) },
+            ]}
+          />
+        ))}
+      </div>
+
+      <div className="card overflow-hidden hidden md:block">
         <div className="table-scroll" tabIndex={0} role="region" aria-label="Tabela com rolagem horizontal"><table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-[#4A4A4A]">

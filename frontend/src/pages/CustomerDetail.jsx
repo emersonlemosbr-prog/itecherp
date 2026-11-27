@@ -1,4 +1,5 @@
 import Access from '../components/UI/Access'
+import MobileRecordCard from '../components/MobileRecordCard'
 import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import {
@@ -374,7 +375,27 @@ export default function CustomerDetail() {
 
           {/* ABA 2: ORDENS DE SERVIÇO */}
           {activeTab === 'orders' && (
-            <div className="table-scroll overflow-x-auto">
+            <>
+            <div className="md:hidden space-y-3 p-3">
+              {orders.map(o => (
+                <MobileRecordCard
+                  key={o.id}
+                  title={`OS #${o.order_number}`}
+                  subtitle={`${o.brand || ''} ${o.model || ''}`.trim() || '—'}
+                  badge={<span className="text-xs font-bold text-[#FFBE0B]">{formatCurrency(o.service_price)}</span>}
+                  fields={[
+                    { label: 'Entrada', value: formatDate(o.entry_date) },
+                    { label: 'Status', value: o.status },
+                    { label: 'Pagamento', value: o.payment_status },
+                    ...(o.description ? [{ label: 'Descrição', value: o.description, fullWidth: true }] : []),
+                  ]}
+                  actions={
+                    <Link to={`/ordens/${o.id}`} className="btn-ghost !px-2 !py-1 text-xs">Ver OS</Link>
+                  }
+                />
+              ))}
+            </div>
+            <div className="table-scroll overflow-x-auto hidden md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">
@@ -411,11 +432,33 @@ export default function CustomerDetail() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* ABA 3: COMPRAS */}
           {activeTab === 'sales' && (
-            <div className="table-scroll overflow-x-auto">
+            <>
+            <div className="md:hidden space-y-3 p-3">
+              {sales.map(s => (
+                <MobileRecordCard
+                  key={s.id}
+                  title={`Venda #${s.order_number}`}
+                  subtitle={formatDate(s.sale_date)}
+                  badge={<span className="text-xs font-bold text-emerald-500">{formatCurrency(s.total_amount)}</span>}
+                  fields={[
+                    { label: 'Vendedor', value: s.seller_name || '—' },
+                    { label: 'Pagamento', value: (s.payment_method || '—').toUpperCase() },
+                  ]}
+                  actions={
+                    <Link to={`/venda-aparelho/${s.id}`} className="btn-ghost !px-2 !py-1 text-xs">Ver Venda</Link>
+                  }
+                />
+              ))}
+              {sales.length === 0 && (
+                <p className="py-6 text-center text-xs text-slate-400">Nenhuma compra de aparelho vinculada.</p>
+              )}
+            </div>
+            <div className="table-scroll overflow-x-auto hidden md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">
@@ -448,11 +491,42 @@ export default function CustomerDetail() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* ABA 4: GARANTIAS */}
           {activeTab === 'warranties' && (
-            <div className="table-scroll overflow-x-auto">
+            <>
+            <div className="md:hidden space-y-3 p-3">
+              {warranties.map(w => {
+                const isExpired = w.warranty_end && new Date(w.warranty_end) < new Date()
+                return (
+                  <MobileRecordCard
+                    key={w.id}
+                    title={`${w.brand || ''} ${w.model || ''}`.trim() || 'Aparelho'}
+                    subtitle={w.order_number ? `OS #${w.order_number}` : 'Sem OS'}
+                    badge={
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        isExpired
+                          ? 'bg-slate-100 text-slate-500 dark:bg-white/10'
+                          : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                      }`}>
+                        {isExpired ? 'Expirada' : 'Em Garantia'}
+                      </span>
+                    }
+                    fields={[
+                      { label: 'Início', value: formatDate(w.warranty_start) },
+                      { label: 'Vencimento', value: formatDate(w.warranty_end) },
+                      { label: 'Valor Coberto', value: formatCurrency(w.amount_paid), highlight: true },
+                    ]}
+                  />
+                )
+              })}
+              {warranties.length === 0 && (
+                <p className="py-6 text-center text-xs text-slate-400">Nenhuma garantia registrada.</p>
+              )}
+            </div>
+            <div className="table-scroll overflow-x-auto hidden md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">
@@ -498,11 +572,36 @@ export default function CustomerDetail() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* ABA 5: PENDÊNCIAS */}
           {activeTab === 'pending' && (
-            <div className="table-scroll overflow-x-auto">
+            <>
+            <div className="md:hidden space-y-3 p-3">
+              {credit_accounts.map(c => (
+                <MobileRecordCard
+                  key={c.id}
+                  title={c.description || 'Fiado / Prazo'}
+                  subtitle={formatDate(c.created_at)}
+                  badge={
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      c.status === 'open' ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'
+                    }`}>
+                      {c.status === 'open' ? 'Em Aberto' : 'Pago'}
+                    </span>
+                  }
+                  fields={[
+                    { label: 'OS Vinculada', value: c.order_number ? `#${c.order_number}` : 'Avulso' },
+                    { label: 'Valor', value: formatCurrency(c.amount), highlight: true },
+                  ]}
+                />
+              ))}
+              {credit_accounts.length === 0 && (
+                <p className="py-6 text-center text-xs text-slate-400">Nenhuma pendência registrada.</p>
+              )}
+            </div>
+            <div className="table-scroll overflow-x-auto hidden md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100 dark:border-ink-700">
@@ -545,6 +644,7 @@ export default function CustomerDetail() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
 
           {/* ABA 6: LINHA DO TEMPO */}
