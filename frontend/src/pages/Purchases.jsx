@@ -556,7 +556,7 @@ export default function Purchases() {
                             type="button"
                             onClick={() => openDetail(p.id)}
                             className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
-                            title="Ver detalhes"
+                            title="Visualizar compra"
                           >
                             <Eye size={15} />
                           </button>
@@ -574,7 +574,7 @@ export default function Purchases() {
                                 type="button"
                                 onClick={() => { setError(''); setCancelModal(p); setCancelReason('') }}
                                 className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-400"
-                                title="Cancelar compra"
+                                title="Excluir / Cancelar compra"
                               >
                                 <Ban size={15} />
                               </button>
@@ -982,55 +982,76 @@ export default function Purchases() {
 
       {/* Modal Detalhes da Compra */}
       {detailModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="card w-full max-w-2xl p-5 space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <div className="card w-full max-w-[900px] max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
               <h3 className="text-base font-bold text-white">{detailModal.purchase_number}</h3>
-              <button type="button" onClick={() => setDetailModal(null)} className="text-zinc-400 hover:text-white"><X size={18} /></button>
+              <button type="button" onClick={() => setDetailModal(null)} className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10" aria-label="Fechar">
+                <X size={18} />
+              </button>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-zinc-300">
-              <div><span className="text-zinc-500 block">Data</span>{String(detailModal.purchase_date).slice(0, 10)}</div>
-              <div><span className="text-zinc-500 block">Origem</span>{detailModal.origin_type === 'customer_trade' ? detailModal.customer_name : detailModal.supplier_name}</div>
-              <div><span className="text-zinc-500 block">Total</span><strong className="text-[#FFBE0B]">{formatMoney(detailModal.total_amount)}</strong></div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-semibold text-zinc-400">Itens</p>
-              <div className="divide-y divide-white/5 border border-white/10 rounded-xl text-xs">
-                {(detailModal.items || []).map(it => (
-                  <div key={it.id} className="p-2.5 flex justify-between">
-                    <span>{it.quantity}x {it.description}</span>
-                    <span className="font-semibold text-white">{formatMoney(it.total_cost)}</span>
-                  </div>
-                ))}
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-zinc-300">
+                <div><span className="text-zinc-500 block">Data</span>{String(detailModal.purchase_date).slice(0, 10)}</div>
+                <div><span className="text-zinc-500 block">Origem</span>{detailModal.origin_type === 'customer_trade' ? detailModal.customer_name : detailModal.supplier_name}</div>
+                <div><span className="text-zinc-500 block">Total</span><strong className="text-[#FFBE0B]">{formatMoney(detailModal.total_amount)}</strong></div>
               </div>
-            </div>
-            {(detailModal.installments || []).length > 0 && (
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-zinc-400">Parcelas</p>
+                <p className="text-xs font-semibold text-zinc-400">Itens</p>
                 <div className="divide-y divide-white/5 border border-white/10 rounded-xl text-xs">
-                  {detailModal.installments.map(inst => (
-                    <div key={inst.id} className="p-2.5 flex justify-between">
-                      <span>Parcela {inst.installment_number}/{inst.total_installments} — Venc: {String(inst.due_date).slice(0, 10)}</span>
-                      <span className="font-semibold text-white">{formatMoney(inst.amount)} ({inst.status})</span>
+                  {(detailModal.items || []).map(it => (
+                    <div key={it.id} className="p-2.5 flex justify-between gap-2">
+                      <span>{it.quantity}x {it.description}</span>
+                      <span className="font-semibold text-white shrink-0">{formatMoney(it.total_cost)}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
+              {(detailModal.installments || []).length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-zinc-400">Parcelas</p>
+                  <div className="divide-y divide-white/5 border border-white/10 rounded-xl text-xs">
+                    {detailModal.installments.map(inst => (
+                      <div key={inst.id} className="p-2.5 flex justify-between gap-2">
+                        <span>Parcela {inst.installment_number}/{inst.total_installments} — Venc: {String(inst.due_date).slice(0, 10)}</span>
+                        <span className="font-semibold text-white shrink-0">{formatMoney(inst.amount)} ({inst.status})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
       {/* Modal Cancelamento de Compra */}
       {cancelModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <form onSubmit={handleConfirmCancel} className="card w-full max-w-md p-5 space-y-3 text-xs">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <form onSubmit={handleConfirmCancel} className="card w-full max-w-md max-h-[85vh] overflow-y-auto p-5 space-y-3 text-xs">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Cancelar {cancelModal.purchase_number}</h3>
-              <button type="button" onClick={() => setCancelModal(null)} className="text-zinc-400 hover:text-white"><X size={18} /></button>
+              <h3 className="text-sm font-bold text-white">Excluir / Cancelar {cancelModal.purchase_number}</h3>
+              <button type="button" onClick={() => setCancelModal(null)} className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10" aria-label="Fechar">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-white/5 text-zinc-300">
+              <div>
+                <span className="text-zinc-500 block">Fornecedor / Origem</span>
+                <strong className="text-white">{cancelModal.origin_type === 'customer_trade' ? cancelModal.customer_name : cancelModal.supplier_name || '-'}</strong>
+              </div>
+              <div>
+                <span className="text-zinc-500 block">Valor Total</span>
+                <strong className="text-[#FFBE0B]">{formatMoney(cancelModal.total_amount)}</strong>
+              </div>
             </div>
             <p className="text-zinc-400">
-              Compras sem pagamentos realizados terão o estoque estornado e as parcelas pendentes canceladas.
+              O estoque será estornado (se disponível) e as parcelas pendentes serão canceladas, preservando o histórico e a auditoria.
             </p>
+            {error && (
+              <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300">
+                {error}
+              </div>
+            )}
             <input
               className="input w-full"
               placeholder="Motivo do cancelamento *"

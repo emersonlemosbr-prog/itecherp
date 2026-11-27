@@ -381,12 +381,15 @@ export default function Suppliers() {
 
       {/* Modal Cadastro / Edição */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-          <form onSubmit={handleSave} className="card w-full max-w-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto text-xs">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <form onSubmit={handleSave} className="card w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden text-xs">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
               <h3 className="text-base font-bold text-white">{editingId ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
-              <button type="button" onClick={() => setFormOpen(false)} className="text-zinc-400 hover:text-white"><X size={18} /></button>
+              <button type="button" onClick={() => setFormOpen(false)} className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10" aria-label="Fechar">
+                <X size={18} />
+              </button>
             </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
 
             <div className="space-y-3">
               <p className="text-[11px] font-bold uppercase tracking-wider text-[#FFBE0B]">Dados Cadastrais</p>
@@ -466,7 +469,8 @@ export default function Suppliers() {
               <textarea className="input w-full" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-white/10 shrink-0">
               <button type="button" onClick={() => setFormOpen(false)} className="px-4 py-2 rounded-xl bg-white/5 text-zinc-300">Cancelar</button>
               <button type="submit" disabled={saving} className="btn-primary px-5 py-2 rounded-xl font-bold disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Salvar Fornecedor'}
@@ -478,15 +482,18 @@ export default function Suppliers() {
 
       {/* Modal Detalhes + Histórico de Compras */}
       {detailModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
-          <div className="card w-full max-w-2xl p-5 space-y-4 max-h-[88vh] overflow-y-auto text-xs">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+          <div className="card w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden text-xs">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-white">{detailModal.name}</h3>
                 {detailModal.trade_name && <p className="text-zinc-400">{detailModal.trade_name}</p>}
               </div>
-              <button type="button" onClick={() => setDetailModal(null)} className="text-zinc-400 hover:text-white"><X size={18} /></button>
+              <button type="button" onClick={() => setDetailModal(null)} className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10" aria-label="Fechar">
+                <X size={18} />
+              </button>
             </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3 rounded-xl bg-white/5 text-zinc-300">
               <div><span className="text-zinc-500 block">Documento</span>{detailModal.document || '-'}</div>
@@ -534,6 +541,7 @@ export default function Suppliers() {
                   </table>
                 </div>
               )}
+            </div>
             </div>
           </div>
         </div>
