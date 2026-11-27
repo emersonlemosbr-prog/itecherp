@@ -1099,7 +1099,6 @@ export default function DeviceSalePOS() {
                 <label className="label text-xs">Descrição do Serviço *</label>
                 <input
                   type="text"
-                  autoFocus
                   required
                   value={customServiceName}
                   onChange={(e) => setCustomServiceName(e.target.value)}

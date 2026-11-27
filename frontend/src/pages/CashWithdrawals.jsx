@@ -303,7 +303,6 @@ function OwnerPasswordModal({ withdrawal, onClose, onSuccess }) {
                 placeholder="Digite sua senha de login"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                autoFocus
               />
               <button
                 type="button"

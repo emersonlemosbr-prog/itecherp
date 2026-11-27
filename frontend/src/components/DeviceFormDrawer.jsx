@@ -733,7 +733,6 @@ export default function DeviceFormDrawer({
             <form onSubmit={handleCreateSupplier} className="space-y-4">
               <input
                 type="text"
-                autoFocus
                 placeholder="Nome do fornecedor..."
                 value={newSupplierName}
                 onChange={(e) => setNewSupplierName(e.target.value)}

@@ -506,14 +506,14 @@ export default function Purchases() {
               <option value="cash">À vista</option>
               <option value="installments">A prazo</option>
             </select>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:col-span-2 lg:col-span-1">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:col-span-2 lg:col-span-1 min-w-0">
+              <div className="min-w-0">
                 <label className="block text-[10px] uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">📅 Data inicial</label>
-                <input type="date" className="input w-full" value={startDate} onChange={e => setStartDate(e.target.value)} title="Data inicial" />
+                <input type="date" className="input w-full min-w-0 max-w-full box-border" value={startDate} onChange={e => setStartDate(e.target.value)} title="Data inicial" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[10px] uppercase tracking-wider text-slate-500 dark:text-zinc-400 mb-1">📅 Data final</label>
-                <input type="date" className="input w-full" value={endDate} onChange={e => setEndDate(e.target.value)} title="Data final" />
+                <input type="date" className="input w-full min-w-0 max-w-full box-border" value={endDate} onChange={e => setEndDate(e.target.value)} title="Data final" />
               </div>
             </div>
           </div>

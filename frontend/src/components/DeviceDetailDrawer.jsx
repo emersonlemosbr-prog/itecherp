@@ -408,7 +408,6 @@ export default function DeviceDetailDrawer({
             </p>
             <textarea
               rows={3}
-              autoFocus
               placeholder="Ex: Reservado para o cliente João da Silva até sexta-feira..."
               value={reserveNotes}
               onChange={(e) => setReserveNotes(e.target.value)}

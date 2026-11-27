@@ -411,7 +411,7 @@ function SupplierQuickAddModal({ onClose, onSaved }) {
         <button type="button" className="btn-ghost" aria-label="Fechar" disabled={saving} onClick={onClose}><X size={18} /></button>
       </div>
       {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
-      <div><label className="label" htmlFor="supplier-name">Nome do fornecedor</label><input id="supplier-name" className="input" required maxLength={200} autoFocus value={name} onChange={event => setName(event.target.value)} /></div>
+      <div><label className="label" htmlFor="supplier-name">Nome do fornecedor</label><input id="supplier-name" className="input" required maxLength={200} value={name} onChange={event => setName(event.target.value)} /></div>
       <div><label className="label" htmlFor="supplier-phone">Telefone/WhatsApp (opcional)</label><input id="supplier-phone" className="input" type="tel" maxLength={100} value={phone} onChange={event => setPhone(event.target.value)} /></div>
       <div><label className="label" htmlFor="supplier-notes">Observação (opcional)</label><textarea id="supplier-notes" className="input" rows={3} maxLength={1000} value={notes} onChange={event => setNotes(event.target.value)} /></div>
       <div className="flex flex-wrap justify-end gap-2">

@@ -263,7 +263,6 @@ export default function CustomerModal({ customer, onClose, onSaved }) {
                     value={form.first_name}
                     onChange={e => setForm(f => ({ ...f, first_name: e.target.value }))}
                     onBlur={checkDuplicates}
-                    autoFocus
                   />
                 </div>
                 <div>
@@ -338,7 +337,6 @@ export default function CustomerModal({ customer, onClose, onSaved }) {
                     value={form.phone}
                     onChange={e => setForm(f => ({ ...f, phone: maskPhone(e.target.value) }))}
                     onBlur={checkDuplicates}
-                    autoFocus
                   />
                 </div>
                 <div>
@@ -379,7 +377,6 @@ export default function CustomerModal({ customer, onClose, onSaved }) {
                     placeholder="00000-000"
                     value={form.postal_code}
                     onChange={handleCepChange}
-                    autoFocus
                   />
                 </div>
                 <div className="sm:col-span-2">
@@ -471,7 +468,6 @@ export default function CustomerModal({ customer, onClose, onSaved }) {
                   placeholder="Informações relevantes, preferências, histórico de atendimento ou restrições..."
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  autoFocus
                 />
               </div>
             </div>
