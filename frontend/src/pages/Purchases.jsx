@@ -87,6 +87,8 @@ export default function Purchases() {
   const [submitting, setSubmitting] = useState(false)
   const submittingRef = useRef(false)
   const [editingPurchaseId, setEditingPurchaseId] = useState(null)
+  const [editingOriginalTotal, setEditingOriginalTotal] = useState(0)
+  const [editingAlreadyPaid, setEditingAlreadyPaid] = useState(0)
   const [cancelModal, setCancelModal] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
   const [error, setError] = useState('')
@@ -270,6 +272,19 @@ export default function Purchases() {
     setSuccess('')
     if (items.length === 0) return setError('Adicione pelo menos um item na compra.')
 
+    if (editingPurchaseId && editingAlreadyPaid > 0) {
+      const diff = Number((totalAmount - editingAlreadyPaid).toFixed(2))
+      if (diff > 0) {
+        if (!window.confirm(`Esta compra já possui ${formatMoney(editingAlreadyPaid)} pago(s). Será gerada uma conta a pagar pela diferença de ${formatMoney(diff)}. Deseja confirmar?`)) {
+          return
+        }
+      } else if (diff < 0) {
+        if (!window.confirm(`O novo total (${formatMoney(totalAmount)}) é menor que o valor já pago (${formatMoney(editingAlreadyPaid)}). Será registrado um crédito a compensar de ${formatMoney(Math.abs(diff))} sem excluir pagamentos históricos. Deseja confirmar?`)) {
+          return
+        }
+      }
+    }
+
     submittingRef.current = true
     setSubmitting(true)
     try {
@@ -323,6 +338,12 @@ export default function Purchases() {
     try {
       const { data } = await api.get(`/purchases/${purchaseId}`)
       setEditingPurchaseId(data.id)
+      setEditingOriginalTotal(Number(data.total_amount || 0))
+      const paidInsts = (data.installments || []).reduce((acc, i) => acc + Number(i.paid_amount || 0), 0)
+      const alreadyPaid = data.payment_condition === 'cash'
+        ? Number(data.total_amount || 0)
+        : (Number(data.down_payment || 0) + paidInsts)
+      setEditingAlreadyPaid(alreadyPaid)
       setOriginType(data.origin_type || 'supplier')
       setSupplierId(data.supplier_id ? String(data.supplier_id) : '')
       setCustomerId(data.customer_id ? String(data.customer_id) : '')
@@ -894,6 +915,27 @@ export default function Purchases() {
                   <span>Total Final</span>
                   <span>{formatMoney(totalAmount)}</span>
                 </div>
+                {editingPurchaseId && editingAlreadyPaid > 0 && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1 text-[11px]">
+                    <p className="font-bold text-white">Reconciliação Financeira</p>
+                    <div className="flex justify-between text-zinc-400">
+                      <span>Total original</span>
+                      <span>{formatMoney(editingOriginalTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-zinc-400">
+                      <span>Valor já pago</span>
+                      <span>{formatMoney(editingAlreadyPaid)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span className="text-zinc-300">
+                        {totalAmount >= editingAlreadyPaid ? 'Saldo restante a pagar' : 'Crédito a compensar'}
+                      </span>
+                      <span className={totalAmount > editingAlreadyPaid ? 'text-amber-400' : totalAmount < editingAlreadyPaid ? 'text-emerald-400' : 'text-zinc-300'}>
+                        {formatMoney(Math.abs(totalAmount - editingAlreadyPaid))}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button

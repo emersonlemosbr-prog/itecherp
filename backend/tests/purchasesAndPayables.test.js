@@ -248,14 +248,34 @@ test('6. Edição de compra sem pagamento reverte estoque anterior, aplica novo 
   assert.equal(payableAfter.status, 'canceled');
 });
 
-test('7. Bloqueia cancelamento e alteração financeira de compra à vista/paga e isola por loja', async () => {
-  const paidPurchase = await db.queryOne("SELECT id FROM purchases WHERE store_id = 1 AND payment_condition = 'cash' LIMIT 1");
+test('7. Edição com pagamento realizado reconcilia diferença >0, <0 e =0 preservando retiradas', async () => {
+  const paidPurchase = await db.queryOne("SELECT * FROM purchases WHERE store_id = 1 AND payment_condition = 'cash' LIMIT 1");
+  const origTotal = Number(paidPurchase.total_amount);
+  const withdrawalsBefore = await db.queryOne('SELECT COUNT(*) AS cnt FROM cash_withdrawals WHERE store_id = 1');
+
+  // Caso A: Novo total maior que o valor já pago -> cria conta a pagar pela diferença
+  const higher = await updatePurchase(db, 1, admin1, paidPurchase.id, {
+    supplier_id: supplier1Id,
+    purchase_date: '2026-11-26',
+    items: [{ item_type: 'existing_accessory', product_id: product1Id, description: 'Película 3D', quantity: 20, unit_cost: 10 }],
+    freight: origTotal,
+  });
+  assert.equal(higher.reconciliation.already_paid, origTotal);
+  assert.equal(higher.reconciliation.remaining_to_pay, 200);
+  const withdrawalsAfterHigher = await db.queryOne('SELECT COUNT(*) AS cnt FROM cash_withdrawals WHERE store_id = 1');
+  assert.equal(Number(withdrawalsAfterHigher.cnt), Number(withdrawalsBefore.cnt));
+
+  // Caso B: Novo total menor que o valor já pago -> registra crédito a compensar sem excluir retirada
+  const lower = await updatePurchase(db, 1, admin1, paidPurchase.id, {
+    supplier_id: supplier1Id,
+    purchase_date: '2026-11-26',
+    items: [{ item_type: 'existing_accessory', product_id: product1Id, description: 'Película 3D', quantity: 5, unit_cost: 10 }],
+  });
+  assert.equal(lower.reconciliation.credit_to_compensate, origTotal - 50);
+
+  // Cancelamento direto de compra paga continua bloqueado (409) e isolado por loja (404)
   await assert.rejects(
     () => cancelPurchase(db, 1, admin1, paidPurchase.id, { reason: 'Tentativa indevida' }),
-    (err) => err.statusCode === 409
-  );
-  await assert.rejects(
-    () => updatePurchase(db, 1, admin1, paidPurchase.id, { payment_condition: 'installments' }),
     (err) => err.statusCode === 409
   );
   await assert.rejects(

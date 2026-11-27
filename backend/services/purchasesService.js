@@ -513,10 +513,10 @@ async function updatePurchase(db, storeId, user, purchaseId, payload) {
       'SELECT * FROM accounts_payable WHERE purchase_id = $1 AND store_id = $2',
       [existing.id, storeId]
     );
-    const hasPayments =
-      existing.payment_condition === 'cash' ||
-      Number(existing.down_payment || 0) > 0 ||
-      Number(payable?.paid_amount || 0) > 0;
+    const alreadyPaidCents = existing.payment_condition === 'cash'
+      ? toCents(existing.total_amount)
+      : (toCents(existing.down_payment || 0) + toCents(payable?.paid_amount || 0));
+    const hasPayments = alreadyPaidCents > 0;
 
     let supplierId = existing.supplier_id;
     let supplierName = existing.supplier_name;
@@ -535,33 +535,8 @@ async function updatePurchase(db, storeId, user, purchaseId, payload) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) {
       throw createHttpError(400, 'Data da compra inválida.');
     }
-    const notes = b.notes !== undefined ? (b.notes ? String(b.notes).trim() : null) : existing.notes;
+    let notes = b.notes !== undefined ? (b.notes ? String(b.notes).trim() : null) : existing.notes;
 
-    if (hasPayments) {
-      // Com pagamentos realizados: bloqueia alterações financeiras ou de itens que mudem o total
-      if (b.payment_condition && b.payment_condition !== existing.payment_condition) {
-        throw createHttpError(409, 'Esta compra possui pagamentos realizados. Não é possível alterar a condição de pagamento.');
-      }
-      if (b.items && Array.isArray(b.items)) {
-        const newTotalCents = b.items.reduce((acc, it) => acc + (toCents(it.unit_cost) * (it.item_type === 'device' ? 1 : parseInt(it.quantity, 10))), 0)
-          - toCents(b.discount ?? existing.discount)
-          + toCents(b.freight ?? existing.freight);
-        if (newTotalCents !== toCents(existing.total_amount)) {
-          throw createHttpError(409, 'Esta compra possui pagamentos realizados. Não é possível alterar valores ou itens que modifiquem o total.');
-        }
-      }
-
-      const updated = await tx.queryOne(`
-        UPDATE purchases
-        SET supplier_id = $1, supplier_name = $2, invoice_number = $3, purchase_date = $4, notes = $5, updated_at = $6
-        WHERE id = $7 AND store_id = $8
-        RETURNING *
-      `, [supplierId, supplierName, invoiceNumber, purchaseDate, notes, trustedNow, existing.id, storeId]);
-
-      return { purchase: updated, before: existing, after: updated, restrictedToMetadata: true };
-    }
-
-    // Sem pagamentos realizados: permite edição completa de itens e condição financeira
     const rawItems = Array.isArray(b.items) ? b.items : [];
     if (rawItems.length === 0) throw createHttpError(400, 'Adicione pelo menos um item à compra.');
 
@@ -598,34 +573,38 @@ async function updatePurchase(db, storeId, user, purchaseId, payload) {
     const totalCents = subtotalCents - discountCents + freightCents;
     if (totalCents <= 0) throw createHttpError(400, 'O total da compra deve ser maior que zero.');
 
-    const paymentCondition = b.payment_condition === 'installments' ? 'installments' : 'cash';
-    const paymentMethod = b.payment_method ? String(b.payment_method).trim() : null;
+    const paymentCondition = hasPayments
+      ? (totalCents > alreadyPaidCents ? 'installments' : existing.payment_condition)
+      : (b.payment_condition === 'installments' ? 'installments' : 'cash');
+    const paymentMethod = b.payment_method ? String(b.payment_method).trim() : existing.payment_method;
     const paymentDate = String(b.payment_date || purchaseDate).slice(0, 10);
-    let downPaymentCents = 0;
+    let downPaymentCents = hasPayments ? toCents(existing.down_payment || (existing.payment_condition === 'cash' ? existing.total_amount : 0)) : 0;
     let normalizedInstallments = [];
 
-    if (paymentCondition === 'cash') {
-      if (!paymentMethod) throw createHttpError(400, 'Selecione a forma de pagamento.');
-      downPaymentCents = totalCents;
-    } else {
-      downPaymentCents = toCents(b.down_payment ?? 0);
-      if (!Number.isFinite(downPaymentCents) || downPaymentCents < 0 || downPaymentCents >= totalCents) {
-        throw createHttpError(400, 'Entrada inválida.');
-      }
-      const rawInsts = Array.isArray(b.installments) ? b.installments : [];
-      if (rawInsts.length === 0) throw createHttpError(400, 'Informe as parcelas.');
-      let sumCents = 0;
-      normalizedInstallments = rawInsts.map((inst, idx) => {
-        const amountCents = toCents(inst.amount);
-        const dueDate = String(inst.due_date || '').slice(0, 10);
-        if (!Number.isFinite(amountCents) || amountCents <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-          throw createHttpError(400, `Parcela ${idx + 1} inválida.`);
+    if (!hasPayments) {
+      if (paymentCondition === 'cash') {
+        if (!paymentMethod) throw createHttpError(400, 'Selecione a forma de pagamento.');
+        downPaymentCents = totalCents;
+      } else {
+        downPaymentCents = toCents(b.down_payment ?? 0);
+        if (!Number.isFinite(downPaymentCents) || downPaymentCents < 0 || downPaymentCents >= totalCents) {
+          throw createHttpError(400, 'Entrada inválida.');
         }
-        sumCents += amountCents;
-        return { installment_number: idx + 1, amount_cents: amountCents, due_date: dueDate };
-      });
-      if (downPaymentCents + sumCents !== totalCents) {
-        throw createHttpError(400, 'A soma da entrada e parcelas deve ser igual ao total da compra.');
+        const rawInsts = Array.isArray(b.installments) ? b.installments : [];
+        if (rawInsts.length === 0) throw createHttpError(400, 'Informe as parcelas.');
+        let sumCents = 0;
+        normalizedInstallments = rawInsts.map((inst, idx) => {
+          const amountCents = toCents(inst.amount);
+          const dueDate = String(inst.due_date || '').slice(0, 10);
+          if (!Number.isFinite(amountCents) || amountCents <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+            throw createHttpError(400, `Parcela ${idx + 1} inválida.`);
+          }
+          sumCents += amountCents;
+          return { installment_number: idx + 1, amount_cents: amountCents, due_date: dueDate };
+        });
+        if (downPaymentCents + sumCents !== totalCents) {
+          throw createHttpError(400, 'A soma da entrada e parcelas deve ser igual ao total da compra.');
+        }
       }
     }
 
@@ -716,43 +695,107 @@ async function updatePurchase(db, storeId, user, purchaseId, payload) {
       ]);
     }
 
-    // 3. Atualizar contas a pagar / retiradas
-    if (payable) {
-      await tx.execute('DELETE FROM payable_installments WHERE payable_id = $1 AND store_id = $2', [payable.id, storeId]);
-      await tx.execute('DELETE FROM accounts_payable WHERE id = $1 AND store_id = $2', [payable.id, storeId]);
-    }
-
+    // 3. Reconciliar contas a pagar / retiradas sem alterar pagamentos já realizados
     const originLabel = existing.origin_type === 'customer_trade' ? `Cliente ${existing.customer_name}` : supplierName;
-    if (downPaymentCents > 0) {
-      await tx.execute(`
-        INSERT INTO cash_withdrawals (
-          store_id, amount, reason, withdrawal_date, notes, source_type, supplier_id, supplier_name, created_by, created_by_name_snapshot
-        ) VALUES ($1, $2, $3, $4, $5, 'purchase_payment', $6, $7, $8, $9)
-      `, [
-        storeId, fromCents(downPaymentCents), `Compra ${existing.purchase_number} (${originLabel}) [${paymentMethod}]`,
-        paymentDate, notes, supplierId, originLabel, user?.id || null, user?.full_name || user?.username || null
-      ]);
-    }
+    let remainingToPayCents = 0;
+    let creditToCompensateCents = 0;
 
-    if (paymentCondition === 'installments') {
-      const financedCents = totalCents - downPaymentCents;
-      const newPayable = await tx.queryOne(`
-        INSERT INTO accounts_payable (
-          store_id, purchase_id, supplier_id, supplier_name, origin_type, category,
-          description, total_amount, paid_amount, status, due_date, notes, created_by
-        ) VALUES ($1, $2, $3, $4, 'purchase', 'Compra', $5, $6, 0, 'open', $7, $8, $9)
-        RETURNING id
-      `, [
-        storeId, existing.id, supplierId, originLabel,
-        `Compra ${existing.purchase_number}${invoiceNumber ? ` (NF ${invoiceNumber})` : ''}`,
-        fromCents(financedCents), normalizedInstallments[0].due_date, notes, user?.id || null
-      ]);
-      for (const inst of normalizedInstallments) {
+    if (!hasPayments) {
+      if (payable) {
+        await tx.execute('DELETE FROM payable_installments WHERE payable_id = $1 AND store_id = $2', [payable.id, storeId]);
+        await tx.execute('DELETE FROM accounts_payable WHERE id = $1 AND store_id = $2', [payable.id, storeId]);
+      }
+      if (downPaymentCents > 0) {
         await tx.execute(`
-          INSERT INTO payable_installments (
-            store_id, payable_id, installment_number, total_installments, amount, paid_amount, due_date, status
-          ) VALUES ($1, $2, $3, $4, $5, 0, $6, 'open')
-        `, [storeId, newPayable.id, inst.installment_number, normalizedInstallments.length, fromCents(inst.amount_cents), inst.due_date]);
+          INSERT INTO cash_withdrawals (
+            store_id, amount, reason, withdrawal_date, notes, source_type, supplier_id, supplier_name, created_by, created_by_name_snapshot
+          ) VALUES ($1, $2, $3, $4, $5, 'purchase_payment', $6, $7, $8, $9)
+        `, [
+          storeId, fromCents(downPaymentCents), `Compra ${existing.purchase_number} (${originLabel}) [${paymentMethod}]`,
+          paymentDate, notes, supplierId, originLabel, user?.id || null, user?.full_name || user?.username || null
+        ]);
+      }
+      if (paymentCondition === 'installments') {
+        const financedCents = totalCents - downPaymentCents;
+        remainingToPayCents = financedCents;
+        const newPayable = await tx.queryOne(`
+          INSERT INTO accounts_payable (
+            store_id, purchase_id, supplier_id, supplier_name, origin_type, category,
+            description, total_amount, paid_amount, status, due_date, notes, created_by
+          ) VALUES ($1, $2, $3, $4, 'purchase', 'Compra', $5, $6, 0, 'open', $7, $8, $9)
+          RETURNING id
+        `, [
+          storeId, existing.id, supplierId, originLabel,
+          `Compra ${existing.purchase_number}${invoiceNumber ? ` (NF ${invoiceNumber})` : ''}`,
+          fromCents(financedCents), normalizedInstallments[0].due_date, notes, user?.id || null
+        ]);
+        for (const inst of normalizedInstallments) {
+          await tx.execute(`
+            INSERT INTO payable_installments (
+              store_id, payable_id, installment_number, total_installments, amount, paid_amount, due_date, status
+            ) VALUES ($1, $2, $3, $4, $5, 0, $6, 'open')
+          `, [storeId, newPayable.id, inst.installment_number, normalizedInstallments.length, fromCents(inst.amount_cents), inst.due_date]);
+        }
+      }
+    } else {
+      // Compra já possui pagamentos realizados: preservar retiradas e pagamentos históricos
+      const diffCents = totalCents - alreadyPaidCents;
+      if (diffCents > 0) {
+        remainingToPayCents = diffCents;
+        const dueDate = String(b.installments?.[0]?.due_date || purchaseDate).slice(0, 10);
+        if (payable) {
+          await tx.execute(
+            "DELETE FROM payable_installments WHERE payable_id = $1 AND store_id = $2 AND status IN ('open', 'canceled') AND paid_amount = 0",
+            [payable.id, storeId]
+          );
+          await tx.execute(
+            "UPDATE accounts_payable SET total_amount = $1, status = 'partial', updated_at = $2 WHERE id = $3 AND store_id = $4",
+            [fromCents(toCents(payable.paid_amount || 0) + remainingToPayCents), trustedNow, payable.id, storeId]
+          );
+          const maxInst = await tx.queryOne(
+            'SELECT COALESCE(MAX(installment_number), 0) AS max_num FROM payable_installments WHERE payable_id = $1',
+            [payable.id]
+          );
+          const nextNum = Number(maxInst?.max_num || 0) + 1;
+          await tx.execute(`
+            INSERT INTO payable_installments (
+              store_id, payable_id, installment_number, total_installments, amount, paid_amount, due_date, status
+            ) VALUES ($1, $2, $3, $3, $4, 0, $5, 'open')
+          `, [storeId, payable.id, nextNum, fromCents(remainingToPayCents), dueDate]);
+        } else {
+          const newPayable = await tx.queryOne(`
+            INSERT INTO accounts_payable (
+              store_id, purchase_id, supplier_id, supplier_name, origin_type, category,
+              description, total_amount, paid_amount, status, due_date, notes, created_by
+            ) VALUES ($1, $2, $3, $4, 'purchase', 'Compra', $5, $6, 0, 'open', $7, $8, $9)
+            RETURNING id
+          `, [
+            storeId, existing.id, supplierId, originLabel,
+            `Diferença Compra ${existing.purchase_number}${invoiceNumber ? ` (NF ${invoiceNumber})` : ''}`,
+            fromCents(remainingToPayCents), dueDate, notes, user?.id || null
+          ]);
+          await tx.execute(`
+            INSERT INTO payable_installments (
+              store_id, payable_id, installment_number, total_installments, amount, paid_amount, due_date, status
+            ) VALUES ($1, $2, 1, 1, $3, 0, $4, 'open')
+          `, [storeId, newPayable.id, fromCents(remainingToPayCents), dueDate]);
+        }
+      } else {
+        if (diffCents < 0) {
+          creditToCompensateCents = Math.abs(diffCents);
+          const creditTag = `[CRÉDITO A COMPENSAR: R$ ${fromCents(creditToCompensateCents).toFixed(2)}]`;
+          notes = notes ? `${notes}\n${creditTag}` : creditTag;
+        }
+        if (payable) {
+          await tx.execute(
+            "UPDATE payable_installments SET status = 'canceled', updated_at = $1 WHERE payable_id = $2 AND store_id = $3 AND status = 'open' AND paid_amount = 0",
+            [trustedNow, payable.id, storeId]
+          );
+          await tx.execute(
+            "UPDATE accounts_payable SET status = 'paid', updated_at = $1 WHERE id = $2 AND store_id = $3",
+            [trustedNow, payable.id, storeId]
+          );
+        }
       }
     }
 
@@ -767,11 +810,24 @@ async function updatePurchase(db, storeId, user, purchaseId, payload) {
     `, [
       supplierId, supplierName, invoiceNumber, purchaseDate,
       fromCents(subtotalCents), fromCents(discountCents), fromCents(freightCents), fromCents(totalCents),
-      paymentCondition, paymentMethod, fromCents(downPaymentCents), normalizedInstallments.length,
+      paymentCondition, paymentMethod, fromCents(downPaymentCents),
+      hasPayments ? (remainingToPayCents > 0 ? 1 : existing.installments_count) : normalizedInstallments.length,
       notes, trustedNow, existing.id, storeId
     ]);
 
-    return { purchase: updated, before: existing, after: updated, restrictedToMetadata: false };
+    return {
+      purchase: updated,
+      before: existing,
+      after: updated,
+      reconciliation: {
+        original_total: Number(existing.total_amount || 0),
+        new_total: fromCents(totalCents),
+        already_paid: fromCents(alreadyPaidCents),
+        difference: fromCents(totalCents - toCents(existing.total_amount)),
+        remaining_to_pay: fromCents(remainingToPayCents),
+        credit_to_compensate: fromCents(creditToCompensateCents),
+      }
+    };
   });
 
   await logAction({
@@ -779,7 +835,7 @@ async function updatePurchase(db, storeId, user, purchaseId, payload) {
     action: 'update_purchase',
     recordType: 'purchase',
     recordId: result.purchase.id,
-    details: { before_total: result.before.total_amount, after_total: result.after.total_amount, restrictedToMetadata: result.restrictedToMetadata },
+    details: { before_total: result.before.total_amount, after_total: result.after.total_amount, reconciliation: result.reconciliation },
     storeId
   });
   emitDashboardRefresh({ source: 'purchase_update', purchaseId: result.purchase.id });
