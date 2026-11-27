@@ -285,11 +285,10 @@ test('7. Edição com pagamento realizado reconcilia diferença >0, <0 e =0 pres
     (err) => err.statusCode === 400
   );
 
-  // Cancelamento direto de compra paga continua bloqueado (409) e isolado por loja (404)
-  await assert.rejects(
-    () => cancelPurchase(db, 1, admin1, paidPurchase.id, { reason: 'Tentativa indevida' }),
-    (err) => err.statusCode === 409
-  );
+  // Cancelamento de compra paga pelo admin funciona com estorno rastreável e isola por loja (404)
+  const canceledPaid = await cancelPurchase(db, 1, admin1, paidPurchase.id, { reason: 'Estorno autorizado' });
+  assert.equal(canceledPaid.status, 'canceled');
+  assert.ok(String(canceledPaid.notes).includes('ESTORNO REGISTRADO'));
   await assert.rejects(
     () => cancelPurchase(db, 2, admin2, paidPurchase.id, { reason: 'Outra loja' }),
     (err) => err.statusCode === 404

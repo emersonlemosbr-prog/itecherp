@@ -858,21 +858,19 @@ async function cancelPurchase(db, storeId, user, purchaseId, { reason = '' } = {
     if (existing.status === 'canceled') throw createHttpError(409, 'Esta compra já está cancelada.');
 
     const payable = await tx.queryOne('SELECT * FROM accounts_payable WHERE purchase_id = $1 AND store_id = $2', [existing.id, storeId]);
-    const hasPayments =
-      existing.payment_condition === 'cash' ||
-      Number(existing.down_payment || 0) > 0 ||
-      Number(payable?.paid_amount || 0) > 0;
-
-    if (hasPayments) {
-      throw createHttpError(409, 'Esta compra possui pagamentos realizados e não pode ser cancelada diretamente. Preserve os registros financeiros ou realize o estorno adequado.');
-    }
+    const alreadyPaidCents = existing.payment_condition === 'cash'
+      ? toCents(existing.total_amount)
+      : (toCents(existing.down_payment || 0) + toCents(payable?.paid_amount || 0));
 
     const oldItems = await tx.query('SELECT * FROM purchase_items WHERE purchase_id = $1 AND store_id = $2', [existing.id, storeId]);
     for (const old of oldItems) {
       if (old.product_id) {
         const lvl = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [old.product_id]);
         const prevQty = parseInt(lvl?.quantity || 0, 10);
-        const newQty = Math.max(0, prevQty - parseInt(old.quantity || 0, 10));
+        if (prevQty < parseInt(old.quantity || 0, 10)) {
+          throw createHttpError(409, 'Não é possível cancelar: parte dos itens desta compra já foi vendida ou movimentada.');
+        }
+        const newQty = prevQty - parseInt(old.quantity || 0, 10);
         await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [newQty, trustedNow, old.product_id]);
         await tx.execute(`
           INSERT INTO stock_movements (
@@ -900,7 +898,10 @@ async function cancelPurchase(db, storeId, user, purchaseId, { reason = '' } = {
       await tx.execute("UPDATE payable_installments SET status = 'canceled', updated_at = $1 WHERE payable_id = $2 AND store_id = $3 AND status IN ('open', 'partial')", [trustedNow, payable.id, storeId]);
     }
 
-    const updatedNotes = existing.notes ? `${existing.notes}\n[CANCELADA]: ${cleanReason}` : `[CANCELADA]: ${cleanReason}`;
+    const estornoTag = alreadyPaidCents > 0 ? ` [ESTORNO REGISTRADO: R$ ${fromCents(alreadyPaidCents).toFixed(2)}]` : '';
+    const updatedNotes = existing.notes
+      ? `${existing.notes}\n[CANCELADA]: ${cleanReason}${estornoTag}`
+      : `[CANCELADA]: ${cleanReason}${estornoTag}`;
     return tx.queryOne(
       "UPDATE purchases SET status = 'canceled', notes = $1, updated_at = $2 WHERE id = $3 AND store_id = $4 RETURNING *",
       [updatedNotes, trustedNow, existing.id, storeId]

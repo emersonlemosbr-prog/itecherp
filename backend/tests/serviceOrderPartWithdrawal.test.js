@@ -108,17 +108,18 @@ test('fornecedor, entrega e retirada única preservam lucro e dados após reaber
   assert.throws(() => db.prepare(`INSERT INTO cash_withdrawals (amount,reason,withdrawal_date,source_type,service_order_id)
     VALUES (80,'Custo da peça',?,'service_order_part',?)`).run(today, id), /UNIQUE/);
 
-  const blocked = await call(route(withdrawals, 'delete', '/:id'), {
+  const deleted = await call(route(withdrawals, 'delete', '/:id'), {
     params: { id: withdrawal.id },
     body: { password: 'SenhaMaster123!' },
     user: { id: 1, role: 'admin', is_master: 1, store_id: 1 },
   });
-  assert.equal(blocked.statusCode, 409);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM cash_withdrawals WHERE service_order_id=?').get(id).n, 1);
+  assert.equal(deleted.statusCode, 200);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM cash_withdrawals WHERE service_order_id=?').get(id).n, 0);
+  assert.equal(db.prepare('SELECT parts_cost FROM service_orders WHERE id=?').get(id).parts_cost, 0);
 
   const reopened = new (require('better-sqlite3'))(process.env.ITECH_DB_PATH, { readonly: true });
   assert.equal(reopened.prepare('SELECT supplier_id FROM service_orders WHERE id=?').get(id).supplier_id, supplierA.id);
-  assert.equal(reopened.prepare('SELECT COUNT(*) n FROM cash_withdrawals WHERE service_order_id=?').get(id).n, 1);
+  assert.equal(reopened.prepare('SELECT COUNT(*) n FROM cash_withdrawals WHERE service_order_id=?').get(id).n, 0);
   reopened.close();
 
   const oldOrderId = db.prepare(`INSERT INTO service_orders (order_number, customer_id, entry_date, parts_cost, status)

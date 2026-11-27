@@ -97,15 +97,86 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(401).json({ error: 'Senha incorreta. A retirada não foi excluída.' });
     }
 
-    const withdrawal = await db.queryOne('SELECT id, source_type, amount, reason, withdrawal_date FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    const withdrawal = await db.queryOne('SELECT id, source_type, service_order_id, supplier_id, amount, reason, withdrawal_date FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
     if (!withdrawal) {
       return res.status(404).json({ error: 'Retirada não encontrada nesta loja.' });
     }
-    if (['service_order_part', 'purchase_payment', 'payable_payment'].includes(withdrawal.source_type)) {
-      return res.status(409).json({ error: 'Retiradas automáticas de OS, Compras ou Contas a Pagar não podem ser excluídas diretamente.' });
-    }
 
-    await db.query('DELETE FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    await db.transaction(async (tx) => {
+      if (withdrawal.source_type === 'payable_payment') {
+        const payment = await tx.queryOne(
+          'SELECT * FROM payable_payments WHERE cash_withdrawal_id = $1 AND store_id = $2',
+          [withdrawal.id, storeId]
+        );
+        if (payment) {
+          const inst = await tx.queryOne(
+            'SELECT * FROM payable_installments WHERE id = $1 AND store_id = $2',
+            [payment.installment_id, storeId]
+          );
+          if (inst) {
+            const newPaid = Math.max(0, Number(inst.paid_amount || 0) - Number(payment.amount || 0));
+            const newStatus = newPaid <= 0 ? 'open' : 'partial';
+            await tx.execute(
+              'UPDATE payable_installments SET paid_amount = $1, status = $2, paid_at = $3, cash_withdrawal_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND store_id = $5',
+              [newPaid, newStatus, newPaid <= 0 ? null : inst.paid_at, inst.id, storeId]
+            );
+          }
+          await tx.execute('DELETE FROM payable_payments WHERE id = $1 AND store_id = $2', [payment.id, storeId]);
+          const agg = await tx.queryOne(
+            "SELECT COALESCE(SUM(paid_amount), 0) AS total_paid, COUNT(CASE WHEN status IN ('open', 'partial') THEN 1 END) AS pending_count FROM payable_installments WHERE payable_id = $1 AND store_id = $2",
+            [payment.payable_id, storeId]
+          );
+          const apStatus = Number(agg?.total_paid || 0) <= 0 ? 'open' : (Number(agg?.pending_count || 0) === 0 ? 'paid' : 'partial');
+          await tx.execute(
+            'UPDATE accounts_payable SET paid_amount = $1, status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND store_id = $4',
+            [Number(agg?.total_paid || 0), apStatus, payment.payable_id, storeId]
+          );
+        }
+      } else if (withdrawal.source_type === 'purchase_payment') {
+        const match = String(withdrawal.reason || '').match(/CMP-\d+/);
+        if (match) {
+          const purchase = await tx.queryOne(
+            'SELECT * FROM purchases WHERE purchase_number = $1 AND store_id = $2',
+            [match[0], storeId]
+          );
+          if (purchase && purchase.status !== 'canceled') {
+            await tx.execute(
+              "UPDATE purchases SET payment_condition = 'installments', down_payment = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND store_id = $2",
+              [purchase.id, storeId]
+            );
+            const existingAp = await tx.queryOne(
+              'SELECT * FROM accounts_payable WHERE purchase_id = $1 AND store_id = $2',
+              [purchase.id, storeId]
+            );
+            if (!existingAp) {
+              const ap = await tx.queryOne(`
+                INSERT INTO accounts_payable (
+                  store_id, purchase_id, supplier_id, supplier_name, origin_type, category,
+                  description, total_amount, paid_amount, status, due_date, created_by
+                ) VALUES ($1, $2, $3, $4, 'purchase', 'Compra', $5, $6, 0, 'open', $7, $8)
+                RETURNING id
+              `, [
+                storeId, purchase.id, purchase.supplier_id, purchase.supplier_name,
+                `Compra ${purchase.purchase_number} (Reconciliada)`,
+                Number(withdrawal.amount || 0), String(purchase.purchase_date).slice(0, 10), req.user.id
+              ]);
+              await tx.execute(`
+                INSERT INTO payable_installments (
+                  store_id, payable_id, installment_number, total_installments, amount, paid_amount, due_date, status
+                ) VALUES ($1, $2, 1, 1, $3, 0, $4, 'open')
+              `, [storeId, ap.id, Number(withdrawal.amount || 0), String(purchase.purchase_date).slice(0, 10)]);
+            }
+          }
+        }
+      } else if (withdrawal.source_type === 'service_order_part' && withdrawal.service_order_id) {
+        await tx.execute(
+          'UPDATE service_orders SET parts_cost = 0 WHERE id = $1 AND store_id = $2',
+          [withdrawal.service_order_id, storeId]
+        );
+      }
+
+      await tx.execute('DELETE FROM cash_withdrawals WHERE id = $1 AND store_id = $2', [req.params.id, storeId]);
+    });
     await logAction({
       user: req.user,
       action: 'delete_cash_withdrawal',
