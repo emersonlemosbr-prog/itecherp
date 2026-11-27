@@ -9,7 +9,7 @@ process.env.NODE_ENV = 'test';
 process.env.ITECH_DB_PATH = path.join(tmpDir, 'test.db');
 
 const db = require('../db/database');
-const { createPurchase } = require('../services/purchasesService');
+const { createPurchase, updatePurchase, cancelPurchase } = require('../services/purchasesService');
 const { payInstallment, getPayablesDashboard, listPayables } = require('../services/payablesService');
 
 const admin1 = { id: 1, store_id: 1, role: 'admin', full_name: 'Admin Loja 1', username: 'admin1' };
@@ -215,4 +215,51 @@ test('5. Isolamento multi-tenant: Loja 2 não enxerga nem paga contas da Loja 1'
     ],
   });
   assert.equal(trade.purchase.origin_type, 'customer_trade');
+});
+
+test('6. Edição de compra sem pagamento reverte estoque anterior, aplica novo e atualiza contas a pagar', async () => {
+  const created = await createPurchase(db, 1, admin1, {
+    origin_type: 'supplier',
+    supplier_id: supplier1Id,
+    purchase_date: '2026-11-26',
+    payment_condition: 'installments',
+    down_payment: 0,
+    installments: [{ amount: 50, due_date: '2026-12-26' }],
+    items: [{ item_type: 'existing_accessory', product_id: product1Id, description: 'Película 3D', quantity: 5, unit_cost: 10 }],
+  });
+
+  const updated = await updatePurchase(db, 1, admin1, created.purchase.id, {
+    supplier_id: supplier1Id,
+    purchase_date: '2026-11-26',
+    payment_condition: 'installments',
+    down_payment: 0,
+    installments: [{ amount: 80, due_date: '2027-01-10' }],
+    items: [{ item_type: 'existing_accessory', product_id: product1Id, description: 'Película 3D', quantity: 8, unit_cost: 10 }],
+  });
+
+  assert.equal(Number(updated.purchase.total_amount), 80);
+  const payable = await db.queryOne('SELECT total_amount FROM accounts_payable WHERE purchase_id = $1', [created.purchase.id]);
+  assert.equal(Number(payable.total_amount), 80);
+
+  // Cancelamento sem pagamento estorna estoque e cancela conta a pagar
+  const canceled = await cancelPurchase(db, 1, admin1, created.purchase.id, { reason: 'Teste cancelamento' });
+  assert.equal(canceled.status, 'canceled');
+  const payableAfter = await db.queryOne('SELECT status FROM accounts_payable WHERE purchase_id = $1', [created.purchase.id]);
+  assert.equal(payableAfter.status, 'canceled');
+});
+
+test('7. Bloqueia cancelamento e alteração financeira de compra à vista/paga e isola por loja', async () => {
+  const paidPurchase = await db.queryOne("SELECT id FROM purchases WHERE store_id = 1 AND payment_condition = 'cash' LIMIT 1");
+  await assert.rejects(
+    () => cancelPurchase(db, 1, admin1, paidPurchase.id, { reason: 'Tentativa indevida' }),
+    (err) => err.statusCode === 409
+  );
+  await assert.rejects(
+    () => updatePurchase(db, 1, admin1, paidPurchase.id, { payment_condition: 'installments' }),
+    (err) => err.statusCode === 409
+  );
+  await assert.rejects(
+    () => cancelPurchase(db, 2, admin2, paidPurchase.id, { reason: 'Outra loja' }),
+    (err) => err.statusCode === 404
+  );
 });

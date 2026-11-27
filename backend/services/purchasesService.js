@@ -497,8 +497,373 @@ async function createPurchase(db, storeId, user, payload) {
   return result;
 }
 
+async function updatePurchase(db, storeId, user, purchaseId, payload) {
+  const b = payload || {};
+  const trustedNow = await getTrustedNowSqlite();
+
+  const result = await db.transaction(async (tx) => {
+    const lockSql = tx.isSqlite
+      ? 'SELECT * FROM purchases WHERE id = $1 AND store_id = $2'
+      : 'SELECT * FROM purchases WHERE id = $1 AND store_id = $2 FOR UPDATE';
+    const existing = await tx.queryOne(lockSql, [purchaseId, storeId]);
+    if (!existing) throw createHttpError(404, 'Compra não encontrada nesta loja.');
+    if (existing.status === 'canceled') throw createHttpError(409, 'Compra cancelada não pode ser editada.');
+
+    const payable = await tx.queryOne(
+      'SELECT * FROM accounts_payable WHERE purchase_id = $1 AND store_id = $2',
+      [existing.id, storeId]
+    );
+    const hasPayments =
+      existing.payment_condition === 'cash' ||
+      Number(existing.down_payment || 0) > 0 ||
+      Number(payable?.paid_amount || 0) > 0;
+
+    let supplierId = existing.supplier_id;
+    let supplierName = existing.supplier_name;
+    if (existing.origin_type === 'supplier' && b.supplier_id) {
+      const supp = await tx.queryOne(
+        'SELECT id, name FROM stock_suppliers WHERE id = $1 AND store_id = $2',
+        [Number(b.supplier_id), storeId]
+      );
+      if (!supp) throw createHttpError(404, 'Fornecedor não encontrado nesta loja.');
+      supplierId = supp.id;
+      supplierName = supp.name;
+    }
+
+    const invoiceNumber = b.invoice_number !== undefined ? (b.invoice_number ? String(b.invoice_number).trim().slice(0, 120) : null) : existing.invoice_number;
+    const purchaseDate = b.purchase_date ? String(b.purchase_date).slice(0, 10) : String(existing.purchase_date).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) {
+      throw createHttpError(400, 'Data da compra inválida.');
+    }
+    const notes = b.notes !== undefined ? (b.notes ? String(b.notes).trim() : null) : existing.notes;
+
+    if (hasPayments) {
+      // Com pagamentos realizados: bloqueia alterações financeiras ou de itens que mudem o total
+      if (b.payment_condition && b.payment_condition !== existing.payment_condition) {
+        throw createHttpError(409, 'Esta compra possui pagamentos realizados. Não é possível alterar a condição de pagamento.');
+      }
+      if (b.items && Array.isArray(b.items)) {
+        const newTotalCents = b.items.reduce((acc, it) => acc + (toCents(it.unit_cost) * (it.item_type === 'device' ? 1 : parseInt(it.quantity, 10))), 0)
+          - toCents(b.discount ?? existing.discount)
+          + toCents(b.freight ?? existing.freight);
+        if (newTotalCents !== toCents(existing.total_amount)) {
+          throw createHttpError(409, 'Esta compra possui pagamentos realizados. Não é possível alterar valores ou itens que modifiquem o total.');
+        }
+      }
+
+      const updated = await tx.queryOne(`
+        UPDATE purchases
+        SET supplier_id = $1, supplier_name = $2, invoice_number = $3, purchase_date = $4, notes = $5, updated_at = $6
+        WHERE id = $7 AND store_id = $8
+        RETURNING *
+      `, [supplierId, supplierName, invoiceNumber, purchaseDate, notes, trustedNow, existing.id, storeId]);
+
+      return { purchase: updated, before: existing, after: updated, restrictedToMetadata: true };
+    }
+
+    // Sem pagamentos realizados: permite edição completa de itens e condição financeira
+    const rawItems = Array.isArray(b.items) ? b.items : [];
+    if (rawItems.length === 0) throw createHttpError(400, 'Adicione pelo menos um item à compra.');
+
+    const discountCents = toCents(b.discount ?? 0);
+    const freightCents = toCents(b.freight ?? 0);
+    if (!Number.isFinite(discountCents) || discountCents < 0) throw createHttpError(400, 'Desconto inválido.');
+    if (!Number.isFinite(freightCents) || freightCents < 0) throw createHttpError(400, 'Frete inválido.');
+
+    let subtotalCents = 0;
+    const normalizedItems = rawItems.map((item, idx) => {
+      const itemType = item.item_type;
+      if (!['device', 'existing_accessory', 'new_accessory'].includes(itemType)) {
+        throw createHttpError(400, `Tipo de item inválido na linha ${idx + 1}.`);
+      }
+      const quantity = itemType === 'device' ? 1 : parseInt(item.quantity, 10);
+      if (!Number.isInteger(quantity) || quantity < 1) throw createHttpError(400, `Quantidade inválida na linha ${idx + 1}.`);
+      const unitCostCents = toCents(item.unit_cost);
+      if (!Number.isFinite(unitCostCents) || unitCostCents < 0) throw createHttpError(400, `Custo unitário inválido na linha ${idx + 1}.`);
+      const lineTotalCents = unitCostCents * quantity;
+      subtotalCents += lineTotalCents;
+      const description = String(item.description || item.name || `${item.brand || ''} ${item.model || ''}`).trim();
+      if (!description) throw createHttpError(400, `Descrição obrigatória na linha ${idx + 1}.`);
+      return {
+        ...item,
+        item_type: itemType,
+        quantity,
+        unit_cost_cents: unitCostCents,
+        total_cost_cents: lineTotalCents,
+        sale_price_cents: Math.max(0, toCents(item.sale_price ?? 0) || 0),
+        description,
+      };
+    });
+
+    const totalCents = subtotalCents - discountCents + freightCents;
+    if (totalCents <= 0) throw createHttpError(400, 'O total da compra deve ser maior que zero.');
+
+    const paymentCondition = b.payment_condition === 'installments' ? 'installments' : 'cash';
+    const paymentMethod = b.payment_method ? String(b.payment_method).trim() : null;
+    const paymentDate = String(b.payment_date || purchaseDate).slice(0, 10);
+    let downPaymentCents = 0;
+    let normalizedInstallments = [];
+
+    if (paymentCondition === 'cash') {
+      if (!paymentMethod) throw createHttpError(400, 'Selecione a forma de pagamento.');
+      downPaymentCents = totalCents;
+    } else {
+      downPaymentCents = toCents(b.down_payment ?? 0);
+      if (!Number.isFinite(downPaymentCents) || downPaymentCents < 0 || downPaymentCents >= totalCents) {
+        throw createHttpError(400, 'Entrada inválida.');
+      }
+      const rawInsts = Array.isArray(b.installments) ? b.installments : [];
+      if (rawInsts.length === 0) throw createHttpError(400, 'Informe as parcelas.');
+      let sumCents = 0;
+      normalizedInstallments = rawInsts.map((inst, idx) => {
+        const amountCents = toCents(inst.amount);
+        const dueDate = String(inst.due_date || '').slice(0, 10);
+        if (!Number.isFinite(amountCents) || amountCents <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+          throw createHttpError(400, `Parcela ${idx + 1} inválida.`);
+        }
+        sumCents += amountCents;
+        return { installment_number: idx + 1, amount_cents: amountCents, due_date: dueDate };
+      });
+      if (downPaymentCents + sumCents !== totalCents) {
+        throw createHttpError(400, 'A soma da entrada e parcelas deve ser igual ao total da compra.');
+      }
+    }
+
+    // 1. Reverter movimentações anteriores desta compra
+    const oldItems = await tx.query('SELECT * FROM purchase_items WHERE purchase_id = $1 AND store_id = $2', [existing.id, storeId]);
+    for (const old of oldItems) {
+      if (old.product_id) {
+        const lvl = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [old.product_id]);
+        const prevQty = parseInt(lvl?.quantity || 0, 10);
+        const newQty = Math.max(0, prevQty - parseInt(old.quantity || 0, 10));
+        await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [newQty, trustedNow, old.product_id]);
+        await tx.execute(`
+          INSERT INTO stock_movements (
+            store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
+            reason, reference_type, reference_id, user_id, user_name, created_at
+          ) VALUES ($1, $2, 'adjustment', $3, $4, $5, $6, 'purchase_edit_revert', $7, $8, $9, $10)
+        `, [
+          storeId, old.product_id, -(prevQty - newQty), prevQty, newQty,
+          `Estorno por edição da Compra ${existing.purchase_number}`, existing.id,
+          user?.id || null, user?.full_name || user?.username || null, trustedNow
+        ]);
+      } else if (old.device_id) {
+        const dev = await tx.queryOne('SELECT id, status FROM devices WHERE id = $1 AND store_id = $2', [old.device_id, storeId]);
+        if (dev && dev.status !== 'in_stock') {
+          throw createHttpError(409, 'Um aparelho desta compra já foi vendido ou reservado e não pode ser removido.');
+        }
+        if (dev) {
+          await tx.execute("UPDATE devices SET status = 'archived', updated_at = $1 WHERE id = $2 AND store_id = $3", [trustedNow, dev.id, storeId]);
+        }
+      }
+    }
+    await tx.execute('DELETE FROM purchase_items WHERE purchase_id = $1 AND store_id = $2', [existing.id, storeId]);
+
+    // 2. Aplicar novos itens
+    for (const item of normalizedItems) {
+      let productId = null;
+      let deviceId = null;
+      if (item.item_type === 'existing_accessory') {
+        productId = Number(item.product_id);
+        const prod = await tx.queryOne(
+          'SELECT p.id, p.cost_price, COALESCE(l.quantity, 0) AS quantity FROM stock_products p LEFT JOIN stock_levels l ON l.product_id = p.id WHERE p.id = $1 AND p.store_id = $2',
+          [productId, storeId]
+        );
+        if (!prod) throw createHttpError(404, `Produto "${item.description}" não encontrado.`);
+        const prevQty = parseInt(prod.quantity || 0, 10);
+        const newQty = prevQty + item.quantity;
+        const avgCostCents = newQty > 0
+          ? Math.round(((prevQty * toCents(prod.cost_price || 0)) + item.total_cost_cents) / newQty)
+          : item.unit_cost_cents;
+        await tx.execute('UPDATE stock_products SET cost_price = $1, updated_at = $2 WHERE id = $3 AND store_id = $4', [fromCents(avgCostCents), trustedNow, productId, storeId]);
+        await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [newQty, trustedNow, productId]);
+        await tx.execute(`
+          INSERT INTO stock_movements (
+            store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
+            reason, reference_type, reference_id, user_id, user_name, created_at
+          ) VALUES ($1, $2, 'entry', $3, $4, $5, $6, 'purchase', $7, $8, $9, $10)
+        `, [
+          storeId, productId, item.quantity, prevQty, newQty,
+          `Entrada atualizada via Compra ${existing.purchase_number}`, existing.id,
+          user?.id || null, user?.full_name || user?.username || null, trustedNow
+        ]);
+      } else if (item.item_type === 'device') {
+        const imei1 = item.imei1 ? String(item.imei1).replace(/\s+/g, '').trim() : (item.identifier ? String(item.identifier).trim() : null);
+        const devInsert = await tx.queryOne(`
+          INSERT INTO devices (
+            store_id, brand, model, storage, color, category, imei1, condition,
+            cost_price, sell_price, supplier_id, supplier_name, entry_date, status, notes, created_by
+          ) VALUES ($1, $2, $3, $4, $5, 'Smartphone', $6, $7, $8, $9, $10, $11, $12, 'in_stock', $13, $14)
+          RETURNING id
+        `, [
+          storeId, item.brand || 'Outra', item.model || item.description, item.storage || null, item.color || null,
+          imei1, item.condition || 'Seminovo', fromCents(item.unit_cost_cents), fromCents(item.sale_price_cents),
+          supplierId, supplierName, purchaseDate, `Edição Compra ${existing.purchase_number}`, user?.id || null
+        ]);
+        deviceId = devInsert.id;
+      }
+
+      await tx.execute(`
+        INSERT INTO purchase_items (
+          store_id, purchase_id, item_type, product_id, device_id, description, identifier,
+          brand, model, storage, color, condition, quantity, unit_cost, total_cost, sale_price
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      `, [
+        storeId, existing.id, item.item_type, productId, deviceId, item.description,
+        item.identifier || item.imei1 || null, item.brand || null, item.model || null, item.storage || null,
+        item.color || null, item.condition || null, item.quantity, fromCents(item.unit_cost_cents),
+        fromCents(item.total_cost_cents), fromCents(item.sale_price_cents)
+      ]);
+    }
+
+    // 3. Atualizar contas a pagar / retiradas
+    if (payable) {
+      await tx.execute('DELETE FROM payable_installments WHERE payable_id = $1 AND store_id = $2', [payable.id, storeId]);
+      await tx.execute('DELETE FROM accounts_payable WHERE id = $1 AND store_id = $2', [payable.id, storeId]);
+    }
+
+    const originLabel = existing.origin_type === 'customer_trade' ? `Cliente ${existing.customer_name}` : supplierName;
+    if (downPaymentCents > 0) {
+      await tx.execute(`
+        INSERT INTO cash_withdrawals (
+          store_id, amount, reason, withdrawal_date, notes, source_type, supplier_id, supplier_name, created_by, created_by_name_snapshot
+        ) VALUES ($1, $2, $3, $4, $5, 'purchase_payment', $6, $7, $8, $9)
+      `, [
+        storeId, fromCents(downPaymentCents), `Compra ${existing.purchase_number} (${originLabel}) [${paymentMethod}]`,
+        paymentDate, notes, supplierId, originLabel, user?.id || null, user?.full_name || user?.username || null
+      ]);
+    }
+
+    if (paymentCondition === 'installments') {
+      const financedCents = totalCents - downPaymentCents;
+      const newPayable = await tx.queryOne(`
+        INSERT INTO accounts_payable (
+          store_id, purchase_id, supplier_id, supplier_name, origin_type, category,
+          description, total_amount, paid_amount, status, due_date, notes, created_by
+        ) VALUES ($1, $2, $3, $4, 'purchase', 'Compra', $5, $6, 0, 'open', $7, $8, $9)
+        RETURNING id
+      `, [
+        storeId, existing.id, supplierId, originLabel,
+        `Compra ${existing.purchase_number}${invoiceNumber ? ` (NF ${invoiceNumber})` : ''}`,
+        fromCents(financedCents), normalizedInstallments[0].due_date, notes, user?.id || null
+      ]);
+      for (const inst of normalizedInstallments) {
+        await tx.execute(`
+          INSERT INTO payable_installments (
+            store_id, payable_id, installment_number, total_installments, amount, paid_amount, due_date, status
+          ) VALUES ($1, $2, $3, $4, $5, 0, $6, 'open')
+        `, [storeId, newPayable.id, inst.installment_number, normalizedInstallments.length, fromCents(inst.amount_cents), inst.due_date]);
+      }
+    }
+
+    const updated = await tx.queryOne(`
+      UPDATE purchases SET
+        supplier_id = $1, supplier_name = $2, invoice_number = $3, purchase_date = $4,
+        subtotal = $5, discount = $6, freight = $7, total_amount = $8,
+        payment_condition = $9, payment_method = $10, down_payment = $11, installments_count = $12,
+        notes = $13, updated_at = $14
+      WHERE id = $15 AND store_id = $16
+      RETURNING *
+    `, [
+      supplierId, supplierName, invoiceNumber, purchaseDate,
+      fromCents(subtotalCents), fromCents(discountCents), fromCents(freightCents), fromCents(totalCents),
+      paymentCondition, paymentMethod, fromCents(downPaymentCents), normalizedInstallments.length,
+      notes, trustedNow, existing.id, storeId
+    ]);
+
+    return { purchase: updated, before: existing, after: updated, restrictedToMetadata: false };
+  });
+
+  await logAction({
+    user,
+    action: 'update_purchase',
+    recordType: 'purchase',
+    recordId: result.purchase.id,
+    details: { before_total: result.before.total_amount, after_total: result.after.total_amount, restrictedToMetadata: result.restrictedToMetadata },
+    storeId
+  });
+  emitDashboardRefresh({ source: 'purchase_update', purchaseId: result.purchase.id });
+  return result;
+}
+
+async function cancelPurchase(db, storeId, user, purchaseId, { reason = '' } = {}) {
+  const cleanReason = String(reason || '').trim() || 'Cancelamento solicitado pelo administrador';
+  const trustedNow = await getTrustedNowSqlite();
+
+  const canceled = await db.transaction(async (tx) => {
+    const lockSql = tx.isSqlite
+      ? 'SELECT * FROM purchases WHERE id = $1 AND store_id = $2'
+      : 'SELECT * FROM purchases WHERE id = $1 AND store_id = $2 FOR UPDATE';
+    const existing = await tx.queryOne(lockSql, [purchaseId, storeId]);
+    if (!existing) throw createHttpError(404, 'Compra não encontrada nesta loja.');
+    if (existing.status === 'canceled') throw createHttpError(409, 'Esta compra já está cancelada.');
+
+    const payable = await tx.queryOne('SELECT * FROM accounts_payable WHERE purchase_id = $1 AND store_id = $2', [existing.id, storeId]);
+    const hasPayments =
+      existing.payment_condition === 'cash' ||
+      Number(existing.down_payment || 0) > 0 ||
+      Number(payable?.paid_amount || 0) > 0;
+
+    if (hasPayments) {
+      throw createHttpError(409, 'Esta compra possui pagamentos realizados e não pode ser cancelada diretamente. Preserve os registros financeiros ou realize o estorno adequado.');
+    }
+
+    const oldItems = await tx.query('SELECT * FROM purchase_items WHERE purchase_id = $1 AND store_id = $2', [existing.id, storeId]);
+    for (const old of oldItems) {
+      if (old.product_id) {
+        const lvl = await tx.queryOne('SELECT quantity FROM stock_levels WHERE product_id = $1', [old.product_id]);
+        const prevQty = parseInt(lvl?.quantity || 0, 10);
+        const newQty = Math.max(0, prevQty - parseInt(old.quantity || 0, 10));
+        await tx.execute('UPDATE stock_levels SET quantity = $1, updated_at = $2 WHERE product_id = $3', [newQty, trustedNow, old.product_id]);
+        await tx.execute(`
+          INSERT INTO stock_movements (
+            store_id, product_id, movement_type, quantity_delta, previous_quantity, new_quantity,
+            reason, reference_type, reference_id, user_id, user_name, created_at
+          ) VALUES ($1, $2, 'adjustment', $3, $4, $5, $6, 'purchase_cancel', $7, $8, $9, $10)
+        `, [
+          storeId, old.product_id, -(prevQty - newQty), prevQty, newQty,
+          `Cancelamento Compra ${existing.purchase_number}: ${cleanReason}`, existing.id,
+          user?.id || null, user?.full_name || user?.username || null, trustedNow
+        ]);
+      } else if (old.device_id) {
+        const dev = await tx.queryOne('SELECT id, status FROM devices WHERE id = $1 AND store_id = $2', [old.device_id, storeId]);
+        if (dev && dev.status !== 'in_stock') {
+          throw createHttpError(409, 'Um aparelho desta compra já foi vendido ou reservado; não é possível cancelar a compra.');
+        }
+        if (dev) {
+          await tx.execute("UPDATE devices SET status = 'archived', updated_at = $1 WHERE id = $2 AND store_id = $3", [trustedNow, dev.id, storeId]);
+        }
+      }
+    }
+
+    if (payable) {
+      await tx.execute("UPDATE accounts_payable SET status = 'canceled', updated_at = $1 WHERE id = $2 AND store_id = $3", [trustedNow, payable.id, storeId]);
+      await tx.execute("UPDATE payable_installments SET status = 'canceled', updated_at = $1 WHERE payable_id = $2 AND store_id = $3 AND status IN ('open', 'partial')", [trustedNow, payable.id, storeId]);
+    }
+
+    const updatedNotes = existing.notes ? `${existing.notes}\n[CANCELADA]: ${cleanReason}` : `[CANCELADA]: ${cleanReason}`;
+    return tx.queryOne(
+      "UPDATE purchases SET status = 'canceled', notes = $1, updated_at = $2 WHERE id = $3 AND store_id = $4 RETURNING *",
+      [updatedNotes, trustedNow, existing.id, storeId]
+    );
+  });
+
+  await logAction({
+    user,
+    action: 'cancel_purchase',
+    recordType: 'purchase',
+    recordId: canceled.id,
+    details: { purchase_number: canceled.purchase_number, reason: cleanReason },
+    storeId
+  });
+  emitDashboardRefresh({ source: 'purchase_cancel', purchaseId: canceled.id });
+  return canceled;
+}
+
 module.exports = {
   createPurchase,
+  updatePurchase,
+  cancelPurchase,
   toCents,
   fromCents,
 };

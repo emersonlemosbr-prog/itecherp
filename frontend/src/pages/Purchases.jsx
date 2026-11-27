@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ShoppingBag, Plus, Search, Trash2, PackagePlus, Smartphone, Boxes,
-  Calendar, DollarSign, CheckCircle2, AlertCircle, X, Eye
+  Calendar, DollarSign, CheckCircle2, AlertCircle, X, Eye, Pencil, Ban
 } from 'lucide-react'
 import api from '../api/client'
 const formatMoney = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -85,6 +85,10 @@ export default function Purchases() {
   const [installments, setInstallments] = useState([])
 
   const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  const [editingPurchaseId, setEditingPurchaseId] = useState(null)
+  const [cancelModal, setCancelModal] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [idempotencyKey, setIdempotencyKey] = useState(() => `pur-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
@@ -261,10 +265,12 @@ export default function Purchases() {
 
   async function handleConfirmPurchase(e) {
     e.preventDefault()
+    if (submittingRef.current) return
     setError('')
     setSuccess('')
     if (items.length === 0) return setError('Adicione pelo menos um item na compra.')
 
+    submittingRef.current = true
     setSubmitting(true)
     try {
       const payload = {
@@ -286,8 +292,14 @@ export default function Purchases() {
           : [],
         items,
       }
-      const { data } = await api.post('/purchases', payload)
-      setSuccess(`Compra ${data?.purchase?.purchase_number || ''} confirmada com sucesso!`)
+      if (editingPurchaseId) {
+        await api.put(`/purchases/${editingPurchaseId}`, payload)
+        setSuccess('Compra atualizada com sucesso!')
+      } else {
+        const { data } = await api.post('/purchases', payload)
+        setSuccess(`Compra ${data?.purchase?.purchase_number || ''} confirmada com sucesso!`)
+      }
+      setEditingPurchaseId(null)
       setItems([])
       setInvoiceNumber('')
       setNotes('')
@@ -301,7 +313,69 @@ export default function Purchases() {
     } catch (err) {
       setError(err.response?.data?.error || 'Erro ao confirmar compra.')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
+    }
+  }
+
+  async function openEditPurchase(purchaseId) {
+    setError('')
+    try {
+      const { data } = await api.get(`/purchases/${purchaseId}`)
+      setEditingPurchaseId(data.id)
+      setOriginType(data.origin_type || 'supplier')
+      setSupplierId(data.supplier_id ? String(data.supplier_id) : '')
+      setCustomerId(data.customer_id ? String(data.customer_id) : '')
+      setInvoiceNumber(data.invoice_number || '')
+      setPurchaseDate(String(data.purchase_date).slice(0, 10))
+      setDiscount(String(data.discount || 0))
+      setFreight(String(data.freight || 0))
+      setNotes(data.notes || '')
+      setPaymentCondition(data.payment_condition || 'cash')
+      setPaymentMethod(data.payment_method || 'pix')
+      setDownPayment(String(data.down_payment || 0))
+      setItems((data.items || []).map(it => ({
+        uid: it.id || Math.random(),
+        item_type: it.item_type,
+        product_id: it.product_id,
+        description: it.description,
+        identifier: it.identifier,
+        brand: it.brand,
+        model: it.model,
+        storage: it.storage,
+        color: it.color,
+        condition: it.condition,
+        quantity: it.quantity,
+        unit_cost: Number(it.unit_cost),
+        sale_price: Number(it.sale_price || 0),
+      })))
+      if (data.installments && data.installments.length > 0) {
+        setInstallmentsCount(data.installments.length)
+        setInstallments(data.installments.map(i => ({
+          installment_number: i.installment_number,
+          amount: String(Number(i.amount).toFixed(2)),
+          due_date: String(i.due_date).slice(0, 10),
+        })))
+      }
+      setView('new')
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao carregar compra para edição.')
+    }
+  }
+
+  async function handleConfirmCancel(e) {
+    e.preventDefault()
+    if (!cancelModal) return
+    setError('')
+    try {
+      await api.post(`/purchases/${cancelModal.id}/cancel`, { reason: cancelReason })
+      setSuccess(`Compra ${cancelModal.purchase_number} cancelada com sucesso.`)
+      setCancelModal(null)
+      setCancelReason('')
+      loadPurchases()
+      loadDependencies()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao cancelar compra.')
     }
   }
 
@@ -444,14 +518,36 @@ export default function Purchases() {
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-[#FFBE0B]">{formatMoney(p.total_amount)}</td>
                       <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openDetail(p.id)}
-                          className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
-                          title="Ver detalhes"
-                        >
-                          <Eye size={15} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openDetail(p.id)}
+                            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
+                            title="Ver detalhes"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          {p.status !== 'canceled' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openEditPurchase(p.id)}
+                                className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
+                                title="Editar compra"
+                              >
+                                <Pencil size={15} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setError(''); setCancelModal(p); setCancelReason('') }}
+                                className="p-1.5 rounded-lg hover:bg-rose-500/10 text-rose-400"
+                                title="Cancelar compra"
+                              >
+                                <Ban size={15} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -868,6 +964,31 @@ export default function Purchases() {
               </div>
             )}
           </div>
+        </div>
+      )}
+      {/* Modal Cancelamento de Compra */}
+      {cancelModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <form onSubmit={handleConfirmCancel} className="card w-full max-w-md p-5 space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white">Cancelar {cancelModal.purchase_number}</h3>
+              <button type="button" onClick={() => setCancelModal(null)} className="text-zinc-400 hover:text-white"><X size={18} /></button>
+            </div>
+            <p className="text-zinc-400">
+              Compras sem pagamentos realizados terão o estoque estornado e as parcelas pendentes canceladas.
+            </p>
+            <input
+              className="input w-full"
+              placeholder="Motivo do cancelamento *"
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              required
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setCancelModal(null)} className="px-3 py-1.5 rounded-lg bg-white/5 text-zinc-300">Voltar</button>
+              <button type="submit" className="px-4 py-1.5 rounded-lg bg-rose-500 text-white font-bold">Confirmar Cancelamento</button>
+            </div>
+          </form>
         </div>
       )}
     </div>

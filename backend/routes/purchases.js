@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { createPurchase } = require('../services/purchasesService');
+const { createPurchase, updatePurchase, cancelPurchase } = require('../services/purchasesService');
 
 const router = express.Router();
 router.use(authenticate, requireRole('admin'));
@@ -101,6 +101,26 @@ router.post('/', async (req, res, next) => {
     const storeId = req.user.store_id || 1;
     const result = await createPurchase(db, storeId, req.user, req.body);
     res.status(result.idempotentReplay ? 200 : 201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:id', async (req, res, next) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const result = await updatePurchase(db, storeId, req.user, req.params.id, req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/cancel', async (req, res, next) => {
+  try {
+    const storeId = req.user.store_id || 1;
+    const canceled = await cancelPurchase(db, storeId, req.user, req.params.id, req.body);
+    res.json({ success: true, purchase: canceled });
   } catch (err) {
     next(err);
   }
