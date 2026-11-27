@@ -423,7 +423,19 @@ export default function Purchases() {
           {view === 'list' ? (
             <button
               type="button"
-              onClick={() => { setError(''); setSuccess(''); setView('new') }}
+              onClick={() => {
+                setError('')
+                setSuccess('')
+                setEditingPurchaseId(null)
+                setEditingOriginalTotal(0)
+                setEditingAlreadyPaid(0)
+                setPaymentCondition('cash')
+                setPaymentMethod('pix')
+                setDownPayment('0')
+                setInstallments([])
+                setItems([])
+                setView('new')
+              }}
               className="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"
             >
               <Plus size={16} /> Nova compra

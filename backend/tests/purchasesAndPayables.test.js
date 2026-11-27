@@ -273,6 +273,18 @@ test('7. Edição com pagamento realizado reconcilia diferença >0, <0 e =0 pres
   });
   assert.equal(lower.reconciliation.credit_to_compensate, origTotal - 50);
 
+  // Rejeita condição de pagamento inválida
+  await assert.rejects(
+    () => createPurchase(db, 1, admin1, {
+      origin_type: 'supplier',
+      supplier_id: supplier1Id,
+      purchase_date: '2026-11-26',
+      payment_condition: 'invalid_cond',
+      items: [{ item_type: 'existing_accessory', product_id: product1Id, description: 'Película 3D', quantity: 1, unit_cost: 10 }],
+    }),
+    (err) => err.statusCode === 400
+  );
+
   // Cancelamento direto de compra paga continua bloqueado (409) e isolado por loja (404)
   await assert.rejects(
     () => cancelPurchase(db, 1, admin1, paidPurchase.id, { reason: 'Tentativa indevida' }),

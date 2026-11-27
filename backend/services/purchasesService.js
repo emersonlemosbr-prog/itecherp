@@ -99,7 +99,10 @@ async function createPurchase(db, storeId, user, payload) {
     throw createHttpError(400, 'O total da compra deve ser maior que zero.');
   }
 
-  const paymentCondition = b.payment_condition === 'installments' ? 'installments' : 'cash';
+  if (!['cash', 'installments'].includes(b.payment_condition)) {
+    throw createHttpError(400, "Condição de pagamento inválida. Utilize 'cash' (À vista) ou 'installments' (A prazo).");
+  }
+  const paymentCondition = b.payment_condition;
   const paymentMethod = b.payment_method ? String(b.payment_method).trim() : null;
   const paymentDate = String(b.payment_date || purchaseDate).slice(0, 10);
 
