@@ -258,6 +258,16 @@ html.dark .input:focus {
   background: #27272A;
 }
 
+input[type="date"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .label {
   @apply mb-1 block text-xs font-semibold uppercase tracking-wide;
   color: var(--text-muted);
