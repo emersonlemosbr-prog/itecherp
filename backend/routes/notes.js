@@ -40,7 +40,11 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024, files: 10 }
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME.has(file.mimetype)) return cb(null, true);
+    return cb(new Error('Formato de arquivo não permitido.'));
+  }
 });
 
 async function purgeExpiredTrash(userId) {

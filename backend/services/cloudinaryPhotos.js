@@ -1,6 +1,7 @@
 const { v2: cloudinary } = require('cloudinary');
 const sharp = require('sharp');
 const { randomUUID } = require('crypto');
+const { validateImageBuffer } = require('../utils/fileSignature');
 
 function client() {
   const { CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
@@ -12,6 +13,7 @@ function client() {
 }
 
 async function upload({ buffer, orderNumber, serviceOrderId }) {
+  validateImageBuffer(buffer);
   const sdk = client();
   let optimized;
   try {
@@ -28,6 +30,7 @@ async function upload({ buffer, orderNumber, serviceOrderId }) {
 }
 
 async function uploadProduct({ buffer, productId, productCode }) {
+  validateImageBuffer(buffer);
   const sdk = client();
   let optimized;
   try {
