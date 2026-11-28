@@ -5,6 +5,13 @@ const multer = require('multer');
 const db = require('../db/database');
 const { authenticate } = require('../middleware/auth');
 const { logAction } = require('../utils/audit');
+const { validateFileMagic } = require('../utils/fileSignature');
+
+async function cleanupUploadedFiles(files) {
+  await Promise.all(
+    (files || []).map((file) => (file?.path ? fs.promises.unlink(file.path).catch(() => {}) : Promise.resolve()))
+  );
+}
 
 const router = express.Router();
 router.use(authenticate);
@@ -512,7 +519,8 @@ router.post('/reminders/:id/ack', async (req, res) => {
     await db.execute('UPDATE note_reminders SET notified_at = CURRENT_TIMESTAMP WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -522,7 +530,8 @@ router.post('/labels', async (req, res) => {
     if (!label) return res.status(400).json({ error: 'Nome da etiqueta é obrigatório.' });
     res.status(201).json(label);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -534,7 +543,8 @@ router.delete('/labels/:id', async (req, res) => {
     await db.execute('DELETE FROM labels WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -554,7 +564,8 @@ router.delete('/trash/empty', async (req, res) => {
 
     return res.json({ success: true, deleted_count: info.changes });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -573,7 +584,8 @@ router.get('/attachments/:attachmentId', async (req, res) => {
       headers: { 'Content-Type': attachment.mime_type || 'application/octet-stream' },
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -584,7 +596,8 @@ router.get('/:id', async (req, res) => {
     const hydrated = await hydrateNotes([note]);
     res.json(hydrated[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -635,7 +648,8 @@ router.post('/', async (req, res) => {
     const hydrated = await hydrateNotes([freshNote]);
     res.status(201).json(hydrated[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -694,7 +708,8 @@ router.put('/:id', async (req, res) => {
     const hydrated = await hydrateNotes([freshNote]);
     res.json(hydrated[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -709,7 +724,8 @@ router.post('/:id/reorder', async (req, res) => {
     ]);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -729,7 +745,8 @@ router.post('/reorder', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -753,8 +770,14 @@ router.post('/:id/attachments', upload.array('files', 10), async (req, res) => {
       const isAllowedFile = ALLOWED_FILE_MIME.has(file.mimetype) || ALLOWED_FILE_EXT.has(ext);
 
       if (!isImage && !isAllowedFile) {
-        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        continue;
+        await cleanupUploadedFiles(files);
+        return res.status(400).json({ error: 'Formato de arquivo não permitido.' });
+      }
+
+      const magic = validateFileMagic(file.path, file.mimetype);
+      if (!magic.valid) {
+        await cleanupUploadedFiles(files);
+        return res.status(400).json({ error: magic.error || 'Arquivo inválido ou corrompido.' });
       }
 
       const info = await db.execute(`
@@ -794,7 +817,8 @@ router.post('/:id/attachments', upload.array('files', 10), async (req, res) => {
       url: `/api/notes/attachments/${row.id}`
     })));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -819,7 +843,8 @@ router.delete('/:noteId/attachments/:attachmentId', async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -838,7 +863,8 @@ router.post('/:id/restore', async (req, res) => {
     const hydrated = await hydrateNotes([freshNote]);
     res.json(hydrated[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -859,7 +885,8 @@ router.post('/:id/favorite', async (req, res) => {
     const hydrated = await hydrateNotes([freshNote]);
     res.json(hydrated[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -880,7 +907,8 @@ router.post('/:id/pin', async (req, res) => {
     const hydrated = await hydrateNotes([freshNote]);
     res.json(hydrated[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -898,7 +926,8 @@ router.post('/:id/archive', async (req, res) => {
     const hydrated = await hydrateNotes([freshNote]);
     res.json(hydrated[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
@@ -925,7 +954,8 @@ router.delete('/:id', async (req, res) => {
     await logAction({ user: req.user, action: 'delete_note_permanently', recordType: 'note', recordId: req.params.id });
     return res.json({ success: true, moved_to_trash: false });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await cleanupUploadedFiles(req.files);
+    res.status(500).json({ error: 'Erro ao processar anexos.' });
   }
 });
 
