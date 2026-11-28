@@ -17,34 +17,23 @@ const googleAuthService = require('../services/googleAuthService');
 const { renderPasswordResetEmail } = require('../templates/passwordResetEmail');
 const { sendEmail, getAppBaseUrl, getOfficialLogoUrl } = require('../services/emailService');
 
+const loginRateLimitService = require('../services/loginRateLimitService');
 const router = express.Router();
 
-// Rate limiting simples em memória por IP para prevenção de força bruta no login
-const loginAttempts = new Map();
-function loginRateLimit(req, res, next) {
-  const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-  const now = Date.now();
-  const windowMs = 60 * 1000; // 1 minuto
-  const maxAttempts = 10;
-
-  for (const [key, val] of loginAttempts) {
-    if (val.reset <= now) loginAttempts.delete(key);
+// Proteção persistente (IP + conta normalizada) contra força bruta no login
+async function loginRateLimit(req, res, next) {
+  try {
+    const { blocked, retrySec } = await loginRateLimitService.checkBlocked(req, req.body?.username);
+    if (blocked) {
+      res.set('Retry-After', String(retrySec));
+      return res.status(429).json({
+        error: 'Muitas tentativas de login. Aguarde alguns minutos e tente novamente.'
+      });
+    }
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  let record = loginAttempts.get(ip);
-  if (!record) {
-    record = { count: 0, reset: now + windowMs };
-    loginAttempts.set(ip, record);
-  }
-
-  record.count += 1;
-  if (record.count > maxAttempts) {
-    const retrySec = Math.ceil((record.reset - now) / 1000);
-    res.set('Retry-After', String(retrySec));
-    return res.status(429).json({ error: `Muitas tentativas de login. Tente novamente em ${retrySec} segundos.` });
-  }
-
-  next();
 }
 
 // Rate limiting para solicitação de recuperação de senha por IP (5 requisições por 15 minutos)
@@ -680,11 +669,13 @@ router.post('/login', loginRateLimit, async (req, res) => {
 
     const user = await db.queryOne('SELECT * FROM users WHERE LOWER(username) = $1', [username.trim().toLowerCase()]);
     if (!user || !user.active) {
+      await loginRateLimitService.recordFailure(req, username);
       return res.status(401).json({ error: 'Usuário ou senha inválidos.' });
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
+      await loginRateLimitService.recordFailure(req, username);
       return res.status(401).json({ error: 'Usuário ou senha inválidos.' });
     }
 
@@ -723,8 +714,7 @@ router.post('/login', loginRateLimit, async (req, res) => {
       };
     }
 
-    const ip = req.ip || req.connection?.remoteAddress || 'unknown';
-    loginAttempts.delete(ip);
+    await loginRateLimitService.clearFailures(req, username);
 
     const token = jwt.sign(
       {
